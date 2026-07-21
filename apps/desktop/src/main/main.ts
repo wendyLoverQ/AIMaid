@@ -4,8 +4,12 @@ import { EventRouter } from './ipc/event-router'
 import { IpcRouter } from './ipc/ipc-router'
 import { ApplicationLifecycle } from './lifecycle/application-lifecycle'
 import { logger } from './logging/logger'
+import { configureApplicationPaths } from './paths/application-paths'
 import { WindowFactory } from './windows/window-factory'
 import { WindowManager } from './windows/window-manager'
+
+const applicationPaths = configureApplicationPaths()
+logger.info('paths', 'Application paths initialized', { ...applicationPaths })
 
 const coreClient = new MockCoreClient()
 const coreProcess = new CoreProcessManager(new MockCoreProcessAdapter(), logger)

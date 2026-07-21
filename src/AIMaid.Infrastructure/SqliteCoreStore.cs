@@ -15,6 +15,7 @@ public sealed class SqliteCoreStore : IChatStore, ISettingsStore, ICharacterStor
     public SqliteCoreStore(CoreStorageOptions options)
     {
         if (string.IsNullOrWhiteSpace(options.DatabasePath)) throw new ArgumentException("数据库路径不能为空。", nameof(options));
+        if (!Path.IsPathFullyQualified(options.DatabasePath)) throw new ArgumentException("数据库路径必须是绝对路径。", nameof(options));
         var fullPath = Path.GetFullPath(options.DatabasePath);
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
         connectionString = new SqliteConnectionStringBuilder { DataSource = fullPath, ForeignKeys = true }.ToString();
@@ -52,8 +53,18 @@ public sealed class SqliteCoreStore : IChatStore, ISettingsStore, ICharacterStor
                 CardPath TEXT NOT NULL DEFAULT '',
                 SourceCardJson TEXT NOT NULL DEFAULT '',
                 TemplateCardJson TEXT NOT NULL DEFAULT '',
+                CardSummary TEXT NOT NULL DEFAULT '',
+                CardSchemaVersion TEXT NOT NULL DEFAULT '',
+                TemplateCardSourceHash TEXT NOT NULL DEFAULT '',
+                TemplateCardGenerationStatus TEXT NOT NULL DEFAULT '',
+                TemplateCardGenerationMessage TEXT NOT NULL DEFAULT '',
+                TemplateCardGeneratedAt TEXT NULL,
+                TemplateCardLastAttemptAt TEXT NULL,
+                TemplateCardIterationCount INTEGER NOT NULL DEFAULT 0,
                 PreferredVoiceId TEXT NOT NULL DEFAULT '',
                 ValidationStatus TEXT NOT NULL DEFAULT 'unknown',
+                ValidationMessage TEXT NOT NULL DEFAULT '',
+                LastValidatedAt TEXT NULL,
                 IsEnabled INTEGER NOT NULL DEFAULT 1,
                 UpdatedAt TEXT NOT NULL
             );
@@ -79,6 +90,7 @@ public sealed class SqliteCoreStore : IChatStore, ISettingsStore, ICharacterStor
             CREATE INDEX IF NOT EXISTS IX_CoreDocuments_Domain_UpdatedAt ON CoreDocuments(Domain, UpdatedAt DESC);
             """;
         await command.ExecuteNonQueryAsync(cancellationToken);
+        await EnsureCharacterColumnsAsync(connection, cancellationToken);
     }
 
     async Task<long> IChatStore.AppendAsync(ChatMessageDto message, CancellationToken cancellationToken)
@@ -183,7 +195,7 @@ public sealed class SqliteCoreStore : IChatStore, ISettingsStore, ICharacterStor
     {
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = """SELECT RoleId, Name, VoiceName, RoleTitle, CardPath, SourceCardJson, TemplateCardJson, PreferredVoiceId, ValidationStatus, IsEnabled, UpdatedAt FROM VoiceRoleCards WHERE RoleId=$roleId""";
+        command.CommandText = CharacterSelectSql + " WHERE RoleId=$roleId";
         command.Parameters.AddWithValue("$roleId", roleId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadCharacter(reader) : null;
@@ -193,7 +205,7 @@ public sealed class SqliteCoreStore : IChatStore, ISettingsStore, ICharacterStor
     {
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = """SELECT RoleId, Name, VoiceName, RoleTitle, CardPath, SourceCardJson, TemplateCardJson, PreferredVoiceId, ValidationStatus, IsEnabled, UpdatedAt FROM VoiceRoleCards WHERE $enabledOnly=0 OR IsEnabled=1 ORDER BY Name, RoleId""";
+        command.CommandText = CharacterSelectSql + " WHERE $enabledOnly=0 OR IsEnabled=1 ORDER BY Name, RoleId";
         command.Parameters.AddWithValue("$enabledOnly", enabledOnly ? 1 : 0);
         var result = new List<CharacterDto>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -206,11 +218,25 @@ public sealed class SqliteCoreStore : IChatStore, ISettingsStore, ICharacterStor
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO VoiceRoleCards (RoleId, Name, VoiceName, RoleTitle, CardPath, SourceCardJson, TemplateCardJson, PreferredVoiceId, ValidationStatus, IsEnabled, UpdatedAt)
-            VALUES ($roleId,$name,$voiceName,$roleTitle,$cardPath,$sourceCardJson,$templateCardJson,$preferredVoiceId,$validationStatus,$isEnabled,$updatedAt)
+            INSERT INTO VoiceRoleCards (RoleId, Name, VoiceName, RoleTitle, CardPath, SourceCardJson, TemplateCardJson,
+              CardSummary, CardSchemaVersion, TemplateCardSourceHash, TemplateCardGenerationStatus, TemplateCardGenerationMessage,
+              TemplateCardGeneratedAt, TemplateCardLastAttemptAt, TemplateCardIterationCount, PreferredVoiceId,
+              ValidationStatus, ValidationMessage, LastValidatedAt, IsEnabled, UpdatedAt)
+            VALUES ($roleId,$name,$voiceName,$roleTitle,$cardPath,$sourceCardJson,$templateCardJson,
+              $cardSummary,$cardSchemaVersion,$templateCardSourceHash,$templateCardGenerationStatus,$templateCardGenerationMessage,
+              $templateCardGeneratedAt,$templateCardLastAttemptAt,$templateCardIterationCount,$preferredVoiceId,
+              $validationStatus,$validationMessage,$lastValidatedAt,$isEnabled,$updatedAt)
             ON CONFLICT(RoleId) DO UPDATE SET Name=excluded.Name, VoiceName=excluded.VoiceName, RoleTitle=excluded.RoleTitle,
               CardPath=excluded.CardPath, SourceCardJson=excluded.SourceCardJson, TemplateCardJson=excluded.TemplateCardJson,
+              CardSummary=excluded.CardSummary, CardSchemaVersion=excluded.CardSchemaVersion,
+              TemplateCardSourceHash=excluded.TemplateCardSourceHash,
+              TemplateCardGenerationStatus=excluded.TemplateCardGenerationStatus,
+              TemplateCardGenerationMessage=excluded.TemplateCardGenerationMessage,
+              TemplateCardGeneratedAt=excluded.TemplateCardGeneratedAt,
+              TemplateCardLastAttemptAt=excluded.TemplateCardLastAttemptAt,
+              TemplateCardIterationCount=excluded.TemplateCardIterationCount,
               PreferredVoiceId=excluded.PreferredVoiceId, ValidationStatus=excluded.ValidationStatus,
+              ValidationMessage=excluded.ValidationMessage, LastValidatedAt=excluded.LastValidatedAt,
               IsEnabled=excluded.IsEnabled, UpdatedAt=excluded.UpdatedAt;
             """;
         command.Parameters.AddWithValue("$roleId", character.RoleId);
@@ -220,8 +246,18 @@ public sealed class SqliteCoreStore : IChatStore, ISettingsStore, ICharacterStor
         command.Parameters.AddWithValue("$cardPath", character.CardPath);
         command.Parameters.AddWithValue("$sourceCardJson", character.SourceCardJson);
         command.Parameters.AddWithValue("$templateCardJson", character.TemplateCardJson);
+        command.Parameters.AddWithValue("$cardSummary", character.CardSummary);
+        command.Parameters.AddWithValue("$cardSchemaVersion", character.CardSchemaVersion);
+        command.Parameters.AddWithValue("$templateCardSourceHash", character.TemplateCardSourceHash);
+        command.Parameters.AddWithValue("$templateCardGenerationStatus", character.TemplateCardGenerationStatus);
+        command.Parameters.AddWithValue("$templateCardGenerationMessage", character.TemplateCardGenerationMessage);
+        command.Parameters.AddWithValue("$templateCardGeneratedAt", DbValue(character.TemplateCardGeneratedAt));
+        command.Parameters.AddWithValue("$templateCardLastAttemptAt", DbValue(character.TemplateCardLastAttemptAt));
+        command.Parameters.AddWithValue("$templateCardIterationCount", character.TemplateCardIterationCount);
         command.Parameters.AddWithValue("$preferredVoiceId", character.PreferredVoiceId);
         command.Parameters.AddWithValue("$validationStatus", character.ValidationStatus);
+        command.Parameters.AddWithValue("$validationMessage", character.ValidationMessage);
+        command.Parameters.AddWithValue("$lastValidatedAt", DbValue(character.LastValidatedAt));
         command.Parameters.AddWithValue("$isEnabled", character.IsEnabled ? 1 : 0);
         command.Parameters.AddWithValue("$updatedAt", Format(character.UpdatedAt));
         await command.ExecuteNonQueryAsync(cancellationToken);
@@ -329,12 +365,47 @@ public sealed class SqliteCoreStore : IChatStore, ISettingsStore, ICharacterStor
         return connection;
     }
 
+    private const string CharacterSelectSql = """
+        SELECT RoleId,Name,VoiceName,RoleTitle,CardPath,SourceCardJson,TemplateCardJson,PreferredVoiceId,ValidationStatus,
+          IsEnabled,UpdatedAt,CardSummary,CardSchemaVersion,TemplateCardSourceHash,TemplateCardGenerationStatus,
+          TemplateCardGenerationMessage,TemplateCardGeneratedAt,TemplateCardLastAttemptAt,TemplateCardIterationCount,
+          ValidationMessage,LastValidatedAt FROM VoiceRoleCards
+        """;
     private static CharacterDto ReadCharacter(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1), reader.GetString(2),
         reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetString(6), reader.GetString(7), reader.GetString(8),
-        reader.GetInt64(9) != 0, Parse(reader.GetString(10)));
+        reader.GetInt64(9) != 0, Parse(reader.GetString(10)), reader.GetString(11), reader.GetString(12), reader.GetString(13),
+        reader.GetString(14), reader.GetString(15), ParseNullable(reader, 16), ParseNullable(reader, 17), reader.GetInt32(18),
+        reader.GetString(19), ParseNullable(reader, 20));
     private static BackgroundTaskDto ReadTask(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1),
         (BackgroundTaskState)reader.GetInt32(2), reader.GetDouble(3), reader.GetString(4), reader.GetString(5), reader.GetString(6),
         Parse(reader.GetString(7)), Parse(reader.GetString(8)));
     private static string Format(DateTimeOffset value) => value.ToString("O", CultureInfo.InvariantCulture);
     private static DateTimeOffset Parse(string value) => DateTimeOffset.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+    private static DateTimeOffset? ParseNullable(SqliteDataReader reader, int ordinal) => reader.IsDBNull(ordinal) ? null : Parse(reader.GetString(ordinal));
+    private static object DbValue(DateTimeOffset? value) => value.HasValue ? Format(value.Value) : DBNull.Value;
+
+    private static async Task EnsureCharacterColumnsAsync(SqliteConnection connection, CancellationToken cancellationToken)
+    {
+        var columns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["CardSummary"] = "TEXT NOT NULL DEFAULT ''", ["CardSchemaVersion"] = "TEXT NOT NULL DEFAULT ''",
+            ["TemplateCardSourceHash"] = "TEXT NOT NULL DEFAULT ''", ["TemplateCardGenerationStatus"] = "TEXT NOT NULL DEFAULT ''",
+            ["TemplateCardGenerationMessage"] = "TEXT NOT NULL DEFAULT ''", ["TemplateCardGeneratedAt"] = "TEXT NULL",
+            ["TemplateCardLastAttemptAt"] = "TEXT NULL", ["TemplateCardIterationCount"] = "INTEGER NOT NULL DEFAULT 0",
+            ["ValidationMessage"] = "TEXT NOT NULL DEFAULT ''", ["LastValidatedAt"] = "TEXT NULL"
+        };
+        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await using (var info = connection.CreateCommand())
+        {
+            info.CommandText = "PRAGMA table_info(VoiceRoleCards)";
+            await using var reader = await info.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken)) existing.Add(reader.GetString(1));
+        }
+        foreach (var (name, definition) in columns.Where(x => !existing.Contains(x.Key)))
+        {
+            await using var alter = connection.CreateCommand();
+            alter.CommandText = $"ALTER TABLE VoiceRoleCards ADD COLUMN {name} {definition}";
+            await alter.ExecuteNonQueryAsync(cancellationToken);
+        }
+    }
 }

@@ -8,12 +8,14 @@ public sealed class WindowsProcessController : IExternalProgramController
     public Task<int> LaunchAsync(string executablePath, IReadOnlyList<string> arguments, string? workingDirectory, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var fullPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(executablePath));
+        var expandedPath = Environment.ExpandEnvironmentVariables(executablePath);
+        if (!Path.IsPathFullyQualified(expandedPath)) throw new ArgumentException("外部程序路径必须是绝对路径。", nameof(executablePath));
+        var fullPath = Path.GetFullPath(expandedPath);
         if (!File.Exists(fullPath)) throw new FileNotFoundException("外部程序不存在。", fullPath);
         var startInfo = new ProcessStartInfo
         {
             FileName = fullPath,
-            WorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory) ? Path.GetDirectoryName(fullPath)! : Path.GetFullPath(workingDirectory),
+            WorkingDirectory = ResolveWorkingDirectory(fullPath, workingDirectory),
             UseShellExecute = false
         };
         foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
@@ -26,6 +28,14 @@ public sealed class WindowsProcessController : IExternalProgramController
         cancellationToken.ThrowIfCancellationRequested();
         var normalized = Path.GetFileNameWithoutExtension(processName);
         return Task.FromResult(Process.GetProcessesByName(normalized).Length > 0);
+    }
+
+    private static string ResolveWorkingDirectory(string executablePath, string? workingDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(workingDirectory)) return Path.GetDirectoryName(executablePath)!;
+        var expanded = Environment.ExpandEnvironmentVariables(workingDirectory);
+        if (!Path.IsPathFullyQualified(expanded)) throw new ArgumentException("工作目录必须是绝对路径。", nameof(workingDirectory));
+        return Path.GetFullPath(expanded);
     }
 }
 

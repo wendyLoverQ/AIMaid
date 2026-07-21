@@ -88,6 +88,7 @@ public sealed class SpeechHttpClient : ITtsClient, IAsrClient
     {
         this.httpClient = httpClient;
         this.options = options;
+        if (!Path.IsPathFullyQualified(options.OutputDirectory)) throw new ArgumentException("TTS 输出目录必须是绝对路径。", nameof(options));
         Directory.CreateDirectory(Path.GetFullPath(options.OutputDirectory));
     }
 
@@ -137,6 +138,7 @@ public sealed class HttpDownloadClient : IDownloadClient
             ? Path.GetFileName(Uri.UnescapeDataString(response.RequestMessage?.RequestUri?.AbsolutePath ?? string.Empty))
             : fileName;
         if (string.IsNullOrWhiteSpace(resolvedName)) resolvedName = $"download_{operationId}.bin";
+        if (!Path.IsPathFullyQualified(targetDirectory)) throw new ArgumentException("下载目录必须是绝对路径。", nameof(targetDirectory));
         var outputPath = Path.Combine(Path.GetFullPath(targetDirectory), Path.GetFileName(resolvedName));
         var tempPath = outputPath + ".partial";
         var total = response.Content.Headers.ContentLength;

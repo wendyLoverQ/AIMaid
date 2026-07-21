@@ -8,7 +8,8 @@ public sealed record AgentCapabilityDto(
 public sealed record AgentToolCallDto(
     string CallId, string ConversationId, string CapabilityName, string ArgsJson, string Status,
     int? ExitCode, string Output, string Error, bool ConfirmedByUser, bool RejectedByUser,
-    DateTimeOffset CreatedAt, DateTimeOffset? FinishedAt);
+    DateTimeOffset CreatedAt, DateTimeOffset? FinishedAt, string? ParentCallId = null,
+    string ExecutorType = "", string ResultPolicy = "", string DisplayResult = "", int DurationMs = 0);
 
 public sealed record ListAgentCapabilitiesQuery(bool EnabledOnly = true) : IQuery<IReadOnlyList<AgentCapabilityDto>>;
 public sealed record SaveAgentCapabilityCommand(AgentCapabilityDto Capability) : ICommand<OperationResult>;
@@ -74,7 +75,9 @@ public sealed record ListMarketEventsQuery(string? Symbol = null, int Limit = 10
 public sealed record VideoItemDto(
     string VideoId, string SourceType, string Title, string FilePath, string OriginalUrl,
     string CoverPath, string Tags, string SubtitlePath, bool IsFavorite,
-    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, string? AlbumId = null,
+    int DurationSeconds = 0, int LastPositionSeconds = 0, bool IsCompleted = false,
+    long FileSize = 0, DateTimeOffset? LastPlayedAt = null, string Remark = "");
 public sealed record RemoteSiteDto(
     string SiteId, string SiteName, string DomainPattern, string AdapterKey,
     string QualityPreference, bool IsEnabled, string SettingsJson, DateTimeOffset UpdatedAt);

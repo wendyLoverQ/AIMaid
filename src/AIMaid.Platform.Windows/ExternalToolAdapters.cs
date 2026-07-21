@@ -13,7 +13,9 @@ public sealed class YtDlpRemoteMediaResolver : IRemoteMediaResolver
 
     public YtDlpRemoteMediaResolver(YtDlpOptions options)
     {
-        executablePath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(options.ExecutablePath));
+        var expanded = Environment.ExpandEnvironmentVariables(options.ExecutablePath);
+        if (!Path.IsPathFullyQualified(expanded)) throw new ArgumentException("yt-dlp 路径必须是绝对路径。", nameof(options));
+        executablePath = Path.GetFullPath(expanded);
     }
 
     public async Task<string> ResolveAsync(string url, RemoteSiteDto? site, CancellationToken cancellationToken = default)
@@ -58,16 +60,16 @@ public sealed class ExternalProgramAgentExecutor : IAgentCapabilityExecutor
     {
         var config = JsonSerializer.Deserialize<ExternalProgramConfig>(capability.ConfigJson)
             ?? throw new InvalidDataException("Agent 外部程序配置无效。");
-        var executable = Path.GetFullPath(Environment.ExpandEnvironmentVariables(config.ExecutablePath));
+        var expandedExecutable = Environment.ExpandEnvironmentVariables(config.ExecutablePath);
+        if (!Path.IsPathFullyQualified(expandedExecutable)) throw new InvalidDataException("Agent 外部程序路径必须是绝对路径。");
+        var executable = Path.GetFullPath(expandedExecutable);
         if (!File.Exists(executable)) throw new FileNotFoundException("Agent 外部程序不存在。", executable);
         var arguments = JsonSerializer.Deserialize<string[]>(argsJson)
             ?? throw new InvalidDataException("Agent 参数必须是 JSON 字符串数组。");
         var startInfo = new ProcessStartInfo
         {
             FileName = executable,
-            WorkingDirectory = string.IsNullOrWhiteSpace(config.WorkingDirectory)
-                ? Path.GetDirectoryName(executable)!
-                : Path.GetFullPath(Environment.ExpandEnvironmentVariables(config.WorkingDirectory)),
+            WorkingDirectory = ResolveWorkingDirectory(executable, config.WorkingDirectory),
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
@@ -79,6 +81,14 @@ public sealed class ExternalProgramAgentExecutor : IAgentCapabilityExecutor
         var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
         await process.WaitForExitAsync(cancellationToken);
         return new AgentExecutionResult(process.ExitCode, await outputTask, await errorTask);
+    }
+
+    private static string ResolveWorkingDirectory(string executable, string? configured)
+    {
+        if (string.IsNullOrWhiteSpace(configured)) return Path.GetDirectoryName(executable)!;
+        var expanded = Environment.ExpandEnvironmentVariables(configured);
+        if (!Path.IsPathFullyQualified(expanded)) throw new InvalidDataException("Agent 工作目录必须是绝对路径。");
+        return Path.GetFullPath(expanded);
     }
 
     private sealed record ExternalProgramConfig(string ExecutablePath, string? WorkingDirectory);
