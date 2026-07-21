@@ -7,6 +7,7 @@ namespace AIMaid.Core;
 public sealed class CharacterApplicationService :
     ICommandHandler<UpdateCharacterCommand, OperationResult>,
     ICommandHandler<SetCurrentCharacterCommand, OperationResult>,
+    ICommandHandler<PresentCharacterCommand, OperationResult>,
     IQueryHandler<ListCharactersQuery, IReadOnlyList<CharacterDto>>,
     IQueryHandler<GetCharacterQuery, CharacterDto?>
 {
@@ -45,6 +46,19 @@ public sealed class CharacterApplicationService :
         await settings.SetManyAsync(new Dictionary<string, string> { [CurrentRoleKey] = command.RoleId }, cancellationToken);
         await events.PublishAsync(new CharacterChangedEvent(EventIdentity.NewId(), DateTimeOffset.Now, command.RoleId, "selected"), cancellationToken);
         // TODO(UI): 角色切换成功后由 UI 决定是否切换立绘、Live2D 模型和语音预览。
+        return OperationResult.Success();
+    }
+
+    public async Task<OperationResult> HandleAsync(PresentCharacterCommand command, CancellationToken cancellationToken = default)
+    {
+        if (await characters.GetAsync(command.RoleId, cancellationToken) is null)
+            return OperationResult.Failure("character.not_found", "角色不存在。");
+        if (string.IsNullOrWhiteSpace(command.Action))
+            return OperationResult.Failure("character.action_empty", "角色动作不能为空。");
+        await events.PublishAsync(new Contracts.Domains.CharacterPresentationEvent(
+            EventIdentity.NewId(), DateTimeOffset.Now, command.RoleId, command.Action, command.Mood,
+            command.Parameters ?? new Dictionary<string, string>()), cancellationToken);
+        // TODO(UI): Electron renderer 直接消费该事件驱动 Live2D；C# 不创建渲染窗口，也不经过 Named Pipe。
         return OperationResult.Success();
     }
 }

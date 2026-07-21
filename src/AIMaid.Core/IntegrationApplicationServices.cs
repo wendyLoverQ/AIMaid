@@ -25,12 +25,26 @@ public sealed class SpeechApplicationService :
 {
     private readonly ITtsClient tts;
     private readonly IAsrClient asr;
-    public SpeechApplicationService(ITtsClient tts, IAsrClient asr) { this.tts = tts; this.asr = asr; }
+    private readonly IEventPublisher events;
+    public SpeechApplicationService(ITtsClient tts, IAsrClient asr, IEventPublisher events)
+    {
+        this.tts = tts;
+        this.asr = asr;
+        this.events = events;
+    }
 
     public async Task<OperationResult<string>> HandleAsync(SpeakTextCommand command, CancellationToken cancellationToken = default)
-        => string.IsNullOrWhiteSpace(command.Text)
-            ? OperationResult<string>.Failure("tts.text_empty", "合成文本不能为空。")
-            : OperationResult<string>.Success(await tts.SynthesizeAsync(command.Text, command.VoiceId, command.Style, cancellationToken));
+    {
+        if (string.IsNullOrWhiteSpace(command.Text))
+            return OperationResult<string>.Failure("tts.text_empty", "合成文本不能为空。");
+        var requestId = $"tts_{Guid.NewGuid():N}";
+        var path = await tts.SynthesizeAsync(command.Text, command.VoiceId, command.Style, cancellationToken);
+        await events.PublishAsync(new Contracts.Domains.TtsAudioReadyEvent(
+            EventIdentity.NewId(), DateTimeOffset.Now, requestId, path, command.Text,
+            command.VoiceId ?? string.Empty, command.Style), cancellationToken);
+        // TODO(UI): Electron 维护播放队列，并用音频开始/结束状态同步 Live2D 口型；核心不负责播放器。
+        return OperationResult<string>.Success(path);
+    }
 
     public async Task<OperationResult<string>> HandleAsync(TranscribeAudioCommand command, CancellationToken cancellationToken = default)
         => !File.Exists(command.AudioPath)

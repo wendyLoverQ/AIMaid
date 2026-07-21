@@ -3,6 +3,7 @@ using AIMaid.Contracts.Characters;
 using AIMaid.Contracts.Chat;
 using AIMaid.Contracts.Settings;
 using AIMaid.Contracts.Tasks;
+using AIMaid.Contracts.Domains;
 
 namespace AIMaid.Core;
 
@@ -81,4 +82,30 @@ public interface IFileManager
 public interface IExternalMediaController
 {
     Task<int> LaunchAsync(string mediaPathOrUrl, string? subtitlePath, CancellationToken cancellationToken = default);
+}
+
+public interface IDomainDocumentStore
+{
+    Task<string?> GetAsync(string domain, string id, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<string>> ListAsync(string domain, CancellationToken cancellationToken = default);
+    Task UpsertAsync(string domain, string id, string json, DateTimeOffset updatedAt, CancellationToken cancellationToken = default);
+    Task DeleteAsync(string domain, string id, CancellationToken cancellationToken = default);
+}
+
+public sealed record AgentExecutionResult(int? ExitCode, string Output, string Error);
+public interface IAgentCapabilityExecutor
+{
+    string ExecutorType { get; }
+    Task<AgentExecutionResult> ExecuteAsync(AgentCapabilityDto capability, string argsJson, CancellationToken cancellationToken = default);
+}
+
+public interface ISecretProtector
+{
+    string Protect(string plaintext);
+    string Unprotect(string protectedValue);
+}
+
+public interface IRemoteMediaResolver
+{
+    Task<string> ResolveAsync(string url, RemoteSiteDto? site, CancellationToken cancellationToken = default);
 }

@@ -17,6 +17,11 @@ public sealed record ListCharactersQuery(bool EnabledOnly = true) : IQuery<IRead
 public sealed record GetCharacterQuery(string RoleId) : IQuery<CharacterDto?>;
 public sealed record UpdateCharacterCommand(CharacterDto Character) : ICommand<OperationResult>;
 public sealed record SetCurrentCharacterCommand(string RoleId) : ICommand<OperationResult>;
+public sealed record PresentCharacterCommand(
+    string RoleId,
+    string Action,
+    string Mood,
+    IReadOnlyDictionary<string, string>? Parameters = null) : ICommand<OperationResult>;
 
 public sealed record CharacterChangedEvent(
     string EventId,

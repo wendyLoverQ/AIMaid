@@ -8,7 +8,7 @@ using Microsoft.Data.Sqlite;
 
 namespace AIMaid.Infrastructure;
 
-public sealed class SqliteCoreStore : IChatStore, ISettingsStore, ICharacterStore, IBackgroundTaskStore
+public sealed class SqliteCoreStore : IChatStore, ISettingsStore, ICharacterStore, IBackgroundTaskStore, IDomainDocumentStore
 {
     private readonly string connectionString;
 
@@ -69,6 +69,14 @@ public sealed class SqliteCoreStore : IChatStore, ISettingsStore, ICharacterStor
                 UpdatedAt TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS IX_CoreBackgroundTasks_Type_UpdatedAt ON CoreBackgroundTasks(TaskType, UpdatedAt DESC);
+            CREATE TABLE IF NOT EXISTS CoreDocuments (
+                Domain TEXT NOT NULL,
+                DocumentId TEXT NOT NULL,
+                Json TEXT NOT NULL,
+                UpdatedAt TEXT NOT NULL,
+                PRIMARY KEY (Domain, DocumentId)
+            );
+            CREATE INDEX IF NOT EXISTS IX_CoreDocuments_Domain_UpdatedAt ON CoreDocuments(Domain, UpdatedAt DESC);
             """;
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
@@ -261,6 +269,56 @@ public sealed class SqliteCoreStore : IChatStore, ISettingsStore, ICharacterStor
         command.Parameters.AddWithValue("$error", task.Error);
         command.Parameters.AddWithValue("$created", Format(task.CreatedAt));
         command.Parameters.AddWithValue("$updated", Format(task.UpdatedAt));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    async Task<string?> IDomainDocumentStore.GetAsync(string domain, string id, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT Json FROM CoreDocuments WHERE Domain=$domain AND DocumentId=$id";
+        command.Parameters.AddWithValue("$domain", domain);
+        command.Parameters.AddWithValue("$id", id);
+        return await command.ExecuteScalarAsync(cancellationToken) as string;
+    }
+
+    async Task<IReadOnlyList<string>> IDomainDocumentStore.ListAsync(string domain, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT Json FROM CoreDocuments WHERE Domain=$domain ORDER BY UpdatedAt DESC, DocumentId";
+        command.Parameters.AddWithValue("$domain", domain);
+        var result = new List<string>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken)) result.Add(reader.GetString(0));
+        return result;
+    }
+
+    async Task IDomainDocumentStore.UpsertAsync(string domain, string id, string json, DateTimeOffset updatedAt, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(domain) || string.IsNullOrWhiteSpace(id))
+            throw new ArgumentException("文档域和 ID 不能为空。");
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO CoreDocuments (Domain, DocumentId, Json, UpdatedAt)
+            VALUES ($domain, $id, $json, $updatedAt)
+            ON CONFLICT(Domain, DocumentId) DO UPDATE SET Json=excluded.Json, UpdatedAt=excluded.UpdatedAt;
+            """;
+        command.Parameters.AddWithValue("$domain", domain);
+        command.Parameters.AddWithValue("$id", id);
+        command.Parameters.AddWithValue("$json", json);
+        command.Parameters.AddWithValue("$updatedAt", Format(updatedAt));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    async Task IDomainDocumentStore.DeleteAsync(string domain, string id, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM CoreDocuments WHERE Domain=$domain AND DocumentId=$id";
+        command.Parameters.AddWithValue("$domain", domain);
+        command.Parameters.AddWithValue("$id", id);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
