@@ -518,7 +518,10 @@ public sealed class AgentApplicationService :
         catch (Exception ex) { execution = new(null, string.Empty, ex.Message); }
         var toolCall = new AgentToolCallDto(callId, command.ConversationId, capability.CapabilityName, command.ArgsJson,
             string.IsNullOrEmpty(execution.Error) ? "completed" : "failed", execution.ExitCode, execution.Output, execution.Error,
-            requiresApproval, false, created, DateTimeOffset.Now);
+            requiresApproval, false, created, DateTimeOffset.Now,
+            ExecutorType: capability.ExecutorType,
+            ResultPolicy: capability.ResultPolicy,
+            DisplayResult: execution.Output);
         await store.UpsertAsync(ToolCallDomain, callId, JsonSerializer.Serialize(toolCall), DateTimeOffset.Now, cancellationToken);
         await events.PublishAsync(new AgentToolCallCompletedEvent(EventIdentity.NewId(), DateTimeOffset.Now, toolCall), cancellationToken);
         return OperationResult<AgentToolCallDto>.Success(toolCall);

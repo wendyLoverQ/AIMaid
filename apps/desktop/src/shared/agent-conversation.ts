@@ -19,6 +19,7 @@ export interface AgentConversationResult {
   messageId: number
   content: string
   voiceStyle: string
+  suppressSpeech: boolean
 }
 
 export interface AgentConversationOptions {
@@ -44,6 +45,7 @@ export async function runAgentConversation(
   const maxSteps = 4
   let conversationId = options.conversationId
   let toolResultJson: string | undefined
+  let suppressSpeech = false
   for (let step = 1; step <= maxSteps; step += 1) {
     const response = await invokeCore({ type: 'agent.decide', payload: {
       content,
@@ -61,7 +63,13 @@ export async function runAgentConversation(
     if (decision === null || decision.conversationId === '') throw new Error('Agent 返回了无效决策。')
     conversationId = decision.conversationId
     if (['final_response', 'final_answer', 'ask_user', 'ask_clarify', 'reject'].includes(decision.type)) {
-      return { conversationId, messageId: decision.messageId, content: decision.message, voiceStyle: decision.voiceStyle || 'normal' }
+      return {
+        conversationId,
+        messageId: decision.messageId,
+        content: decision.message,
+        voiceStyle: decision.voiceStyle || 'normal',
+        suppressSpeech
+      }
     }
 
     let capability = decision.capability
@@ -75,6 +83,8 @@ export async function runAgentConversation(
     if (capability === '') throw new Error('Agent 没有返回要执行的能力。')
     const tool = await invokeCore({ type: 'agent.execute', payload: { conversationId, capabilityName: capability, argsJson } }, 120000)
     if (!tool.success) throw new Error(tool.error?.message ?? `Agent 能力执行失败：${capability}`)
+    const toolPayload = tool.payload as { resultPolicy?: unknown } | null
+    suppressSpeech ||= toolPayload?.resultPolicy === 'silent'
     toolResultJson = JSON.stringify({ type: 'tool_result', capabilityName: capability, result: tool.payload })
   }
   throw new Error('Agent 已达到最大执行步数。')

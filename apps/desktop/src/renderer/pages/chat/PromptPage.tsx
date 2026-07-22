@@ -164,8 +164,8 @@ export function PromptPage(): React.JSX.Element {
                 source: 'normal_chat'
             });
             const content = payload.content.trim() || 'Agent 返回了空回复。';
-            publishPetBubble(content, 'speech', actionTagForVoiceStyle(payload.voiceStyle));
-            if (payload.messageId > 0 && await realtimeTtsEnabled()) {
+            publishPetBubble(content, payload.suppressSpeech ? 'feedback' : 'speech', actionTagForVoiceStyle(payload.voiceStyle));
+            if (!payload.suppressSpeech && payload.messageId > 0 && await realtimeTtsEnabled()) {
                 const voiceId = character?.preferredVoiceId || undefined;
                 const audioPath = await synthesizeAndPlay(content, voiceId);
                 await attachAudioMetadata(payload.messageId, [audioPath], { voiceId: voiceId ?? '', source: 'prompt' });
