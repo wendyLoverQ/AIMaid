@@ -24,9 +24,8 @@ public sealed class SettingsBackedAiProviderClient(
         if (configuredKey.Length == 0)
         {
             var business = await domains.HandleAsync(new ListLlmBusinessModelConfigsQuery(), cancellationToken);
-            // The legacy Agent plans with the currently selected chat provider; the source prompt changes,
-            // but the provider does not silently switch to a separately configured model.
-            configuredKey = business.FirstOrDefault(item => item.IsEnabled && item.BusinessKey.Equals("chat_reply", StringComparison.OrdinalIgnoreCase))?.ModelKey ?? string.Empty;
+            var businessKey = request.SourceKey.Equals("agent_decision", StringComparison.OrdinalIgnoreCase) ? "agent_planning" : "chat_reply";
+            configuredKey = business.FirstOrDefault(item => item.IsEnabled && item.BusinessKey.Equals(businessKey, StringComparison.OrdinalIgnoreCase))?.ModelKey ?? string.Empty;
         }
         var configuration = models.FirstOrDefault(item => item.ModelKey.Equals(configuredKey, StringComparison.OrdinalIgnoreCase))
             ?? models.FirstOrDefault(item => item.Model.Equals(configuredKey, StringComparison.OrdinalIgnoreCase));
