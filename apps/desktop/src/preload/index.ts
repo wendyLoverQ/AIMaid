@@ -13,7 +13,7 @@ import type {
 } from '../shared/ipc'
 import { isWindowKind } from '../shared/windows'
 import type { WindowKind } from '../shared/windows'
-import type { PetAssetManifest, PetLifecycleEvent, PetPerformanceMetrics, PetRuntimeSnapshot, PetWindowUpdate } from '../shared/pet'
+import type { PetAssetManifest, PetLifecycleEvent, PetPerformanceMetrics, PetRuntimeSnapshot, PetVisualBounds, PetWindowUpdate } from '../shared/pet'
 import type { PetPresentationAction, PetPresentationSnapshot } from '../shared/presentation'
 import type { AgentConfirmationRequest } from '../shared/business'
 import type { HotkeyAction, PlatformSettingsSnapshot } from '../shared/system-settings'
@@ -175,6 +175,7 @@ const petApi: AIMaidApi['pet'] = windowKind === 'pet' || canRequest(windowKind, 
       dragMove: () => invoke('pet.dragMove', {}),
       dragEnd: () => invoke('pet.dragEnd', {}),
       updateWindow: (update: PetWindowUpdate) => invoke('pet.updateWindow', update),
+      reportVisualBounds: (bounds: PetVisualBounds) => invoke('pet.reportVisualBounds', bounds),
       reportMetrics: (metrics: PetPerformanceMetrics) => invoke('pet.reportMetrics', metrics),
       runtimeStatus: () => invoke<PetRuntimeSnapshot>('pet.runtime.get', {}),
       presentation: Object.freeze({

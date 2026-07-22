@@ -1,3 +1,7 @@
+import { PET_BASE_WINDOW_HEIGHT, PET_BASE_WINDOW_WIDTH } from '../../shared/pet-geometry'
+import type { PetDisplayMode } from '../../shared/presentation'
+import type { WindowKind } from '../../shared/windows'
+
 export interface Bounds {
   x: number
   y: number
@@ -8,6 +12,21 @@ export interface Bounds {
 export type PetWindowAlignment = 'center' | 'right-of-center'
 
 const PET_WINDOW_GAP = 16
+
+export function resolvePetVisualBounds(petWindowBounds: Bounds, rendererVisualBounds?: Bounds): Bounds {
+  const relative = rendererVisualBounds ?? {
+    x: Math.round((petWindowBounds.width - PET_BASE_WINDOW_WIDTH) / 2),
+    y: Math.round((petWindowBounds.height - PET_BASE_WINDOW_HEIGHT) / 2),
+    width: PET_BASE_WINDOW_WIDTH,
+    height: PET_BASE_WINDOW_HEIGHT
+  }
+  return {
+    x: petWindowBounds.x + relative.x,
+    y: petWindowBounds.y + relative.y,
+    width: relative.width,
+    height: relative.height
+  }
+}
 
 export function petWindowAlignment(kind: WindowKind, displayMode?: PetDisplayMode): PetWindowAlignment {
   return kind === 'status' || displayMode === 'image' || displayMode === 'png-sequence'
@@ -39,5 +58,3 @@ export function positionWindowNearPet(
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(value, maximum))
 }
-import type { PetDisplayMode } from '../../shared/presentation'
-import type { WindowKind } from '../../shared/windows'

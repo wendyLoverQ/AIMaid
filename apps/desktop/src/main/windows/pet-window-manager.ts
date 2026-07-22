@@ -8,6 +8,7 @@ import type {
   PetLifecycleSignal,
   PetPerformanceMetrics,
   PetRuntimeSnapshot,
+  PetVisualBounds,
   PetWindowUpdate
 } from '../../shared/pet'
 import type { Logger } from '../logging/logger'
@@ -202,6 +203,11 @@ export class PetWindowManager {
     if (now - this.lastMetricsLogAt < 10_000) return
     this.lastMetricsLogAt = now
     this.log.info('pet-performance', 'Live2D metrics', { ...metrics })
+  }
+
+  reportVisualBounds(contents: WebContents, bounds: PetVisualBounds): void {
+    this.requireWindow(contents)
+    this.windows.updatePetVisualBounds(bounds)
   }
 
   runtimeStatus(): PetRuntimeSnapshot {

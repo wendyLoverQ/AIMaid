@@ -1,11 +1,12 @@
 import { screen } from 'electron'
 import type { BrowserWindow, Rectangle, WebContents } from 'electron'
 import type { PetDisplayMode } from '../../shared/presentation'
+import type { PetVisualBounds } from '../../shared/pet'
 import type { WindowKind } from '../../shared/windows'
 import type { Logger } from '../logging/logger'
 import type { WindowFactory } from './window-factory'
 import { WINDOW_REGISTRY } from './window-registry'
-import { petWindowAlignment, positionWindowNearPet } from './window-positioning'
+import { petWindowAlignment, positionWindowNearPet, resolvePetVisualBounds } from './window-positioning'
 
 export interface WindowActionContext {
   requestId?: string
@@ -23,6 +24,7 @@ export class WindowManager {
   private readonly windows = new Map<WindowKind, BrowserWindow>()
   private destroyingAll = false
   private foreignWindowMoveHandlers: ForeignWindowMoveHandlers | undefined
+  private petVisualBounds: PetVisualBounds | undefined
 
   constructor(
     private readonly factory: WindowFactory,
@@ -187,6 +189,10 @@ export class WindowManager {
     }
   }
 
+  updatePetVisualBounds(bounds: PetVisualBounds): void {
+    this.petVisualBounds = bounds
+  }
+
   destroyAll(): void {
     this.destroyingAll = true
     for (const window of this.windows.values()) {
@@ -230,7 +236,7 @@ export class WindowManager {
     if (kind === 'pet' || kind === 'tray-menu' || kind === 'music-visualizer') return
     const owner = ownerKind === undefined ? undefined : this.get(ownerKind)
     if (ownerKind === 'pet' && owner !== undefined) {
-      const petBounds = owner.getBounds()
+      const petBounds = resolvePetVisualBounds(owner.getBounds(), this.petVisualBounds)
       const workArea = screen.getDisplayMatching(petBounds).workArea
       window.setBounds(positionWindowNearPet(
         window.getBounds(),

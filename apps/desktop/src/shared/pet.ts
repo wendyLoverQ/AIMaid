@@ -46,6 +46,13 @@ export interface PetWindowUpdate {
   anchor: 'top-left' | 'center'
 }
 
+export interface PetVisualBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export interface PetLifecycleEvent {
   type: PetLifecycleSignal
   scaleFactor: number

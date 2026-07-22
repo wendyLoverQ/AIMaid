@@ -1,4 +1,4 @@
-import type { PetWindowUpdate } from '../../shared/pet'
+import type { PetVisualBounds, PetWindowUpdate } from '../../shared/pet'
 import { PET_BASE_WINDOW_HEIGHT, PET_BASE_WINDOW_WIDTH } from '../../shared/pet-geometry'
 
 const STORAGE_KEY = 'aimaid.pet-item-state.v1'
@@ -21,6 +21,7 @@ export interface PetItemInteractionOptions {
   dragMove: () => void
   dragEnd: () => void
   updateWindow: (update: PetWindowUpdate) => void
+  reportVisualBounds: (bounds: PetVisualBounds) => void
   onScale: (scale: number) => void
 }
 
@@ -37,6 +38,7 @@ export class PetItemInteractionController {
   private lastPointerX = Number.NaN
   private lastPointerY = Number.NaN
   private moveFrame: number | null = null
+  private boundsFrame: number | null = null
   private saveTimer: number | null = null
   private ignoringMouse = true
   private lastHitState: boolean | undefined
@@ -65,6 +67,7 @@ export class PetItemInteractionController {
     window.removeEventListener('wheel', this.onWheel, true)
     window.removeEventListener('blur', this.onBlur)
     if (this.moveFrame !== null) cancelAnimationFrame(this.moveFrame)
+    if (this.boundsFrame !== null) cancelAnimationFrame(this.boundsFrame)
     if (this.saveTimer !== null) window.clearTimeout(this.saveTimer)
   }
 
@@ -174,6 +177,22 @@ export class PetItemInteractionController {
     this.options.item.style.height = `${Math.round(PET_BASE_WINDOW_HEIGHT * this.scale)}px`
     this.options.item.style.transform = 'translate(-50%, -50%)'
     this.options.onScale(this.scale)
+    this.queueVisualBoundsReport()
+  }
+
+  private queueVisualBoundsReport(): void {
+    if (this.boundsFrame !== null) return
+    this.boundsFrame = requestAnimationFrame(() => {
+      this.boundsFrame = null
+      const bounds = this.options.item.getBoundingClientRect()
+      if (bounds.width <= 0 || bounds.height <= 0) return
+      this.options.reportVisualBounds({
+        x: Math.round(bounds.x),
+        y: Math.round(bounds.y),
+        width: Math.round(bounds.width),
+        height: Math.round(bounds.height)
+      })
+    })
   }
 }
 

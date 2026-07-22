@@ -20,7 +20,7 @@ import type { Logger } from '../logging/logger'
 import type { WindowManager } from '../windows/window-manager'
 import type { PetAssetService } from '../services/pet-asset-service'
 import type { PetWindowManager } from '../windows/pet-window-manager'
-import type { PetPerformanceMetrics, PetWindowUpdate } from '../../shared/pet'
+import type { PetPerformanceMetrics, PetVisualBounds, PetWindowUpdate } from '../../shared/pet'
 import { isPetPresentationAction } from '../../shared/presentation'
 import type { PetPresentationService } from '../services/pet-presentation-service'
 import type { DouyinSessionService } from '../services/douyin-session-service'
@@ -40,7 +40,7 @@ interface HighFrequencyLogStats {
   lastLoggedAt: number
 }
 
-const HIGH_FREQUENCY_IPC_TYPES = new Set(['pet.dragMove', 'pet.reportMetrics', 'pet.setIgnoreMouseEvents', 'pet.updateWindow'])
+const HIGH_FREQUENCY_IPC_TYPES = new Set(['pet.dragMove', 'pet.reportMetrics', 'pet.reportVisualBounds', 'pet.setIgnoreMouseEvents', 'pet.updateWindow'])
 const HIGH_FREQUENCY_LOG_INTERVAL_MS = 10_000
 
 export class IpcRouter {
@@ -346,6 +346,9 @@ export class IpcRouter {
         return { bounds: this.petWindows.dragEnd(event.sender) }
       case 'pet.updateWindow':
         return { bounds: this.petWindows.updateWindow(event.sender, readPetWindowUpdate(request.payload)) }
+      case 'pet.reportVisualBounds':
+        this.petWindows.reportVisualBounds(event.sender, readPetVisualBounds(request.payload))
+        return { recorded: true }
       case 'pet.reportMetrics':
         this.petWindows.reportMetrics(event.sender, readPetMetrics(request.payload))
         return { recorded: true }
@@ -493,6 +496,16 @@ function readPetWindowUpdate(payload: unknown): PetWindowUpdate {
   const scale = payload.scale
   if (scale !== undefined && (typeof scale !== 'number' || scale <= 0)) throw new TypeError('Invalid Pet window scale')
   return payload as unknown as PetWindowUpdate
+}
+
+function readPetVisualBounds(payload: unknown): PetVisualBounds {
+  if (!isRecord(payload)) throw new TypeError('Invalid pet visual bounds payload')
+  const values = ['x', 'y', 'width', 'height'].map((key) => payload[key])
+  if (!values.every((value) => typeof value === 'number' && Number.isFinite(value)) ||
+      (values[2] as number) <= 0 || (values[3] as number) <= 0) {
+    throw new TypeError('Invalid pet visual bounds payload')
+  }
+  return { x: values[0] as number, y: values[1] as number, width: values[2] as number, height: values[3] as number }
 }
 
 function toIpcError(error: unknown): IpcError {
