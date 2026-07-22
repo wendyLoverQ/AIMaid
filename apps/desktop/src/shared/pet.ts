@@ -60,6 +60,7 @@ export interface PetDisplaySnapshot {
   rotation: number
   bounds: PetRectangle
   workArea: PetRectangle
+  physicalBounds: PetRectangle
 }
 
 export interface PetCoordinateSegment {
@@ -72,6 +73,7 @@ export interface PetCoordinateSegment {
 export interface PetCoordinateSnapshot {
   measuredAt: number
   windowDipBounds: PetRectangle
+  windowPhysicalBounds: PetRectangle
   itemDipBounds: PetRectangle
   itemPhysicalBounds: PetRectangle | null
   segments: PetCoordinateSegment[]

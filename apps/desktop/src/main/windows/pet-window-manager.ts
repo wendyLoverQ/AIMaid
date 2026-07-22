@@ -16,6 +16,7 @@ import type { Logger } from '../logging/logger'
 import type { CoreClient } from '../core/core-client'
 import type { WindowManager } from './window-manager'
 import type { WindowActionContext } from './window-manager'
+import { intersectRectangles, mapLocalRectangleToPhysical } from './pet-coordinate-mapping'
 
 export class PetWindowManager {
   private static readonly MIN_SCALE = 0.25
@@ -274,33 +275,32 @@ export class PetWindowManager {
   captureCoordinates(contents: WebContents, localBounds: PetRectangle): PetCoordinateSnapshot {
     const window = this.requireWindow(contents)
     const windowDipBounds = window.getBounds()
-    const itemDipBounds = {
-      x: Math.round(windowDipBounds.x + localBounds.x),
-      y: Math.round(windowDipBounds.y + localBounds.y),
-      width: Math.round(localBounds.width),
-      height: Math.round(localBounds.height)
-    }
+    const contentDipBounds = window.getContentBounds()
+    const windowPhysicalBounds = screen.dipToScreenRect(window, contentDipBounds)
+    const itemPhysicalBounds = mapLocalRectangleToPhysical(localBounds, contentDipBounds, windowPhysicalBounds)
+    const itemDipBounds = screen.screenToDipRect(null, itemPhysicalBounds)
     const displays = screen.getAllDisplays().map((display) => ({
       id: display.id,
       label: display.label,
       scaleFactor: display.scaleFactor,
       rotation: display.rotation,
       bounds: display.bounds,
-      workArea: display.workArea
+      workArea: display.workArea,
+      physicalBounds: screen.dipToScreenRect(null, display.bounds)
     }))
     const segments = displays.flatMap((display) => {
-      const dipBounds = intersectRectangles(itemDipBounds, display.bounds)
-      return dipBounds === null ? [] : [{
+      const physicalBounds = intersectRectangles(itemPhysicalBounds, display.physicalBounds)
+      return physicalBounds === null ? [] : [{
         displayId: display.id,
         scaleFactor: display.scaleFactor,
-        dipBounds,
-        physicalBounds: screen.dipToScreenRect(null, dipBounds)
+        dipBounds: screen.screenToDipRect(null, physicalBounds),
+        physicalBounds
       }]
     })
-    const itemPhysicalBounds = segments.length === 1 ? segments[0]?.physicalBounds ?? null : null
     return {
       measuredAt: Date.now(),
       windowDipBounds,
+      windowPhysicalBounds,
       itemDipBounds,
       itemPhysicalBounds,
       segments,
@@ -330,13 +330,4 @@ export class PetWindowManager {
     if (window === undefined) throw new Error('PetWindow is unavailable')
     return window
   }
-}
-
-function intersectRectangles(left: Rectangle, right: Rectangle): Rectangle | null {
-  const x = Math.max(left.x, right.x)
-  const y = Math.max(left.y, right.y)
-  const rightEdge = Math.min(left.x + left.width, right.x + right.width)
-  const bottomEdge = Math.min(left.y + left.height, right.y + right.height)
-  if (rightEdge <= x || bottomEdge <= y) return null
-  return { x, y, width: rightEdge - x, height: bottomEdge - y }
 }

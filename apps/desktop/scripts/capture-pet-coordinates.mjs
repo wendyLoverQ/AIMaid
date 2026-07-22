@@ -31,17 +31,57 @@ try {
   await client.send('Page.enable')
   await client.send('Runtime.enable')
   const snapshot = await waitForSnapshot(client)
+  const displayProbes = await verifyEveryDisplay(client, snapshot)
+  const proof = { ...snapshot, displayProbes }
   await delay(200)
   const screenshot = await client.send('Page.captureScreenshot', { format: 'png', fromSurface: true })
   await writeFile(screenshotPath, Buffer.from(screenshot.data, 'base64'))
   client.close()
-  await writeFile(outputPath, `${JSON.stringify(snapshot, null, 2)}\n`)
-  console.log(JSON.stringify(snapshot, null, 2))
+  await writeFile(outputPath, `${JSON.stringify(proof, null, 2)}\n`)
+  console.log(JSON.stringify(proof, null, 2))
   console.log(`\nSaved: ${outputPath}`)
   console.log(`Screenshot: ${screenshotPath}`)
 } finally {
   app.kill()
   await delay(300)
+}
+
+async function verifyEveryDisplay(client, snapshot) {
+  const result = await evaluate(client, `(async () => {
+    const item = document.querySelector('.ui-pet-item');
+    if (!(item instanceof HTMLElement) || window.aimaid.pet === undefined) throw new Error('PET element is unavailable');
+    const originalStyle = item.getAttribute('style');
+    const windowPhysical = ${JSON.stringify(snapshot.windowPhysicalBounds)};
+    const displays = ${JSON.stringify(snapshot.displays)};
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    const scaleX = windowPhysical.width / viewport.width;
+    const scaleY = windowPhysical.height / viewport.height;
+    const probes = [];
+    try {
+      for (const display of displays) {
+        const targetPhysicalX = display.physicalBounds.x + display.physicalBounds.width / 2;
+        const targetPhysicalY = display.physicalBounds.y + display.physicalBounds.height / 2;
+        const centerX = (targetPhysicalX - windowPhysical.x) / scaleX;
+        const centerY = (targetPhysicalY - windowPhysical.y) / scaleY;
+        item.style.left = centerX + 'px';
+        item.style.top = centerY + 'px';
+        await new Promise((resolveWait) => requestAnimationFrame(() => requestAnimationFrame(resolveWait)));
+        const rect = item.getBoundingClientRect();
+        const response = await window.aimaid.pet.captureCoordinates({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
+        if (!response.success || response.payload === null) throw new Error(response.error?.message ?? 'Display probe failed');
+        const recognized = response.payload.segments.some((segment) => segment.displayId === display.id);
+        probes.push({ displayId: display.id, label: display.label, scaleFactor: display.scaleFactor, recognized, itemPhysicalBounds: response.payload.itemPhysicalBounds });
+      }
+    } finally {
+      if (originalStyle === null) item.removeAttribute('style');
+      else item.setAttribute('style', originalStyle);
+      await new Promise((resolveWait) => requestAnimationFrame(() => requestAnimationFrame(resolveWait)));
+    }
+    return probes;
+  })()`)
+  const failed = result.filter((probe) => !probe.recognized)
+  if (failed.length > 0) throw new Error(`PET coordinate probes failed: ${JSON.stringify(failed)}`)
+  return result
 }
 
 async function waitForSnapshot(client) {
