@@ -12,6 +12,7 @@ using AIMaid.Contracts.Music;
 using AIMaid.Contracts.Market;
 using AIMaid.Core;
 using AIMaid.CoreHost.Protocol;
+using AIMaid.Infrastructure;
 using AIMaid.Platform.Windows;
 
 namespace AIMaid.CoreHost.Runtime;
@@ -706,6 +707,17 @@ public sealed class CoreProtocolHost(
             await writer.FailureAsync(request, "REMOTE_VIDEO_OPERATION_FAILED", exception.Message, cancellationToken: CancellationToken.None);
             Log("warn", "request_end", request.Id, request.Type, "failed", stopwatch.Elapsed.TotalMilliseconds,
                 "Remote video operation failed", exception: exception);
+        }
+        catch (AiProviderRequestException exception)
+        {
+            var statusCode = exception.StatusCode is null ? null : (int?)exception.StatusCode.Value;
+            await writer.FailureAsync(request, "LLM_UPSTREAM_ERROR",
+                statusCode is null
+                    ? "无法连接 LLM 服务，详细原因已写入日志。"
+                    : $"LLM 服务请求失败（HTTP {statusCode}），详细原因已写入日志。",
+                new Dictionary<string, object?> { ["statusCode"] = statusCode }, CancellationToken.None);
+            Log("error", "request_end", request.Id, request.Type, "failed", stopwatch.Elapsed.TotalMilliseconds,
+                "LLM upstream request failed", new { upstreamStatusCode = statusCode }, exception);
         }
         catch (ArgumentException exception)
         {

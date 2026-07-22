@@ -2,9 +2,15 @@ using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using AIMaid.Core;
 
 namespace AIMaid.Infrastructure;
+
+public sealed class AiProviderRequestException(
+    System.Net.HttpStatusCode? statusCode,
+    string message,
+    Exception? innerException = null) : HttpRequestException(message, innerException, statusCode);
 
 public sealed class AiProviderHttpClient : IAiProviderClient
 {
@@ -37,26 +43,78 @@ public sealed class AiProviderHttpClient : IAiProviderClient
             Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
         };
         if (!string.IsNullOrWhiteSpace(options.ApiKey)) httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiKey);
-        using var response = await httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        if (!request.StreamResponse)
+        HttpResponseMessage response;
+        try
         {
-            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
-            if (TryReadChatCompletionMessage(document.RootElement, out var content)) yield return content;
-            yield break;
+            response = await httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         }
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        using var reader = new StreamReader(stream);
-        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        catch (HttpRequestException exception)
         {
-            if (!line.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) continue;
-            var json = line[5..].Trim();
-            if (json.Length == 0 || json == "[DONE]") continue;
-            using var document = JsonDocument.Parse(json);
+            throw new AiProviderRequestException(exception.StatusCode,
+                $"LLM 上游连接失败：{SanitizeErrorText(exception.Message)}", exception);
+        }
+        using (response)
+        {
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                throw new AiProviderRequestException(response.StatusCode,
+                    $"LLM 上游返回 HTTP {(int)response.StatusCode} ({response.ReasonPhrase ?? "Unknown"})：{DescribeErrorBody(body)}");
+            }
+            if (!request.StreamResponse)
+            {
+                using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+                if (TryReadChatCompletionMessage(document.RootElement, out var content)) yield return content;
+                yield break;
+            }
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var reader = new StreamReader(stream);
+            while (await reader.ReadLineAsync(cancellationToken) is { } line)
+            {
+                if (!line.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) continue;
+                var json = line[5..].Trim();
+                if (json.Length == 0 || json == "[DONE]") continue;
+                using var document = JsonDocument.Parse(json);
+                var root = document.RootElement;
+                if (TryReadChatCompletionDelta(root, out var delta) || TryReadResponsesDelta(root, out delta))
+                    yield return delta;
+            }
+        }
+    }
+
+    private static string DescribeErrorBody(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return "响应正文为空。";
+        try
+        {
+            using var document = JsonDocument.Parse(body);
             var root = document.RootElement;
-            if (TryReadChatCompletionDelta(root, out var delta) || TryReadResponsesDelta(root, out delta))
-                yield return delta;
+            var error = root.TryGetProperty("error", out var errorElement) ? errorElement : root;
+            var message = ReadString(error, "message") ?? ReadString(root, "message") ?? ReadString(root, "detail");
+            var code = ReadString(error, "code") ?? ReadString(root, "code");
+            if (!string.IsNullOrWhiteSpace(message))
+                return SanitizeErrorText(string.IsNullOrWhiteSpace(code) ? message : $"{code}: {message}");
         }
+        catch (JsonException)
+        {
+            // Preserve a short, redacted text response for diagnostics.
+        }
+        return SanitizeErrorText(body);
+    }
+
+    private static string? ReadString(JsonElement element, string name)
+        => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static string SanitizeErrorText(string value)
+    {
+        var compact = Regex.Replace(value, @"\s+", " ").Trim();
+        compact = Regex.Replace(compact,
+            @"(?i)\b(api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|cookie|password|secret)\s*[:=]\s*[^\s,;&#]+",
+            "$1=[REDACTED]");
+        compact = Regex.Replace(compact, @"(?i)\b(Bearer|Basic)\s+[A-Za-z0-9._~+\-/=]+", "$1 [REDACTED]");
+        return compact.Length <= 1_200 ? compact : $"{compact[..1_200]}…";
     }
 
     private static bool TryReadChatCompletionMessage(JsonElement root, out string value)
