@@ -9,6 +9,15 @@ describe('window registry and capabilities', () => {
     expect(new Set(Object.values(WINDOW_REGISTRY).map((definition) => definition.id)).size).toBe(WINDOW_KINDS.length)
   })
 
+  it('opens the timer large enough to show the complete timer and records workspaces', () => {
+    expect(WINDOW_REGISTRY.timer.options).toMatchObject({
+      width: 720,
+      height: 760,
+      minWidth: 560,
+      minHeight: 640
+    })
+  })
+
   it('limits PetWindow to its required Core and presentation APIs', () => {
     expect(canRequest('pet', 'dialog.openFile')).toBe(false)
     expect(canRequest('pet', 'core.invoke')).toBe(true)

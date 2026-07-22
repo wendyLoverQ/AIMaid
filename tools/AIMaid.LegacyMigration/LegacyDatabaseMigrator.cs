@@ -378,8 +378,23 @@ public sealed class LegacyDatabaseMigrator
         SqliteConnection target, SqliteTransaction targetTx, DocumentPolicy policy, long sourceRows, CancellationToken cancellationToken)
     {
         await using var command=SourceCommand(source,sourceTx,$"SELECT * FROM \"{policy.Table}\""); await using var reader=await command.ExecuteReaderAsync(cancellationToken); long count=0;
-        while(await reader.ReadAsync(cancellationToken)) { var id=policy.IdPrefix+Text(reader,policy.IdColumn); var json=RowJson(reader,policy.DroppedFields,policy.BooleanFields); var updated=ReadBestDate(reader); await InsertDocumentAsync(target,targetTx,policy.Domain,id,json,updated,cancellationToken); count++; }
+        while(await reader.ReadAsync(cancellationToken))
+        {
+            var id=policy.IdPrefix+Text(reader,policy.IdColumn);
+            var json=RowJson(reader,policy.DroppedFields,policy.BooleanFields);
+            if(policy.Domain.Equals("timer_record",StringComparison.OrdinalIgnoreCase)) json=AddDocumentId(json,"RecordId",id);
+            var updated=ReadBestDate(reader);
+            await InsertDocumentAsync(target,targetTx,policy.Domain,id,json,updated,cancellationToken);
+            count++;
+        }
         return new(policy.Table,sourceRows,"migrated",$"CoreDocuments/{policy.Domain}",count,policy.DroppedFields.Order().ToArray(),policy.Reason);
+    }
+
+    private static string AddDocumentId(string json,string propertyName,string id)
+    {
+        var document=JsonNode.Parse(json)?.AsObject() ?? throw new InvalidDataException("Migrated document JSON is invalid.");
+        document[propertyName]=id;
+        return document.ToJsonString();
     }
 
     private static IReadOnlyDictionary<string, DocumentPolicy> BuildDocumentPolicies()

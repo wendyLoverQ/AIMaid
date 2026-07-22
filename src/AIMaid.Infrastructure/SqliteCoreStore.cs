@@ -95,6 +95,7 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
         await command.ExecuteNonQueryAsync(cancellationToken);
         await EnsureCharacterColumnsAsync(connection, cancellationToken);
         await NormalizeLegacyDocumentDatesAsync(connection, cancellationToken);
+        await NormalizeLegacyTimerRecordsAsync(connection, cancellationToken);
     }
 
     async Task<long> IChatStore.AppendAsync(ChatMessageDto message, CancellationToken cancellationToken)
@@ -518,6 +519,38 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
                 DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.AssumeLocal, out var parsed)) return false;
         normalized = Format(parsed);
         return true;
+    }
+
+    private static async Task NormalizeLegacyTimerRecordsAsync(SqliteConnection connection, CancellationToken cancellationToken)
+    {
+        var repairs = new List<(string DocumentId, string Json)>();
+        await using (var select = connection.CreateCommand())
+        {
+            select.CommandText = "SELECT DocumentId, Json FROM CoreDocuments WHERE Domain='timer_record'";
+            await using var reader = await select.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                JsonObject? record;
+                try { record = JsonNode.Parse(reader.GetString(1)) as JsonObject; }
+                catch (JsonException) { continue; }
+                if (record is null || record.Any(property => property.Key.Equals("RecordId", StringComparison.OrdinalIgnoreCase))) continue;
+                record["RecordId"] = reader.GetString(0);
+                repairs.Add((reader.GetString(0), record.ToJsonString()));
+            }
+        }
+        if (repairs.Count == 0) return;
+
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        foreach (var repair in repairs)
+        {
+            await using var update = connection.CreateCommand();
+            update.Transaction = (SqliteTransaction)transaction;
+            update.CommandText = "UPDATE CoreDocuments SET Json=$json WHERE Domain='timer_record' AND DocumentId=$id";
+            update.Parameters.AddWithValue("$json", repair.Json);
+            update.Parameters.AddWithValue("$id", repair.DocumentId);
+            await update.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await transaction.CommitAsync(cancellationToken);
     }
 
     private static async Task EnsureCharacterColumnsAsync(SqliteConnection connection, CancellationToken cancellationToken)

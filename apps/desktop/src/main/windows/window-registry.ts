@@ -66,7 +66,7 @@ export const WINDOW_REGISTRY: Readonly<Record<WindowKind, WindowDefinition>> = {
   timer: {
     id: 'timer', route: 'timer', closeBehavior: 'hide',
     options: {
-      width: 460, height: 560, minWidth: 460, minHeight: 500, transparent: true,
+      width: 720, height: 760, minWidth: 560, minHeight: 640, transparent: true,
       backgroundColor: '#00000000', frame: false, resizable: true, show: false
     }
   },
