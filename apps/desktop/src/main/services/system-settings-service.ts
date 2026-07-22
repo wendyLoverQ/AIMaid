@@ -131,7 +131,7 @@ export class SystemSettingsService {
     if ('target' in definition && definition.target !== undefined) {
       this.windows.toggle(definition.target, 'pet', {
         trigger: 'global-hotkey',
-        petDisplayMode: this.presentation.snapshot().mode
+        petDisplayMode: this.presentation.currentMode()
       })
       return
     }
@@ -140,7 +140,7 @@ export class SystemSettingsService {
     if (action === 'cycle-display-mode') await this.presentation.execute('cycle-mode', parent)
     else if (action === 'cycle-display-mode-reverse') this.presentation.executeHotkey('cycle-mode-reverse')
     else if (action === 'play-next') {
-      const mode = this.presentation.snapshot().mode
+      const mode = this.presentation.currentMode()
       await this.presentation.execute(mode === 'image' ? 'next-image' : mode === 'png-sequence' ? 'cycle-png-role' : 'switch-live2d-role', parent)
     } else if (action === 'play-previous') this.presentation.executeHotkey('play-previous')
     this.petWindows.notifyPresentationChanged()

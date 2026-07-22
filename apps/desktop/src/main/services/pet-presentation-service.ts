@@ -38,6 +38,10 @@ export class PetPresentationService {
     this.state = this.readState()
   }
 
+  currentMode(): PetDisplayMode {
+    return this.state.mode
+  }
+
   snapshot(): PetPresentationSnapshot {
     if (!isDirectory(this.state.pngRoot)) this.state.pngRoot = this.bundledPngRoot
     if (!isDirectory(this.state.imageRoot)) this.state.imageRoot = this.bundledImageRoot

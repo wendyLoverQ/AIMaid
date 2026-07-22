@@ -215,7 +215,7 @@ export class IpcRouter {
           requestId: request.requestId,
           sourceWindow: sourceKind,
           trigger: request.type,
-          ...(sourceKind === 'pet' ? { petDisplayMode: this.petPresentation.snapshot().mode } : {})
+          ...(sourceKind === 'pet' ? { petDisplayMode: this.petPresentation.currentMode() } : {})
         })
         return { target }
       }

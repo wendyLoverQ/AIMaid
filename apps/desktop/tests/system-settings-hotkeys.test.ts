@@ -35,7 +35,7 @@ describe('system settings direction hotkeys', () => {
     const service = new SystemSettingsService(
       { get: () => ({}), open: vi.fn() } as never,
       { notifyPresentationChanged } as never,
-      { snapshot: () => ({ mode }), execute, executeHotkey } as never,
+      { currentMode: () => mode, execute, executeHotkey } as never,
       { invoke: vi.fn((_id: string, request: { type: string }) => Promise.resolve(request.type === 'settings.get' ? { settings: [] } : {})) } as never,
       { warn: vi.fn() } as never
     )
