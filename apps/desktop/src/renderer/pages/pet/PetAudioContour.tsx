@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { PetAudioContourCanvas } from '../../components/ui'
 import { ALPHA_CONTOUR_ANGLE_COUNT, buildOuterAlphaContour } from '../../../shared/alpha-contour'
 import type { AlphaContour } from '../../../shared/alpha-contour'
+import { advanceBarDynamics, barSpectrumTarget, spectrumPeak } from '../../../shared/audio-bar-dynamics'
 import { readPetMusicSpectrum } from './pet-music-playback'
 
 const MASK_WIDTH = 192
@@ -22,7 +23,7 @@ export function PetAudioContour({ sourceCanvasRef, readContour, geometry = 'cont
     if (overlay === null) return
     const maskCanvas = document.createElement('canvas')
     const spectrum = new Uint8Array(ALPHA_CONTOUR_ANGLE_COUNT / 2)
-    const smoothed = new Float32Array(spectrum.length)
+    const barDynamics = new Map<number, number>()
     let contour: AlphaContour | null = null
     let lastMaskAt = Number.NEGATIVE_INFINITY
     let animationId = 0
@@ -49,7 +50,7 @@ export function PetAudioContour({ sourceCanvasRef, readContour, geometry = 'cont
           : readContour()
         contour = nextContour ?? contour
       }
-      if (hasAudio && contour !== null) drawAudioBars(context, contour, spectrum, smoothed, bounds.width, bounds.height)
+      if (hasAudio && contour !== null) drawAudioBars(context, contour, spectrum, barDynamics, bounds.width, bounds.height)
       animationId = requestAnimationFrame(render)
     }
 
@@ -92,14 +93,14 @@ function drawAudioBars(
   context: CanvasRenderingContext2D,
   contour: AlphaContour,
   spectrum: Uint8Array,
-  smoothed: Float32Array,
+  barDynamics: Map<number, number>,
   width: number,
   height: number
 ): void {
   const size = Math.min(width, height)
   const baseGap = size * 0.012
-  const minimumLength = size * 0.015
-  const waveRange = size * 0.065
+  const minimumLength = size * 0.004
+  const waveRange = size * 0.085
   const centerX = contour.center.x * width
   const centerY = contour.center.y * height
   const bars = new Path2D()
@@ -110,11 +111,10 @@ function drawAudioBars(
   })
   const perimeter = segments.reduce((sum, segment) => sum + segment.length, 0)
   const spacing = Math.max(2.5, size * 0.006)
-  for (let index = 0; index < spectrum.length; index += 1) {
-    smoothed[index] = smoothed[index]! * 0.68 + spectrum[index]! / 255 * 0.32
-  }
+  const peak = spectrumPeak(spectrum)
   let segmentIndex = 0
   let segmentStartDistance = 0
+  let barIndex = 0
   for (let distance = 0; distance < perimeter; distance += spacing) {
     while (segmentIndex < segments.length - 1 && distance > segmentStartDistance + segments[segmentIndex]!.length) {
       segmentStartDistance += segments[segmentIndex]!.length
@@ -133,11 +133,15 @@ function drawAudioBars(
       normalX *= -1
       normalY *= -1
     }
-    const bandIndex = Math.min(spectrum.length - 1, Math.floor(distance / perimeter * spectrum.length))
-    const barLength = minimumLength + smoothed[bandIndex]! * waveRange
+    const target = barSpectrumTarget(spectrum, peak, barIndex)
+    const level = advanceBarDynamics(barDynamics.get(barIndex) ?? 0, target, barIndex)
+    barDynamics.set(barIndex, level)
+    const barLength = minimumLength + level * waveRange
     bars.moveTo(x + normalX * baseGap, y + normalY * baseGap)
     bars.lineTo(x + normalX * (baseGap + barLength), y + normalY * (baseGap + barLength))
+    barIndex += 1
   }
+  for (const index of barDynamics.keys()) if (index >= barIndex) barDynamics.delete(index)
 
   const accent = getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim()
   if (accent === '') return

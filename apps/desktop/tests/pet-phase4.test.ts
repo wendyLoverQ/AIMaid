@@ -130,6 +130,8 @@ describe('phase 4 PetWindow integration', () => {
     expect(contour).toContain('bars.lineTo(')
     expect(contour).toContain('for (let distance = 0; distance < perimeter; distance += spacing)')
     expect(contour).not.toContain('const pointStep =')
+    expect(contour).toContain('barSpectrumTarget(spectrum, peak, barIndex)')
+    expect(contour).toContain('advanceBarDynamics(barDynamics.get(barIndex) ?? 0, target, barIndex)')
     expect(contour).not.toContain('path.closePath()')
     expect(contour).toContain("getPropertyValue('--color-accent')")
     expect(contour).not.toContain("|| '#6e8fff'")
