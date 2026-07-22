@@ -1117,14 +1117,15 @@ body.prompt-surface .ui-keyboard-key { min-width: 2.25rem; text-align: center; }
 .dialog-form-section:last-child { padding-bottom: 0; border-bottom: 0; }
 
 .notebook-workspace, .conversation-workspace, .settings-workspace { display: grid; grid-template-columns: minmax(18.75rem, 21.25rem) minmax(0, 1fr); gap: var(--space-4); height: 100%; min-height: 0; }
+.notebook-workspace { grid-template-columns: minmax(14.5rem, 16rem) minmax(0, 1fr); }
 .notebook-navigation, .conversation-navigation { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--space-4); }
 .notebook-list, .conversation-list { min-height: 0; overflow: auto; }
 .notebook-editor, .conversation-detail { display: grid; min-height: 0; padding: 0; }
 .notebook-editor > .ui-stack { grid-template-rows: auto auto minmax(0, 1fr); min-height: 0; }
-.notebook-editor__header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-4); padding: var(--space-4) var(--space-5); border-bottom: var(--border-default); }
+.notebook-editor__header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-4); padding: var(--space-4) var(--space-5); border-bottom: var(--border-default); background: var(--color-bg-elevated); }
 .notebook-toolbar, .conversation-header { position: sticky; z-index: var(--z-sticky); top: 0; display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-3) var(--space-5); border-bottom: var(--border-default); background: var(--color-bg-surface); }
-.notebook-editor__body { min-height: 0; padding: var(--space-5); overflow: auto; }
-.notebook-editor__body .ui-rich-editor { min-height: 100%; max-height: none; border: 0; background: transparent; }
+.notebook-editor__body { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--space-3); min-height: 0; padding: var(--space-4) var(--space-5) var(--space-5); overflow: hidden; background: var(--color-bg-canvas); }
+.notebook-editor__body .ui-rich-editor { min-height: 0; height: 100%; max-height: none; border: var(--border-strong); border-radius: var(--radius-lg); background: var(--color-bg-elevated); box-shadow: var(--shadow-sm); }
 .notebook-attachments { display: grid; gap: var(--space-3); margin-top: var(--space-6); padding-top: var(--space-5); border-top: var(--border-default); }
 .notebook-attachment { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-4); }
 
