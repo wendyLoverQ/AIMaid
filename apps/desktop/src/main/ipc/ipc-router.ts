@@ -211,11 +211,14 @@ export class IpcRouter {
     switch (request.type) {
       case 'window.open': {
         const target = readTarget(request.payload)
+        const petAnchorBounds = sourceKind === 'pet' && this.windows.get(target) === undefined
+          ? await this.petWindows.resolveItemAnchor()
+          : undefined
         await this.windows.openAndWait(target, sourceKind, {
           requestId: request.requestId,
           sourceWindow: sourceKind,
           trigger: request.type,
-          ...(sourceKind === 'pet' ? { petDisplayMode: this.petPresentation.currentMode() } : {})
+          ...(petAnchorBounds === undefined ? {} : { petAnchorBounds })
         })
         return { target }
       }
@@ -359,8 +362,6 @@ export class IpcRouter {
         return { bounds: this.petWindows.dragEnd(event.sender) }
       case 'pet.updateWindow':
         return { bounds: this.petWindows.updateWindow(event.sender, readPetWindowUpdate(request.payload)) }
-      case 'pet.captureCoordinates':
-        return this.petWindows.captureCoordinates(event.sender, readRectangle(request.payload))
       case 'pet.reportMetrics':
         this.petWindows.reportMetrics(event.sender, readPetMetrics(request.payload))
         return { recorded: true }
@@ -457,19 +458,6 @@ function readSaveFile(payload: unknown): { defaultPath: string; filters: Array<{
 function readBoolean(payload: unknown, key: string): boolean {
   if (!isRecord(payload) || typeof payload[key] !== 'boolean') throw new TypeError(`Invalid ${key}`)
   return payload[key]
-}
-
-function readRectangle(payload: unknown): { x: number; y: number; width: number; height: number } {
-  if (!isRecord(payload)) throw new TypeError('Invalid rectangle payload')
-  const { x, y, width, height } = payload
-  if (
-    typeof x !== 'number' || !Number.isFinite(x) ||
-    typeof y !== 'number' || !Number.isFinite(y) ||
-    typeof width !== 'number' || !Number.isFinite(width) ||
-    typeof height !== 'number' || !Number.isFinite(height)
-  ) throw new TypeError('Invalid rectangle payload')
-  if (width <= 0 || height <= 0 || width > 100_000 || height > 100_000) throw new TypeError('Invalid rectangle dimensions')
-  return { x, y, width, height }
 }
 
 function readOptionalBoolean(payload: unknown, key: string): boolean {

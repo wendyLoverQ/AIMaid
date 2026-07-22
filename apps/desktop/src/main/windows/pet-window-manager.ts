@@ -6,9 +6,7 @@ import { PET_BASE_WINDOW_HEIGHT, PET_BASE_WINDOW_WIDTH } from '../../shared/pet-
 import type {
   PetLifecycleEvent,
   PetLifecycleSignal,
-  PetCoordinateSnapshot,
   PetPerformanceMetrics,
-  PetRectangle,
   PetRuntimeSnapshot,
   PetWindowUpdate
 } from '../../shared/pet'
@@ -16,7 +14,6 @@ import type { Logger } from '../logging/logger'
 import type { CoreClient } from '../core/core-client'
 import type { WindowManager } from './window-manager'
 import type { WindowActionContext } from './window-manager'
-import { intersectRectangles, mapLocalRectangleToPhysical } from './pet-coordinate-mapping'
 
 export class PetWindowManager {
   private static readonly MIN_SCALE = 0.25
@@ -263,8 +260,7 @@ export class PetWindowManager {
   }
 
   private async fitVirtualDesktop(window: BrowserWindow): Promise<void> {
-    const handle = window.getNativeWindowHandle()
-    const windowHandle = (handle.length >= 8 ? handle.readBigUInt64LE() : BigInt(handle.readUInt32LE())).toString()
+    const windowHandle = readWindowHandle(window)
     const bounds = await this.core.invoke(randomUUID(), {
       type: 'system.window.fit_virtual_desktop',
       payload: { windowHandle }
@@ -272,40 +268,31 @@ export class PetWindowManager {
     this.log.info('pet-window', 'Pet window fitted to Windows virtual desktop', { bounds, electronBounds: window.getBounds() })
   }
 
-  captureCoordinates(contents: WebContents, localBounds: PetRectangle): PetCoordinateSnapshot {
-    const window = this.requireWindow(contents)
-    const windowDipBounds = window.getBounds()
-    const contentDipBounds = window.getContentBounds()
-    const windowPhysicalBounds = screen.dipToScreenRect(window, contentDipBounds)
-    const itemPhysicalBounds = mapLocalRectangleToPhysical(localBounds, contentDipBounds, windowPhysicalBounds)
-    const itemDipBounds = screen.screenToDipRect(null, itemPhysicalBounds)
-    const displays = screen.getAllDisplays().map((display) => ({
-      id: display.id,
-      label: display.label,
-      scaleFactor: display.scaleFactor,
-      rotation: display.rotation,
-      bounds: display.bounds,
-      workArea: display.workArea,
-      physicalBounds: screen.dipToScreenRect(null, display.bounds)
-    }))
-    const segments = displays.flatMap((display) => {
-      const physicalBounds = intersectRectangles(itemPhysicalBounds, display.physicalBounds)
-      return physicalBounds === null ? [] : [{
-        displayId: display.id,
-        scaleFactor: display.scaleFactor,
-        dipBounds: screen.screenToDipRect(null, physicalBounds),
-        physicalBounds
-      }]
-    })
-    return {
-      measuredAt: Date.now(),
-      windowDipBounds,
-      windowPhysicalBounds,
-      itemDipBounds,
-      itemPhysicalBounds,
-      segments,
-      displays
-    }
+  async resolveItemAnchor(): Promise<Rectangle> {
+    const window = this.windows.get('pet')
+    if (window === undefined || window.isDestroyed()) throw new Error('PetWindow is unavailable')
+    const value: unknown = await window.webContents.executeJavaScript(`(() => {
+      const item = document.querySelector('.ui-pet-item');
+      if (!(item instanceof HTMLElement)) throw new Error('PET item is unavailable');
+      const bounds = item.getBoundingClientRect();
+      return {
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight
+      };
+    })()`)
+    const local = readClientAnchor(value)
+    const physical = await this.core.invoke(randomUUID(), {
+      type: 'system.window.map_client_rect',
+      payload: { windowHandle: readWindowHandle(window), ...local }
+    }, new AbortController().signal)
+    const physicalBounds = readRectangle(physical)
+    const dipBounds = screen.screenToDipRect(null, physicalBounds)
+    this.log.info('pet-window', 'PET item anchor resolved for first window placement', { local, physicalBounds, dipBounds })
+    return dipBounds
   }
 
   private readonly handleDisplaysChanged = (): void => {
@@ -330,4 +317,36 @@ export class PetWindowManager {
     if (window === undefined) throw new Error('PetWindow is unavailable')
     return window
   }
+}
+
+function readWindowHandle(window: BrowserWindow): string {
+  const handle = window.getNativeWindowHandle()
+  return (handle.length >= 8 ? handle.readBigUInt64LE() : BigInt(handle.readUInt32LE())).toString()
+}
+
+function readClientAnchor(value: unknown): { x: number; y: number; width: number; height: number; viewportWidth: number; viewportHeight: number } {
+  if (!isRecord(value)) throw new TypeError('Invalid PET item anchor')
+  const { x, y, width, height, viewportWidth, viewportHeight } = value
+  if (!isFiniteNumber(x) || !isFiniteNumber(y) || !isPositiveFiniteNumber(width) || !isPositiveFiniteNumber(height) ||
+      !isPositiveFiniteNumber(viewportWidth) || !isPositiveFiniteNumber(viewportHeight)) throw new TypeError('Invalid PET item anchor')
+  return { x, y, width, height, viewportWidth, viewportHeight }
+}
+
+function readRectangle(value: unknown): Rectangle {
+  if (!isRecord(value)) throw new TypeError('Invalid Win32 rectangle')
+  const { x, y, width, height } = value
+  if (!isFiniteNumber(x) || !isFiniteNumber(y) || !isPositiveFiniteNumber(width) || !isPositiveFiniteNumber(height)) throw new TypeError('Invalid Win32 rectangle')
+  return { x, y, width, height }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function isPositiveFiniteNumber(value: unknown): value is number {
+  return isFiniteNumber(value) && value > 0
 }

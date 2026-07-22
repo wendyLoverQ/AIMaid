@@ -1,6 +1,3 @@
-import type { PetDisplayMode } from '../../shared/presentation'
-import type { WindowKind } from '../../shared/windows'
-
 export interface Bounds {
   x: number
   y: number
@@ -8,27 +5,16 @@ export interface Bounds {
   height: number
 }
 
-export type PetWindowAlignment = 'center' | 'right-of-center'
-
-const PET_WINDOW_GAP = 16
-
-export function petWindowAlignment(kind: WindowKind, displayMode?: PetDisplayMode): PetWindowAlignment {
-  return kind === 'status' || displayMode === 'image' || displayMode === 'png-sequence'
-    ? 'center'
-    : 'right-of-center'
-}
-
 export function positionWindowNearPet(
   windowBounds: Bounds,
   petBounds: Bounds,
-  workArea: Bounds,
-  alignment: PetWindowAlignment
+  workArea: Bounds
 ): Bounds {
   const width = Math.min(windowBounds.width, workArea.width)
   const height = Math.min(windowBounds.height, workArea.height)
   const anchorX = petBounds.x + petBounds.width / 2
   const anchorY = petBounds.y + petBounds.height / 2
-  const desiredX = alignment === 'center' ? anchorX - width / 2 : anchorX + PET_WINDOW_GAP
+  const desiredX = anchorX - width / 2
   const desiredY = anchorY - height / 2
 
   return {

@@ -50,7 +50,7 @@ public sealed class CoreProtocolHost(
 {
     private static readonly HashSet<string> RequestTypes = new(StringComparer.Ordinal)
     {
-        "system.handshake", "system.health", "system.window.fit_virtual_desktop", "system.shutdown", "system.cancel", "system.stream", "settings.get", "settings.save", "chat.history", "chat.send", "chat.update_metadata", "tts.speak", "asr.transcribe",
+        "system.handshake", "system.health", "system.window.fit_virtual_desktop", "system.window.map_client_rect", "system.shutdown", "system.cancel", "system.stream", "settings.get", "settings.save", "chat.history", "chat.send", "chat.update_metadata", "tts.speak", "asr.transcribe",
         "reminder.list", "reminder.save", "reminder.delete", "reminder.set_enabled", "reminder.set_allow_tts", "reminder.process_due",
         "character.list", "character.set_current", "character.save", "character.delete", "character.voice_assets", "character.voice_asset.add", "character.avatar.import", "character.voices", "character.voices.set", "character.binding.get", "character.binding.set", "character.binding.clear", "character.template.generate",
         "agent.capabilities.list", "agent.capability.save", "agent.execute", "agent.decide",
@@ -215,6 +215,18 @@ public sealed class CoreProtocolHost(
                 case "system.window.fit_virtual_desktop":
                     await writer.SuccessAsync(request,
                         WindowsPetWindowController.FitVirtualDesktop(ReadRequiredString(request.Payload, "windowHandle")),
+                        source.Token);
+                    break;
+                case "system.window.map_client_rect":
+                    await writer.SuccessAsync(request,
+                        WindowsPetWindowController.MapClientRectangle(
+                            ReadRequiredString(request.Payload, "windowHandle"),
+                            ReadDouble(request.Payload, "x"),
+                            ReadDouble(request.Payload, "y"),
+                            ReadDouble(request.Payload, "width", positive: true),
+                            ReadDouble(request.Payload, "height", positive: true),
+                            ReadDouble(request.Payload, "viewportWidth", positive: true),
+                            ReadDouble(request.Payload, "viewportHeight", positive: true)),
                         source.Token);
                     break;
                 case "settings.get":
@@ -1043,6 +1055,11 @@ public sealed class CoreProtocolHost(
 
     private static long ReadLong(JsonElement payload, string name, long minimum, long maximum)
         => payload.TryGetProperty(name, out var element) && element.TryGetInt64(out var value) && value >= minimum && value <= maximum
+            ? value
+            : throw new ArgumentException($"缺少或无效的 {name}。");
+
+    private static double ReadDouble(JsonElement payload, string name, bool positive = false)
+        => payload.TryGetProperty(name, out var element) && element.TryGetDouble(out var value) && double.IsFinite(value) && (!positive || value > 0)
             ? value
             : throw new ArgumentException($"缺少或无效的 {name}。");
 

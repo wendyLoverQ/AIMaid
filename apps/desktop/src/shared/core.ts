@@ -31,6 +31,7 @@ export function coreRequestTimeoutMs(type: CoreRequest['type']): number {
 export type CoreRequest =
   | { type: 'system.health'; payload: Record<string, never> }
   | { type: 'system.window.fit_virtual_desktop'; payload: { windowHandle: string } }
+  | { type: 'system.window.map_client_rect'; payload: { windowHandle: string; x: number; y: number; width: number; height: number; viewportWidth: number; viewportHeight: number } }
   | { type: 'settings.get'; payload: { keys?: string[] } }
   | { type: 'settings.save'; payload: { values: Record<string, string> } }
   | { type: 'chat.history'; payload: { conversationId?: string; limit?: number } }
@@ -216,6 +217,11 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
       return Object.keys(value.payload).length === 0
     case 'system.window.fit_virtual_desktop':
       return typeof value.payload.windowHandle === 'string' && /^\d{1,20}$/u.test(value.payload.windowHandle)
+    case 'system.window.map_client_rect':
+      return typeof value.payload.windowHandle === 'string' && /^\d{1,20}$/u.test(value.payload.windowHandle) &&
+        isFiniteNumber(value.payload.x) && isFiniteNumber(value.payload.y) &&
+        isPositiveFiniteNumber(value.payload.width) && isPositiveFiniteNumber(value.payload.height) &&
+        isPositiveFiniteNumber(value.payload.viewportWidth) && isPositiveFiniteNumber(value.payload.viewportHeight)
     case 'settings.get':
       return value.payload.keys === undefined || (
         Array.isArray(value.payload.keys) &&
@@ -592,6 +598,8 @@ function isNonEmptyString(value: unknown): value is string { return typeof value
 function isOptionalNullableId(value: unknown): boolean { return value === undefined || value === null || isNonEmptyString(value) }
 function isVideoIds(value: unknown): value is string[] { return Array.isArray(value) && value.length >= 1 && value.length <= 1000 && value.every(isNonEmptyString) }
 function isNonNegativeInteger(value: unknown): value is number { return typeof value === 'number' && Number.isInteger(value) && value >= 0 }
+function isFiniteNumber(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value) }
+function isPositiveFiniteNumber(value: unknown): value is number { return isFiniteNumber(value) && value > 0 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
