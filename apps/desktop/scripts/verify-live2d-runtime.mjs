@@ -53,6 +53,10 @@ try {
   await evaluate(client, 'location.reload()')
   await delay(2_000)
   await evaluate(client, `window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1', key: '1' }))`)
+  await evaluate(client, `window.dispatchEvent(new StorageEvent('storage', {
+    key: 'aimaid.pet-bubble',
+    newValue: JSON.stringify({ text: '动作验证', actionTag: 'touch_body' })
+  }))`)
   await delay(500)
   client.close()
 } finally {
@@ -75,11 +79,15 @@ if (!messages.some((message) => message.includes('Renderer re-initialized succes
 if (!messages.some((message) => message.includes('[Hotkey] Live2D model shortcut requested') && message.includes('TriggerAnimation'))) {
   throw new Error('The VTube model action shortcut did not execute')
 }
+if (!messages.some((message) => message.includes('[ActionTag] model action completed') && message.includes('touch_body'))) {
+  throw new Error('The automatically generated body action did not execute')
+}
 
 const proof = {
   maskStats,
   rendererReinitialized: true,
   modelShortcutExecuted: true,
+  generatedBodyActionExecuted: true,
   screenshot: resolve(outputDirectory, 'fuxuan.png')
 }
 await writeFile(resolve(outputDirectory, 'proof.json'), `${JSON.stringify(proof, null, 2)}\n`)

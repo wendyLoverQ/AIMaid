@@ -2,6 +2,8 @@ import { Application, Container, Matrix, Point, RenderTexture, Ticker } from 'pi
 import '@pixi/unsafe-eval';
 import type { Live2DModel as Live2DModelType } from 'pixi-live2d-display-lipsyncpatch/cubism4';
 import { assertModelJson } from './modelLoader';
+import { loadLive2DActionTagMap, resolveLive2DAction } from '../../../shared/live2d-action-tag';
+import type { Live2DActionTagMap } from '../../../shared/live2d-action-tag';
 import { createCubismMaskBufferPlan } from '../../../shared/live2d-mask-buffer';
 import { buildOuterAlphaContour } from '../../../shared/alpha-contour';
 import type { AlphaContour } from '../../../shared/alpha-contour';
@@ -71,6 +73,7 @@ export class Live2DPlayer {
   private expressionFileNames = new Map<string, string>();
   private modelHotkeys: ModelHotkey[] = [];
   private activeHotkeyExpression: string | null = null;
+  private actionTagMap: Live2DActionTagMap = {};
   private partDisplayNames = new Map<string, string>();
   private outfitOptions: OutfitOption[] = [];
   private outfitSelections = new Map<string, number>();
@@ -212,6 +215,7 @@ export class Live2DPlayer {
 
     const modelJsonResponse = await fetch(modelUrl);
     const modelJson = await modelJsonResponse.json();
+    this.actionTagMap = await loadLive2DActionTagMap();
 
     this.motionGroupCounts = new Map(
       Object.entries(modelJson.FileReferences?.Motions ?? {}).map(([group, definitions]) => [
@@ -324,22 +328,44 @@ export class Live2DPlayer {
   }
 
   async playClickMotion(bodyPart: 'head' | 'face' | 'hair' | 'body' | 'hand' | 'leg' | 'other'): Promise<boolean> {
+    const head = bodyPart === 'head' || bodyPart === 'face' || bodyPart === 'hair';
+    const preferredGroups = head ? ['TapHead', 'TapBody'] : bodyPart === 'leg' ? ['TapLeg', 'TapBody'] : ['TapBody'];
+    return this.applyActionTag(head ? 'touch_head' : 'touch_body', preferredGroups);
+  }
+
+  async applyActionTag(tag: string, preferredMotionGroups: readonly string[] = []): Promise<boolean> {
     if (!this.model) return false;
+    const resolved = resolveLive2DAction(
+      this.actionTagMap,
+      tag,
+      this.motionGroupCounts.keys(),
+      this.expressionNames,
+      preferredMotionGroups
+    );
+    if (resolved === null) {
+      console.info('[ActionTag] no supported model action ' + JSON.stringify({ tag }));
+      return false;
+    }
 
-    const preferredGroups = bodyPart === 'head' || bodyPart === 'face' || bodyPart === 'hair'
-      ? ['TapHead', 'TapBody']
-      : bodyPart === 'leg'
-        ? ['TapLeg', 'TapBody']
-        : ['TapBody'];
+    let motionIndex: number | null = null;
+    let motionFile: string | undefined;
+    if (resolved.motionGroup !== null) {
+      const count = this.motionGroupCounts.get(resolved.motionGroup) ?? 0;
+      if (count <= 0) throw new Error(`Resolved Live2D motion group is empty: ${resolved.motionGroup}`);
+      motionIndex = Math.floor(Math.random() * count);
+      motionFile = this.motionGroupFiles.get(resolved.motionGroup)?.[motionIndex];
+      await this.model.motion(resolved.motionGroup, motionIndex);
+    }
+    if (resolved.expression !== null) {
+      this.model.expression(resolved.expression);
+      this.activeHotkeyExpression = resolved.expression;
+    }
 
-    const group = preferredGroups.find((candidate) => (this.motionGroupCounts.get(candidate) ?? 0) > 0);
-    if (!group) return false;
-    const count = this.motionGroupCounts.get(group) ?? 1;
-    const index = Math.floor(Math.random() * count);
-    const motionFile = this.motionGroupFiles.get(group)?.[index];
-    console.info('[Motion] playing click motion', { bodyPart, group, index, motionFile });
-    const result = await this.model.motion(group, index);
-    console.info('[Motion] click motion requested', { bodyPart, group, index, motionFile, result });
+    console.info('[ActionTag] model action completed ' + JSON.stringify({
+      ...resolved,
+      motionIndex,
+      motionFile
+    }));
     return true;
   }
 

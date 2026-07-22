@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { enrichLive2DModel, readMotionWithoutOutfitCurves } from '../src/main/services/pet-asset-service'
 import { createCubismMaskBufferPlan } from '../src/shared/live2d-mask-buffer'
+import { resolveLive2DAction } from '../src/shared/live2d-action-tag'
 
 describe('Live2D compatibility', () => {
   it('reads Cubism mask metadata from drawable-indexed arrays', () => {
@@ -80,6 +81,22 @@ describe('Live2D compatibility', () => {
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
+  })
+
+  it('resolves automatic head and body actions against the loaded model', () => {
+    const map = {
+      idle: { motionGroups: [], expressions: ['normal'], fallback: 'idle' },
+      smile: { motionGroups: [], expressions: ['smile'], fallback: 'idle' },
+      touch_head: { motionGroups: ['TapHead', 'TapBody'], expressions: ['happy'], fallback: 'smile' },
+      touch_body: { motionGroups: ['TapBody'], expressions: ['annoyed'], fallback: 'smile' }
+    }
+
+    expect(resolveLive2DAction(map, 'touch_head', ['taphead'], ['Happy'])).toEqual({
+      requestedTag: 'touch_head', resolvedTag: 'touch_head', motionGroup: 'taphead', expression: 'Happy'
+    })
+    expect(resolveLive2DAction(map, 'touch_body', ['TapLeg', 'TapBody'], [], ['TapLeg'])).toEqual({
+      requestedTag: 'touch_body', resolvedTag: 'touch_body', motionGroup: 'TapLeg', expression: null
+    })
   })
 })
 

@@ -125,6 +125,7 @@ export class PetRuntime {
     this.listen(this.canvas, 'webglcontextlost', this.onContextLost)
     this.listen(this.canvas, 'webglcontextrestored', this.onContextRestored)
     this.listen(window, 'keydown', this.onKeyDown)
+    this.listen(window, 'storage', this.onPetBubble)
     this.cleanups.push(bridge.pet.onLifecycle(this.onLifecycle))
     const resizeObserver = new ResizeObserver(() => this.onResize())
     resizeObserver.observe(this.canvas.parentElement ?? this.canvas)
@@ -177,6 +178,18 @@ export class PetRuntime {
     })
   }
 
+  private readonly onPetBubble = (event: Event): void => {
+    if (!(event instanceof StorageEvent) || event.key !== 'aimaid.pet-bubble' || event.newValue === null) return
+    try {
+      const payload = JSON.parse(event.newValue) as { actionTag?: unknown }
+      if (typeof payload.actionTag !== 'string' || payload.actionTag.trim() === '') return
+      void this.player.applyActionTag(payload.actionTag).catch((error: unknown) => {
+        console.error('[ActionTag] generated response action failed', error)
+      })
+    } catch (error) {
+      console.error('[ActionTag] invalid generated response payload', error)
+    }
+  }
   private readonly onLifecycle = (event: PetLifecycleEvent): void => {
     if (event.type === 'suspend') this.suspend()
     else if (event.type === 'resume') this.resume()

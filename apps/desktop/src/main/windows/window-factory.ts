@@ -39,7 +39,7 @@ export class WindowFactory {
     this.installNavigationGuards(window, definition.id)
     if (definition.id === 'pet') {
       window.webContents.on('console-message', (details) => {
-        if (details.level === 'warning' || details.level === 'error' || /^\[(Live2D|PetRuntime|PetInteraction|Hotkey|Motion|Pointer|Outfit|MusicPlayback)\]/u.test(details.message)) {
+        if (details.level === 'warning' || details.level === 'error' || /^\[(Live2D|PetRuntime|PetInteraction|Hotkey|ActionTag|Motion|Pointer|Outfit|MusicPlayback)\]/u.test(details.message)) {
           this.log.info('pet-renderer', details.message.slice(0, 2_000), { level: details.level })
         }
       })

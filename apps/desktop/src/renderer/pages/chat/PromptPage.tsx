@@ -63,7 +63,7 @@ export function PromptPage(): React.JSX.Element {
                 publishPetBubble(`已创建提醒：${reminder.value.title}\n时间：${formatMinute(reminder.value.dueAt)}`);
                 return;
             }
-            publishPetBubble('女仆正在跑腿通知.....^_^');
+            publishPetBubble('女仆正在跑腿通知.....^_^', 'think');
             const character = await currentCharacter();
             const payload = await runAgentConversation(prompt, {
                 ...(character === undefined ? {} : { characterId: character.roleId }),
@@ -71,7 +71,7 @@ export function PromptPage(): React.JSX.Element {
                 source: 'normal_chat'
             });
             const content = payload.content.trim() || 'Agent 返回了空回复。';
-            publishPetBubble(content);
+            publishPetBubble(content, actionTagForVoiceStyle(payload.voiceStyle));
             if (payload.messageId > 0 && await realtimeTtsEnabled()) {
                 const voiceId = character?.preferredVoiceId || undefined;
                 const audioPath = await synthesizeAndPlay(content, voiceId);
@@ -79,7 +79,7 @@ export function PromptPage(): React.JSX.Element {
             }
         }
         catch (reason) {
-            publishPetBubble(reason instanceof Error ? reason.message : String(reason));
+            publishPetBubble(reason instanceof Error ? reason.message : String(reason), 'error');
         }
     }
     return <MainRegion onMouseDown={(event) => {
@@ -187,6 +187,16 @@ function formatMinute(value: Date): string {
     const pad = (number: number): string => String(number).padStart(2, '0');
     return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())} ${pad(value.getHours())}:${pad(value.getMinutes())}`;
 }
-function publishPetBubble(text: string): void {
-    localStorage.setItem('aimaid.pet-bubble', JSON.stringify({ text, nonce: crypto.randomUUID() }));
+function publishPetBubble(text: string, actionTag?: string): void {
+    localStorage.setItem('aimaid.pet-bubble', JSON.stringify({ text, actionTag, nonce: crypto.randomUUID() }));
+}
+function actionTagForVoiceStyle(voiceStyle: string): string {
+    const normalized = voiceStyle.trim().toLowerCase();
+    if (normalized === 'lively')
+        return 'happy';
+    if (normalized === 'close')
+        return 'shy';
+    if (normalized === 'soft')
+        return 'smile';
+    return 'speak';
 }
