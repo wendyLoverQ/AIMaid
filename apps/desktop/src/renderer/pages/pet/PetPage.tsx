@@ -1,4 +1,4 @@
-import { Container, PetItemSurface, PetPanelSurface, TransparentCanvas, TransparentStage } from "../../components/ui";
+import { Container, PetItemSurface, TransparentCanvas, TransparentStage } from "../../components/ui";
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessageDto } from '../../../shared/business';
 import type { PetPresentationAction, PetPresentationSnapshot } from '../../../shared/presentation';
@@ -16,18 +16,12 @@ import {
     PET_CANVAS_WIDTH
 } from '../../../shared/pet-geometry';
 import { PetBubble } from './PetBubble';
-import { captureAlphaContour, PetAudioContour } from './PetAudioContour';
+import { PetAudioContour } from './PetAudioContour';
 import { startPetMusicPlayback } from './pet-music-playback';
 import { playLocalAudioPaths, synthesizeAndPlay } from '../chat/tts-playback';
 import { usePetBubbleQueue, type PetBubbleQueue } from './usePetBubbleQueue';
 type PetHitTest = (clientX: number, clientY: number) => boolean;
 type PetPointerClick = (event: MouseEvent) => void;
-const BUBBLE_ALPHA_GAP = 5;
-const BUBBLE_TAIL_HEIGHT = 21;
-const BUBBLE_ANCHOR_REFRESH_MS = 120;
-const BUBBLE_FOLLOW_TIME_MS = 150;
-const BUBBLE_TAIL_LEFT = 64;
-const BUBBLE_PANEL_EDGE_GAP = 16;
 export default function PetPage(): React.JSX.Element {
     const [presentation, setPresentation] = useState<PetPresentationSnapshot | null>(null);
     const [menu, setMenu] = useState<{
@@ -41,7 +35,6 @@ export default function PetPage(): React.JSX.Element {
     const [visualizerStyle, setVisualizerStyle] = useState<MusicVisualizerStyle>('surround-bars');
     const readySentRef = useRef(false);
     const stageRef = useRef<HTMLElement>(null);
-    const panelRef = useRef<HTMLDivElement>(null);
     const itemRef = useRef<HTMLDivElement>(null);
     const visualCanvasRef = useRef<HTMLCanvasElement>(null);
     const liveContourReaderRef = useRef<(() => AlphaContour | null) | null>(null);
@@ -88,11 +81,11 @@ export default function PetPage(): React.JSX.Element {
         void refreshPresentation();
     }, [refreshPresentation]);
     useEffect(() => {
-        const panel = panelRef.current;
-        if (panel === null)
+        const item = itemRef.current;
+        if (item === null)
             return;
         const interaction = new PetItemInteractionController({
-            item: panel,
+            item,
             hitTest: (x, y) => hitTestRef.current(x, y),
             setIgnoreMouseEvents: (ignore) => { void bridge.pet.setIgnoreMouseEvents(ignore); },
             dragStart: () => { void bridge.pet.dragStart(); },
@@ -156,64 +149,6 @@ export default function PetPage(): React.JSX.Element {
         else
             localStorage.setItem('aimaid.pet-current-image-url', url);
     }, [presentation]);
-    useEffect(() => {
-        if (bubble === null || presentation === null)
-            return;
-        const maskCanvas = document.createElement('canvas');
-        let animationId = 0;
-        let lastUpdatedAt = Number.NEGATIVE_INFINITY;
-        let lastFrameAt = Number.NaN;
-        let targetBottom: number | null = null;
-        let targetLeft: number | null = null;
-        let currentBottom: number | null = null;
-        let currentLeft: number | null = null;
-        const updateBubbleAnchor = (now: number): void => {
-            if (now - lastUpdatedAt >= BUBBLE_ANCHOR_REFRESH_MS) {
-                lastUpdatedAt = now;
-                const panel = panelRef.current;
-                const source = visualCanvasRef.current;
-                const bubbleSurface = panel?.querySelector<HTMLElement>('.ui-pet-bubble') ?? null;
-                if (panel !== null && source !== null && bubbleSurface !== null) {
-                    const contour = presentation.mode === 'live2d'
-                        ? readLiveContour()
-                        : captureAlphaContour(source, maskCanvas);
-                    if (contour !== null) {
-                        const panelBounds = panel.getBoundingClientRect();
-                        const sourceBounds = source.getBoundingClientRect();
-                        const alphaTopPoint = contour.points.reduce((highest, point) => point.y < highest.y ? point : highest);
-                        const alphaTop = sourceBounds.top + alphaTopPoint.y * sourceBounds.height;
-                        const alphaTopX = sourceBounds.left + alphaTopPoint.x * sourceBounds.width;
-                        const bubbleBounds = bubbleSurface.getBoundingClientRect();
-                        targetBottom = panelBounds.bottom - alphaTop + BUBBLE_ALPHA_GAP + BUBBLE_TAIL_HEIGHT;
-                        targetLeft = Math.min(
-                            Math.max(
-                                alphaTopX - panelBounds.left - BUBBLE_TAIL_LEFT + bubbleBounds.width / 2,
-                                bubbleBounds.width / 2 + BUBBLE_PANEL_EDGE_GAP
-                            ),
-                            panelBounds.width - bubbleBounds.width / 2 - BUBBLE_PANEL_EDGE_GAP
-                        );
-                        currentBottom ??= targetBottom;
-                        currentLeft ??= targetLeft;
-                        bubbleSurface.dataset.alphaAnchored = '';
-                    }
-                }
-            }
-            const bubbleSurface = panelRef.current?.querySelector<HTMLElement>('.ui-pet-bubble') ?? null;
-            if (bubbleSurface !== null && targetBottom !== null && targetLeft !== null &&
-                currentBottom !== null && currentLeft !== null) {
-                const elapsed = Number.isNaN(lastFrameAt) ? 16 : Math.min(50, now - lastFrameAt);
-                const follow = 1 - Math.exp(-elapsed / BUBBLE_FOLLOW_TIME_MS);
-                currentBottom += (targetBottom - currentBottom) * follow;
-                currentLeft += (targetLeft - currentLeft) * follow;
-                bubbleSurface.style.setProperty('--pet-bubble-bottom', `${currentBottom.toFixed(2)}px`);
-                bubbleSurface.style.setProperty('--pet-bubble-left', `${currentLeft.toFixed(2)}px`);
-            }
-            lastFrameAt = now;
-            animationId = requestAnimationFrame(updateBubbleAnchor);
-        };
-        animationId = requestAnimationFrame(updateBubbleAnchor);
-        return () => cancelAnimationFrame(animationId);
-    }, [bubble, presentation, readLiveContour]);
     async function execute(action: PetPresentationAction): Promise<void> {
         const response = await bridge.pet.presentation.execute(action);
         if (response.success && response.payload !== null) {
@@ -296,15 +231,13 @@ export default function PetPage(): React.JSX.Element {
             void loadVoiceMenu();
             setMenu({ x: event.clientX, y: event.clientY });
         }}>
-    <PetPanelSurface ref={panelRef}>
-      <PetItemSurface ref={itemRef}>
-        {presentation === null ? <Container>{error ?? '正在读取桌宠显示模式…'}</Container> : null}
-        {presentation?.mode === 'image' ? <ImageMode canvasRef={visualCanvasRef} presentation={presentation} scale={renderScale} onAdvance={() => void execute('next-image')} onFirstFrame={revealPetWindow} registerHitTest={registerHitTest}/> : null}
-        {presentation?.mode === 'png-sequence' ? <PngSequenceMode canvasRef={visualCanvasRef} presentation={presentation} scale={renderScale} onFirstFrame={revealPetWindow} registerHitTest={registerHitTest}/> : null}
-        {presentation?.mode === 'live2d' ? <Live2DMode canvasRef={visualCanvasRef} role={presentation.live2dRole} scale={renderScale} registerHitTest={registerHitTest} registerPointerClick={registerPointerClick} registerContourReader={registerLiveContourReader} showBubble={showBubble}/> : null}
-      </PetItemSurface>
+    <PetItemSurface ref={itemRef}>
+      {presentation === null ? <Container>{error ?? '正在读取桌宠显示模式…'}</Container> : null}
+      {presentation?.mode === 'image' ? <ImageMode canvasRef={visualCanvasRef} presentation={presentation} scale={renderScale} onAdvance={() => void execute('next-image')} onFirstFrame={revealPetWindow} registerHitTest={registerHitTest}/> : null}
+      {presentation?.mode === 'png-sequence' ? <PngSequenceMode canvasRef={visualCanvasRef} presentation={presentation} scale={renderScale} onFirstFrame={revealPetWindow} registerHitTest={registerHitTest}/> : null}
+      {presentation?.mode === 'live2d' ? <Live2DMode canvasRef={visualCanvasRef} role={presentation.live2dRole} scale={renderScale} registerHitTest={registerHitTest} registerPointerClick={registerPointerClick} registerContourReader={registerLiveContourReader} showBubble={showBubble}/> : null}
       <PetBubble message={bubble} speechHeld={speechHeld} onExpired={expireBubble}/>
-    </PetPanelSurface>
+    </PetItemSurface>
     {presentation !== null ? <PetAudioContour sourceCanvasRef={visualCanvasRef}
       readContour={presentation.mode === 'live2d' ? readLiveContour : undefined}
       sourceKey={presentation.mode === 'image' ? `image:${presentation.currentImage?.url ?? ''}` :
@@ -372,7 +305,7 @@ function ImageMode({ canvasRef, presentation, scale, onAdvance, onFirstFrame, re
     const canvasHeight = Math.max(1, Math.round(PET_CANVAS_HEIGHT * backingScale));
     return presentation.currentImage === null
         ? <Container>未找到图片。右键选择图片文件夹。</Container>
-        : <TransparentCanvas ref={canvasRef} width={canvasWidth} height={canvasHeight} aria-label={presentation.currentImage.name} data-state={presentation.paused ? 'paused' : 'playing'}/>;
+        : <TransparentCanvas ref={canvasRef} width={canvasWidth} height={canvasHeight} aria-label={presentation.currentImage.name}/>;
 }
 async function loadMusicVisualizerStyle(): Promise<MusicVisualizerStyle> {
     const response = await bridge.core.invoke({ type: 'settings.get', payload: { keys: [MUSIC_VISUALIZER_STYLE_KEY] } });
