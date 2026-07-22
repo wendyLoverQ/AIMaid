@@ -129,13 +129,9 @@ export class SystemSettingsService {
   private async execute(action: HotkeyAction): Promise<void> {
     const definition = HOTKEY_ACTIONS.find((item) => item.action === action)!
     if ('target' in definition && definition.target !== undefined) {
-      const petAnchorBounds = this.windows.get(definition.target) === undefined
-        ? await this.petWindows.resolveItemAnchor()
-        : undefined
-      this.windows.toggle(definition.target, 'pet', {
-        trigger: 'global-hotkey',
-        ...(petAnchorBounds === undefined ? {} : { petAnchorBounds })
-      })
+      const shown = this.windows.toggle(definition.target, 'pet', { trigger: 'global-hotkey' })
+      const targetWindow = shown ? this.windows.get(definition.target) : undefined
+      if (targetWindow !== undefined) await this.petWindows.positionWindowAtItem(targetWindow)
       return
     }
     const parent = this.windows.get('pet')

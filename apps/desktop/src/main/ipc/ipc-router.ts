@@ -211,15 +211,12 @@ export class IpcRouter {
     switch (request.type) {
       case 'window.open': {
         const target = readTarget(request.payload)
-        const petAnchorBounds = sourceKind === 'pet' && this.windows.get(target) === undefined
-          ? await this.petWindows.resolveItemAnchor()
-          : undefined
-        await this.windows.openAndWait(target, sourceKind, {
+        const targetWindow = await this.windows.openAndWait(target, sourceKind, {
           requestId: request.requestId,
           sourceWindow: sourceKind,
-          trigger: request.type,
-          ...(petAnchorBounds === undefined ? {} : { petAnchorBounds })
+          trigger: request.type
         })
+        if (sourceKind === 'pet') await this.petWindows.positionWindowAtItem(targetWindow)
         return { target }
       }
       case 'window.show':

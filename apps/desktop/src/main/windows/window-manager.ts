@@ -4,13 +4,11 @@ import type { WindowKind } from '../../shared/windows'
 import type { Logger } from '../logging/logger'
 import type { WindowFactory } from './window-factory'
 import { WINDOW_REGISTRY } from './window-registry'
-import { positionWindowNearPet } from './window-positioning'
 
 export interface WindowActionContext {
   requestId?: string
   sourceWindow?: WindowKind
   trigger?: string
-  petAnchorBounds?: Rectangle
 }
 
 interface ForeignWindowMoveHandlers {
@@ -40,7 +38,7 @@ export class WindowManager {
   open(kind: WindowKind, ownerKind?: WindowKind, context: WindowActionContext = {}): BrowserWindow {
     const existing = this.get(kind)
     if (existing !== undefined) {
-      if (ownerKind !== 'pet') this.positionWindow(kind, existing, ownerKind, context)
+      this.positionWindow(kind, existing, ownerKind)
       if (kind === 'tray-menu') {
         this.log.info('window', 'Existing window opened', { kind, windowId: existing.id, ...context })
         return existing
@@ -65,7 +63,7 @@ export class WindowManager {
       this.attachForeignWindowMoveGuard(window)
     }
 
-    this.positionWindow(kind, window, ownerKind, context)
+    this.positionWindow(kind, window, ownerKind)
     this.windows.set(kind, window)
     if (kind !== 'pet') {
       let shown = false
@@ -241,22 +239,10 @@ export class WindowManager {
     window.once('closed', end)
   }
 
-  private positionWindow(kind: WindowKind, window: BrowserWindow, ownerKind?: WindowKind, context: WindowActionContext = {}): void {
+  private positionWindow(kind: WindowKind, window: BrowserWindow, ownerKind?: WindowKind): void {
     if (kind === 'pet' || kind === 'tray-menu') return
     const owner = ownerKind === undefined ? undefined : this.get(ownerKind)
-    if (ownerKind === 'pet' && owner !== undefined) {
-      const petBounds = context.petAnchorBounds
-      if (petBounds === undefined) throw new Error('PET item anchor is required for first window placement')
-      const workArea = screen.getDisplayMatching(petBounds).workArea
-      const positioned = positionWindowNearPet(
-        window.getBounds(),
-        petBounds,
-        workArea
-      )
-      window.setBounds(positioned, false)
-      this.log.info('window', 'Window centered on PET item for first open', { kind, petBounds, bounds: window.getBounds() })
-      return
-    }
+    if (ownerKind === 'pet' && owner !== undefined) return
     const ownerCentered = owner !== undefined && OWNER_CENTERED_WINDOWS.has(kind)
     const target = ownerCentered ? owner.getBounds() : screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea
     const workArea = ownerCentered ? screen.getDisplayMatching(target).workArea : target

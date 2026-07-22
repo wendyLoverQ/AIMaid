@@ -28,14 +28,14 @@ describe('Core protocol parser', () => {
     }))).toMatchObject({ kind: 'event', sequence: 1 })
   })
 
-  it('validates the Win32 PET client rectangle mapping request', () => {
+  it('validates the one-shot Win32 PET window positioning request', () => {
     expect(isCoreRequest({
-      type: 'system.window.map_client_rect',
-      payload: { windowHandle: '12345', x: -10.5, y: 20, width: 560, height: 980, viewportWidth: 4928, viewportHeight: 3072 }
+      type: 'system.window.center_on_client_rect',
+      payload: { petWindowHandle: '12345', targetWindowHandle: '67890', x: -10.5, y: 20, width: 560, height: 980, viewportWidth: 4928, viewportHeight: 3072 }
     })).toBe(true)
     expect(isCoreRequest({
-      type: 'system.window.map_client_rect',
-      payload: { windowHandle: '12345', x: 0, y: 0, width: 0, height: 980, viewportWidth: 4928, viewportHeight: 3072 }
+      type: 'system.window.center_on_client_rect',
+      payload: { petWindowHandle: '12345', targetWindowHandle: '67890', x: 0, y: 0, width: 0, height: 980, viewportWidth: 4928, viewportHeight: 3072 }
     })).toBe(false)
   })
 

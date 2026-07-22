@@ -39,30 +39,34 @@ try {
   const statusTarget = await waitForTarget((candidate) => candidate.url.includes('window=status'))
   statusClient = await connect(statusTarget.webSocketDebuggerUrl)
   await waitFor(() => evaluate(statusClient, 'document.readyState === "complete"'))
-  await waitForLog(logPath, 'Window centered on PET item for first open')
+  const placementMessage = 'Window positioned from PET item in one Win32 request'
+  await waitForLogCount(logPath, placementMessage, 1)
+  const firstRecords = await readRecords(logPath)
+  const firstRequestCount = firstRecords.filter((record) => record.message === placementMessage).length
+  if (firstRequestCount !== 1) throw new Error(`First show issued ${firstRequestCount} Win32 requests instead of one`)
   const reopened = await evaluate(petClient, `window.aimaid.window.open('status')`)
   if (!reopened.success) throw new Error(`Status reopen failed: ${JSON.stringify(reopened.error)}`)
-  await delay(250)
+  await waitForLogCount(logPath, placementMessage, 2)
   const records = await readRecords(logPath)
-  const anchorRecord = records.findLast((record) => record.message === 'PET item anchor resolved for first window placement')
-  const positionRecord = records.findLast((record) => record.message === 'Window centered on PET item for first open' && record.data?.kind === 'status')
-  if (anchorRecord === undefined || positionRecord === undefined) throw new Error('Missing PET anchor runtime evidence')
+  const placementRecords = records.filter((record) => record.message === placementMessage)
+  const placementRecord = placementRecords.at(-1)
+  if (placementRecord === undefined) throw new Error('Missing PET window placement evidence')
 
-  const petBounds = positionRecord.data.petBounds
-  const windowBounds = positionRecord.data.bounds
+  const petBounds = placementRecord.data.anchorBounds
+  const windowBounds = placementRecord.data.windowBounds
   const petCenter = { x: petBounds.x + petBounds.width / 2, y: petBounds.y + petBounds.height / 2 }
   const windowCenter = { x: windowBounds.x + windowBounds.width / 2, y: windowBounds.y + windowBounds.height / 2 }
   const centerDelta = { x: Math.abs(petCenter.x - windowCenter.x), y: Math.abs(petCenter.y - windowCenter.y) }
-  if (centerDelta.x > 1 || centerDelta.y > 1) throw new Error(`First-open window was not centered: ${JSON.stringify({ petBounds, windowBounds, centerDelta })}`)
+  if (centerDelta.x > 1 || centerDelta.y > 1) throw new Error(`Shown window was not centered: ${JSON.stringify({ petBounds, windowBounds, centerDelta })}`)
 
   const proof = {
-    physicalPetBounds: anchorRecord.data.physicalBounds,
-    dipPetBounds: petBounds,
-    firstWindowBounds: windowBounds,
+    physicalPetBounds: petBounds,
+    physicalReopenedWindowBounds: windowBounds,
     centerDelta,
-    win32MappedOnce: records.filter((record) => record.message === 'PET item anchor resolved for first window placement').length === 1
+    showCount: 2,
+    win32RequestCount: placementRecords.length
   }
-  if (!proof.win32MappedOnce) throw new Error('Win32 PET mapping did not run exactly once')
+  if (proof.win32RequestCount !== proof.showCount) throw new Error('Each window show must perform exactly one Win32 positioning request')
   await writeFile(resolve(outputDirectory, 'proof.json'), `${JSON.stringify(proof, null, 2)}\n`)
   console.log(JSON.stringify(proof, null, 2))
 } finally {
@@ -77,9 +81,12 @@ async function readRecords(path) {
   return text.trim().split(/\r?\n/u).filter(Boolean).map((line) => JSON.parse(line))
 }
 
-async function waitForLog(path, message) {
+async function waitForLogCount(path, message, count) {
   await waitFor(async () => {
-    try { return (await readFile(path, 'utf8')).includes(message) } catch { return false }
+    try {
+      const records = await readRecords(path)
+      return records.filter((record) => record.message === message).length >= count
+    } catch { return false }
   })
 }
 

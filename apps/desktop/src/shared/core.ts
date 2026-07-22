@@ -31,7 +31,7 @@ export function coreRequestTimeoutMs(type: CoreRequest['type']): number {
 export type CoreRequest =
   | { type: 'system.health'; payload: Record<string, never> }
   | { type: 'system.window.fit_virtual_desktop'; payload: { windowHandle: string } }
-  | { type: 'system.window.map_client_rect'; payload: { windowHandle: string; x: number; y: number; width: number; height: number; viewportWidth: number; viewportHeight: number } }
+  | { type: 'system.window.center_on_client_rect'; payload: { petWindowHandle: string; targetWindowHandle: string; x: number; y: number; width: number; height: number; viewportWidth: number; viewportHeight: number } }
   | { type: 'settings.get'; payload: { keys?: string[] } }
   | { type: 'settings.save'; payload: { values: Record<string, string> } }
   | { type: 'chat.history'; payload: { conversationId?: string; limit?: number } }
@@ -217,8 +217,9 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
       return Object.keys(value.payload).length === 0
     case 'system.window.fit_virtual_desktop':
       return typeof value.payload.windowHandle === 'string' && /^\d{1,20}$/u.test(value.payload.windowHandle)
-    case 'system.window.map_client_rect':
-      return typeof value.payload.windowHandle === 'string' && /^\d{1,20}$/u.test(value.payload.windowHandle) &&
+    case 'system.window.center_on_client_rect':
+      return typeof value.payload.petWindowHandle === 'string' && /^\d{1,20}$/u.test(value.payload.petWindowHandle) &&
+        typeof value.payload.targetWindowHandle === 'string' && /^\d{1,20}$/u.test(value.payload.targetWindowHandle) &&
         isFiniteNumber(value.payload.x) && isFiniteNumber(value.payload.y) &&
         isPositiveFiniteNumber(value.payload.width) && isPositiveFiniteNumber(value.payload.height) &&
         isPositiveFiniteNumber(value.payload.viewportWidth) && isPositiveFiniteNumber(value.payload.viewportHeight)

@@ -10,6 +10,7 @@ public static class WindowsPetWindowController
     private const int SmYVirtualScreen = 77;
     private const int SmCxVirtualScreen = 78;
     private const int SmCyVirtualScreen = 79;
+    private const uint SwpNoSize = 0x0001;
     private const uint SwpNoZOrder = 0x0004;
     private const uint SwpNoActivate = 0x0010;
     private const uint SwpShowWindow = 0x0040;
@@ -50,8 +51,9 @@ public static class WindowsPetWindowController
         }
     }
 
-    public static PetWindowBounds MapClientRectangle(
-        string windowHandle,
+    public static PetWindowPlacement CenterWindowOnClientRectangle(
+        string petWindowHandle,
+        string targetWindowHandle,
         double x,
         double y,
         double width,
@@ -66,15 +68,13 @@ public static class WindowsPetWindowController
             width <= 0 || height <= 0 || viewportWidth <= 0 || viewportHeight <= 0)
             throw new ArgumentOutOfRangeException(nameof(width), "PET client rectangle values must be finite and positive.");
 
-        var rawHandle = ulong.Parse(windowHandle, NumberStyles.None, CultureInfo.InvariantCulture);
-        var handle = unchecked((nint)rawHandle);
-        if (handle == 0)
-            throw new ArgumentOutOfRangeException(nameof(windowHandle));
+        var petHandle = ParseWindowHandle(petWindowHandle);
+        var targetHandle = ParseWindowHandle(targetWindowHandle);
 
         var previousDpiContext = SetThreadDpiAwarenessContext(PerMonitorAwareV2);
         try
         {
-            if (!GetClientRect(handle, out var clientRect))
+            if (!GetClientRect(petHandle, out var clientRect))
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "GetClientRect failed for the PET window.");
 
             var clientWidth = clientRect.Right - clientRect.Left;
@@ -89,12 +89,32 @@ public static class WindowsPetWindowController
                 ScaleEdge(y + height, viewportHeight, clientHeight));
 
             SetLastError(0);
-            var offset = MapWindowPoints(handle, 0, ref mapped, 2);
+            var offset = MapWindowPoints(petHandle, 0, ref mapped, 2);
             var error = Marshal.GetLastWin32Error();
             if (offset == 0 && error != 0)
                 throw new Win32Exception(error, "MapWindowPoints failed for the PET rectangle.");
 
-            return new PetWindowBounds(mapped.Left, mapped.Top, mapped.Right - mapped.Left, mapped.Bottom - mapped.Top);
+            if (!GetWindowRect(targetHandle, out var targetRect))
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "GetWindowRect failed for the target window.");
+
+            var targetWidth = targetRect.Right - targetRect.Left;
+            var targetHeight = targetRect.Bottom - targetRect.Top;
+            if (targetWidth <= 0 || targetHeight <= 0)
+                throw new InvalidOperationException("Windows returned an invalid target window rectangle.");
+
+            var targetLeft = checked((int)Math.Round(
+                (mapped.Left + (long)mapped.Right - targetWidth) / 2d,
+                MidpointRounding.AwayFromZero));
+            var targetTop = checked((int)Math.Round(
+                (mapped.Top + (long)mapped.Bottom - targetHeight) / 2d,
+                MidpointRounding.AwayFromZero));
+            if (!SetWindowPos(targetHandle, 0, targetLeft, targetTop, 0, 0,
+                    SwpNoSize | SwpNoZOrder | SwpNoActivate))
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "SetWindowPos failed for the target window.");
+
+            return new PetWindowPlacement(
+                new PetWindowBounds(mapped.Left, mapped.Top, mapped.Right - mapped.Left, mapped.Bottom - mapped.Top),
+                new PetWindowBounds(targetLeft, targetTop, targetWidth, targetHeight));
         }
         finally
         {
@@ -105,6 +125,13 @@ public static class WindowsPetWindowController
 
     private static int ScaleEdge(double value, double viewportSize, int clientSize)
         => checked((int)Math.Round(value * clientSize / viewportSize, MidpointRounding.AwayFromZero));
+
+    private static nint ParseWindowHandle(string value)
+    {
+        var rawHandle = ulong.Parse(value, NumberStyles.None, CultureInfo.InvariantCulture);
+        var handle = unchecked((nint)rawHandle);
+        return handle != 0 ? handle : throw new ArgumentOutOfRangeException(nameof(value));
+    }
 
     [DllImport("user32.dll")]
     private static extern int GetSystemMetrics(int index);
@@ -119,6 +146,10 @@ public static class WindowsPetWindowController
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetClientRect(nint window, out NativeRect rectangle);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(nint window, out NativeRect rectangle);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern int MapWindowPoints(nint fromWindow, nint toWindow, ref NativeRect points, uint pointCount);
@@ -137,3 +168,4 @@ public static class WindowsPetWindowController
 }
 
 public sealed record PetWindowBounds(int X, int Y, int Width, int Height);
+public sealed record PetWindowPlacement(PetWindowBounds AnchorBounds, PetWindowBounds WindowBounds);

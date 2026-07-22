@@ -268,9 +268,10 @@ export class PetWindowManager {
     this.log.info('pet-window', 'Pet window fitted to Windows virtual desktop', { bounds, electronBounds: window.getBounds() })
   }
 
-  async resolveItemAnchor(): Promise<Rectangle> {
+  async positionWindowAtItem(targetWindow: BrowserWindow): Promise<void> {
     const window = this.windows.get('pet')
     if (window === undefined || window.isDestroyed()) throw new Error('PetWindow is unavailable')
+    if (targetWindow.isDestroyed()) throw new Error('Target window is unavailable')
     const value: unknown = await window.webContents.executeJavaScript(`(() => {
       const item = document.querySelector('.ui-pet-item');
       if (!(item instanceof HTMLElement)) throw new Error('PET item is unavailable');
@@ -285,14 +286,16 @@ export class PetWindowManager {
       };
     })()`)
     const local = readClientAnchor(value)
-    const physical = await this.core.invoke(randomUUID(), {
-      type: 'system.window.map_client_rect',
-      payload: { windowHandle: readWindowHandle(window), ...local }
+    const placement = await this.core.invoke(randomUUID(), {
+      type: 'system.window.center_on_client_rect',
+      payload: {
+        petWindowHandle: readWindowHandle(window),
+        targetWindowHandle: readWindowHandle(targetWindow),
+        ...local
+      }
     }, new AbortController().signal)
-    const physicalBounds = readRectangle(physical)
-    const dipBounds = screen.screenToDipRect(null, physicalBounds)
-    this.log.info('pet-window', 'PET item anchor resolved for first window placement', { local, physicalBounds, dipBounds })
-    return dipBounds
+    const result = readPlacement(placement)
+    this.log.info('pet-window', 'Window positioned from PET item in one Win32 request', { local, ...result })
   }
 
   private readonly handleDisplaysChanged = (): void => {
@@ -332,11 +335,18 @@ function readClientAnchor(value: unknown): { x: number; y: number; width: number
   return { x, y, width, height, viewportWidth, viewportHeight }
 }
 
-function readRectangle(value: unknown): Rectangle {
+interface PhysicalRectangle { x: number; y: number; width: number; height: number }
+
+function readRectangle(value: unknown): PhysicalRectangle {
   if (!isRecord(value)) throw new TypeError('Invalid Win32 rectangle')
   const { x, y, width, height } = value
   if (!isFiniteNumber(x) || !isFiniteNumber(y) || !isPositiveFiniteNumber(width) || !isPositiveFiniteNumber(height)) throw new TypeError('Invalid Win32 rectangle')
   return { x, y, width, height }
+}
+
+function readPlacement(value: unknown): { anchorBounds: PhysicalRectangle; windowBounds: PhysicalRectangle } {
+  if (!isRecord(value)) throw new TypeError('Invalid Win32 window placement')
+  return { anchorBounds: readRectangle(value.anchorBounds), windowBounds: readRectangle(value.windowBounds) }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
