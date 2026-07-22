@@ -241,8 +241,22 @@ export class WindowManager {
     if (kind === 'pet' || kind === 'tray-menu' || kind === 'music-visualizer') return
     const owner = ownerKind === undefined ? undefined : this.get(ownerKind)
     if (ownerKind === 'pet' && owner !== undefined) {
-      const petBounds = resolvePetVisualBounds(owner.getBounds(), this.petVisualBounds)
-      const workArea = screen.getDisplayMatching(petBounds).workArea
+      const petWindowBounds = owner.getBounds()
+      const rendererScaleFactor = this.petVisualBounds?.scaleFactor ?? screen.getDisplayNearestPoint({
+        x: petWindowBounds.x,
+        y: petWindowBounds.y
+      }).scaleFactor
+      const petBounds = resolvePetVisualBounds(
+        petWindowBounds,
+        this.petVisualBounds,
+        {
+          dipToScreenPoint: (point) => screen.dipToScreenPoint(point),
+          screenToDipPoint: (point) => screen.screenToDipPoint(point)
+        },
+        rendererScaleFactor
+      )
+      const petCenter = { x: petBounds.x + petBounds.width / 2, y: petBounds.y + petBounds.height / 2 }
+      const workArea = screen.getDisplayNearestPoint(petCenter).workArea
       window.setBounds(positionWindowNearPet(
         window.getBounds(),
         petBounds,

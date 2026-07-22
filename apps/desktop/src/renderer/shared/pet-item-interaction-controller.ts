@@ -201,7 +201,8 @@ export class PetItemInteractionController {
         x: Math.round(bounds.x),
         y: Math.round(bounds.y),
         width: Math.round(bounds.width),
-        height: Math.round(bounds.height)
+        height: Math.round(bounds.height),
+        scaleFactor: window.devicePixelRatio
       })
     })
   }

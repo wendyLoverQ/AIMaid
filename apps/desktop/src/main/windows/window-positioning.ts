@@ -9,20 +9,49 @@ export interface Bounds {
   height: number
 }
 
+export interface Point {
+  x: number
+  y: number
+}
+
+export interface ScreenCoordinateMapper {
+  dipToScreenPoint: (point: Point) => Point
+  screenToDipPoint: (point: Point) => Point
+}
+
 export type PetWindowAlignment = 'center' | 'right-of-center'
 
 const PET_WINDOW_GAP = 16
 
-export function resolvePetVisualBounds(petWindowBounds: Bounds, rendererVisualBounds?: Bounds): Bounds {
+export function resolvePetVisualBounds(
+  petWindowBounds: Bounds,
+  rendererVisualBounds?: Bounds,
+  coordinateMapper?: ScreenCoordinateMapper,
+  rendererScaleFactor = 1
+): Bounds {
   const relative = rendererVisualBounds ?? {
     x: Math.round((petWindowBounds.width - PET_BASE_WINDOW_WIDTH) / 2),
     y: Math.round((petWindowBounds.height - PET_BASE_WINDOW_HEIGHT) / 2),
     width: PET_BASE_WINDOW_WIDTH,
     height: PET_BASE_WINDOW_HEIGHT
   }
+  if (coordinateMapper === undefined) {
+    return {
+      x: petWindowBounds.x + relative.x,
+      y: petWindowBounds.y + relative.y,
+      width: relative.width,
+      height: relative.height
+    }
+  }
+
+  const physicalWindowOrigin = coordinateMapper.dipToScreenPoint({ x: petWindowBounds.x, y: petWindowBounds.y })
+  const center = coordinateMapper.screenToDipPoint({
+    x: physicalWindowOrigin.x + (relative.x + relative.width / 2) * rendererScaleFactor,
+    y: physicalWindowOrigin.y + (relative.y + relative.height / 2) * rendererScaleFactor
+  })
   return {
-    x: petWindowBounds.x + relative.x,
-    y: petWindowBounds.y + relative.y,
+    x: center.x - relative.width / 2,
+    y: center.y - relative.height / 2,
     width: relative.width,
     height: relative.height
   }

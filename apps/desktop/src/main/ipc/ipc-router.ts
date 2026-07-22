@@ -500,12 +500,18 @@ function readPetWindowUpdate(payload: unknown): PetWindowUpdate {
 
 function readPetVisualBounds(payload: unknown): PetVisualBounds {
   if (!isRecord(payload)) throw new TypeError('Invalid pet visual bounds payload')
-  const values = ['x', 'y', 'width', 'height'].map((key) => payload[key])
+  const values = ['x', 'y', 'width', 'height', 'scaleFactor'].map((key) => payload[key])
   if (!values.every((value) => typeof value === 'number' && Number.isFinite(value)) ||
-      (values[2] as number) <= 0 || (values[3] as number) <= 0) {
+      (values[2] as number) <= 0 || (values[3] as number) <= 0 || (values[4] as number) <= 0) {
     throw new TypeError('Invalid pet visual bounds payload')
   }
-  return { x: values[0] as number, y: values[1] as number, width: values[2] as number, height: values[3] as number }
+  return {
+    x: values[0] as number,
+    y: values[1] as number,
+    width: values[2] as number,
+    height: values[3] as number,
+    scaleFactor: values[4] as number
+  }
 }
 
 function toIpcError(error: unknown): IpcError {

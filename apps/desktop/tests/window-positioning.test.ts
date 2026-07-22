@@ -5,7 +5,7 @@ describe('pet-relative window positioning', () => {
   const workArea = { x: 0, y: 0, width: 1920, height: 1040 }
   const pet = { x: 1200, y: 400, width: 400, height: 600 }
 
-  it('places regular tool windows to the right of the pet center', () => {
+  it('places regular tool windows to the right of the pet center anchor', () => {
     expect(positionWindowNearPet(
       { x: 0, y: 0, width: 480, height: 560 }, pet, workArea, 'right-of-center'
     )).toEqual({ x: 1416, y: 420, width: 480, height: 560 })
@@ -37,6 +37,24 @@ describe('pet-relative window positioning', () => {
       { x: -1920, y: -200, width: 4480, height: 1640 },
       { x: 3120, y: 620, width: 560, height: 980 }
     )).toEqual({ x: 1200, y: 420, width: 560, height: 980 })
+  })
+
+  it('maps a pet center through physical pixels on a mixed-DPI three-screen desktop', () => {
+    const mapped = resolvePetVisualBounds(
+      { x: -1152, y: -1011, width: 4928, height: 3073 },
+      { x: 3720, y: 300, width: 560, height: 400 },
+      {
+        dipToScreenPoint: ({ x, y }) => ({ x: Math.round(x * 1.25), y: Math.round(y * 1.25) }),
+        screenToDipPoint: ({ x, y }) => ({
+          x: 2048 + (x - 2560) / 1.75,
+          y: -723 + (y + 1264) / 1.75
+        })
+      },
+      1.25
+    )
+
+    expect(mapped.x + mapped.width / 2).toBeCloseTo(2619.43, 2)
+    expect(mapped.y + mapped.height / 2).toBeCloseTo(-365.86, 2)
   })
 
   it('uses the centered pet item as the deterministic initial anchor before the renderer report arrives', () => {
