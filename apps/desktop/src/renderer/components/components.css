@@ -82,6 +82,11 @@
 .ui-pet-audio-contour { position: absolute; z-index: 1; top: 0; left: 0; display: block; width: 1px; height: 1px; background: transparent; pointer-events: none; }
 .ui-pet-item { position: absolute; left: 50%; top: 50%; width: 560px; height: 980px; overflow: visible; transform: translate(-50%, -50%); transform-origin: center; }
 .ui-pet-item > .ui-transparent-canvas { overflow: visible; }
+.ui-pet-item > .ui-transparent-canvas[data-mode="image"] { animation: ui-pet-breathing 3.5s ease-in-out infinite; }
+@keyframes ui-pet-breathing {
+  0%, 100% { transform: translateX(-50%) scale(1); }
+  50% { transform: translateX(-50%) scale(1.025); }
+}
 html:has(.ui-transparent-stage), body:has(.ui-transparent-stage), #root:has(.ui-transparent-stage) { min-width: 0; background: transparent !important; }
 html:has(.ui-media-canvas), body:has(.ui-media-canvas), #root:has(.ui-media-canvas) { min-width: 0; background: transparent !important; }
 .ui-main-region:has(> .ui-media-canvas) { width: 100vw; height: 100vh; padding: 0; overflow: hidden; background: transparent; }

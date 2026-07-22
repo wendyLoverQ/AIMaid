@@ -305,7 +305,7 @@ function ImageMode({ canvasRef, presentation, scale, onAdvance, onFirstFrame, re
     const canvasHeight = Math.max(1, Math.round(PET_CANVAS_HEIGHT * backingScale));
     return presentation.currentImage === null
         ? <Container>未找到图片。右键选择图片文件夹。</Container>
-        : <TransparentCanvas ref={canvasRef} width={canvasWidth} height={canvasHeight} aria-label={presentation.currentImage.name}/>;
+        : <TransparentCanvas ref={canvasRef} width={canvasWidth} height={canvasHeight} aria-label={presentation.currentImage.name} data-mode="image"/>;
 }
 async function loadMusicVisualizerStyle(): Promise<MusicVisualizerStyle> {
     const response = await bridge.core.invoke({ type: 'settings.get', payload: { keys: [MUSIC_VISUALIZER_STYLE_KEY] } });
