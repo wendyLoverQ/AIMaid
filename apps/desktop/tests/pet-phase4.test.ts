@@ -128,7 +128,11 @@ describe('phase 4 PetWindow integration', () => {
     expect(contour).toContain('captureAlphaContour(source, maskCanvas)')
     expect(contour).toContain('bars.moveTo(')
     expect(contour).toContain('bars.lineTo(')
+    expect(contour).toContain('for (let distance = 0; distance < perimeter; distance += spacing)')
+    expect(contour).not.toContain('const pointStep =')
     expect(contour).not.toContain('path.closePath()')
+    expect(contour).toContain("getPropertyValue('--color-accent')")
+    expect(contour).not.toContain("|| '#6e8fff'")
     expect(router).not.toContain("this.windows.open('music-visualizer')")
   })
 

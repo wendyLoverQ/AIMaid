@@ -22,7 +22,7 @@ export function PetAudioContour({ sourceCanvasRef, readContour, geometry = 'cont
     if (overlay === null) return
     const maskCanvas = document.createElement('canvas')
     const spectrum = new Uint8Array(ALPHA_CONTOUR_ANGLE_COUNT / 2)
-    const smoothed = new Float32Array(ALPHA_CONTOUR_ANGLE_COUNT)
+    const smoothed = new Float32Array(spectrum.length)
     let contour: AlphaContour | null = null
     let lastMaskAt = Number.NEGATIVE_INFINITY
     let animationId = 0
@@ -103,32 +103,44 @@ function drawAudioBars(
   const centerX = contour.center.x * width
   const centerY = contour.center.y * height
   const bars = new Path2D()
-  const pointStep = 4
-  for (let index = 0; index < contour.points.length; index += pointStep) {
-    const point = contour.points[index]!
-    const previous = contour.points[(index - pointStep + contour.points.length) % contour.points.length]!
-    const next = contour.points[(index + pointStep) % contour.points.length]!
-    const x = point.x * width
-    const y = point.y * height
-    const tangentX = next.x * width - previous.x * width
-    const tangentY = next.y * height - previous.y * height
-    const tangentLength = Math.max(0.001, Math.hypot(tangentX, tangentY))
-    let normalX = tangentY / tangentLength
-    let normalY = -tangentX / tangentLength
+  const points = contour.points.map((point) => ({ x: point.x * width, y: point.y * height }))
+  const segments = points.map((point, index) => {
+    const next = points[(index + 1) % points.length]!
+    return { start: point, end: next, length: Math.hypot(next.x - point.x, next.y - point.y) }
+  })
+  const perimeter = segments.reduce((sum, segment) => sum + segment.length, 0)
+  const spacing = Math.max(2.5, size * 0.006)
+  for (let index = 0; index < spectrum.length; index += 1) {
+    smoothed[index] = smoothed[index]! * 0.68 + spectrum[index]! / 255 * 0.32
+  }
+  let segmentIndex = 0
+  let segmentStartDistance = 0
+  for (let distance = 0; distance < perimeter; distance += spacing) {
+    while (segmentIndex < segments.length - 1 && distance > segmentStartDistance + segments[segmentIndex]!.length) {
+      segmentStartDistance += segments[segmentIndex]!.length
+      segmentIndex += 1
+    }
+    const segment = segments[segmentIndex]!
+    if (segment.length <= 0.001) continue
+    const progress = Math.min(1, (distance - segmentStartDistance) / segment.length)
+    const x = segment.start.x + (segment.end.x - segment.start.x) * progress
+    const y = segment.start.y + (segment.end.y - segment.start.y) * progress
+    const tangentX = (segment.end.x - segment.start.x) / segment.length
+    const tangentY = (segment.end.y - segment.start.y) / segment.length
+    let normalX = tangentY
+    let normalY = -tangentX
     if (normalX * (x - centerX) + normalY * (y - centerY) < 0) {
       normalX *= -1
       normalY *= -1
     }
-    const barIndex = Math.floor(index / pointStep)
-    const bandIndex = Math.round(barIndex / (contour.points.length / pointStep - 1) * (spectrum.length - 1))
-    const band = spectrum[bandIndex]! / 255
-    smoothed[index] = smoothed[index]! * 0.68 + band * 0.32
-    const barLength = minimumLength + smoothed[index]! * waveRange
+    const bandIndex = Math.min(spectrum.length - 1, Math.floor(distance / perimeter * spectrum.length))
+    const barLength = minimumLength + smoothed[bandIndex]! * waveRange
     bars.moveTo(x + normalX * baseGap, y + normalY * baseGap)
     bars.lineTo(x + normalX * (baseGap + barLength), y + normalY * (baseGap + barLength))
   }
 
-  const accent = getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim() || '#6e8fff'
+  const accent = getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim()
+  if (accent === '') return
   context.save()
   context.lineCap = 'butt'
   context.strokeStyle = accent
