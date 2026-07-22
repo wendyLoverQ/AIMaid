@@ -17,6 +17,17 @@ describe('workflow integrity', () => {
     expect(windowFactory).toContain('icon: this.iconPath')
   })
 
+  it('positions the tray menu before showing it and lets the window manager wait for rendering', () => {
+    const trayController = read('src/main/services/tray-controller.ts')
+    const position = trayController.indexOf('menu.setPosition(x, y, false)')
+    const reopen = trayController.indexOf("if (existingMenu !== undefined) this.windows.open('tray-menu')")
+    expect(trayController).toContain("const existingMenu = this.windows.get('tray-menu')")
+    expect(position).toBeGreaterThan(-1)
+    expect(reopen).toBeGreaterThan(position)
+    expect(trayController).not.toContain('menu.show()')
+    expect(trayController).not.toContain('menu.focus()')
+  })
+
   it('derives timer progress from timestamps even when interval callbacks are delayed', () => {
     expect(calculateTimerClock('countup', 1_000, 4, 0, 6_900)).toEqual({ elapsedSeconds: 9, remainingSeconds: 0, completed: false })
     expect(calculateTimerClock('countdown', 1_000, 2, 10, 14_400)).toEqual({ elapsedSeconds: 12, remainingSeconds: 0, completed: true })

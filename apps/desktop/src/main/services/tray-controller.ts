@@ -31,7 +31,8 @@ export class TrayController {
   private readonly showMenu = (): void => {
     const point = screen.getCursorScreenPoint()
     const work = screen.getDisplayNearestPoint(point).workArea
-    const menu = this.windows.open('tray-menu')
+    const existingMenu = this.windows.get('tray-menu')
+    const menu = existingMenu ?? this.windows.open('tray-menu')
     const bounds = menu.getBounds()
     const gap = 8
     let x = Math.min(Math.max(point.x - bounds.width + gap, work.x), work.x + work.width - bounds.width)
@@ -39,7 +40,6 @@ export class TrayController {
     if (y < work.y) y = Math.min(point.y + gap, work.y + work.height - bounds.height)
     x = Math.round(x); y = Math.round(Math.max(work.y, y))
     menu.setPosition(x, y, false)
-    menu.show()
-    menu.focus()
+    if (existingMenu !== undefined) this.windows.open('tray-menu')
   }
 }
