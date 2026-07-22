@@ -19,16 +19,20 @@ describe('workflow integrity', () => {
 
   it('positions the tray menu before showing it and lets the window manager wait for rendering', () => {
     const trayController = read('src/main/services/tray-controller.ts')
-    const position = trayController.indexOf('menu.setPosition(x, y, false)')
-    const reopen = trayController.indexOf("if (existingMenu !== undefined) this.windows.open('tray-menu')")
+    const windowManager = read('src/main/windows/window-manager.ts')
+    const position = trayController.indexOf('menu.setBounds({ ...bounds, x, y }, false)')
+    const show = trayController.indexOf('menu.show()')
     expect(trayController).toContain("const existingMenu = this.windows.get('tray-menu')")
-    expect(trayController).toContain("this.tray.on('right-click', this.queueRightClickMenu)")
-    expect(trayController).toContain('RIGHT_CLICK_SETTLE_DELAY_MS')
-    expect(trayController).not.toContain("this.tray.on('right-click', this.showMenu)")
+    expect(trayController).toContain("this.tray.on('right-click', this.showMenu)")
+    expect(trayController).not.toContain('RIGHT_CLICK_SETTLE_DELAY_MS')
+    expect(trayController).not.toContain('pendingRightClick')
+    expect(trayController).toContain('if (existingMenu?.isVisible())')
     expect(position).toBeGreaterThan(-1)
-    expect(reopen).toBeGreaterThan(position)
-    expect(trayController).not.toContain('menu.show()')
-    expect(trayController).not.toContain('menu.focus()')
+    expect(show).toBeGreaterThan(position)
+    expect(windowManager).toContain("if (kind !== 'pet' && kind !== 'tray-menu')")
+    expect(windowManager).toContain("if (kind === 'tray-menu') {")
+    expect(windowManager).toContain("if (kind === 'pet' || kind === 'tray-menu') return window")
+    expect(windowManager).toContain('if (!this.trayIconPointerDown) window.hide()')
   })
 
   it('derives timer progress from timestamps even when interval callbacks are delayed', () => {

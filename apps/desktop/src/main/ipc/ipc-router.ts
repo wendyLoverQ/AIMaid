@@ -310,6 +310,8 @@ export class IpcRouter {
         const height = Math.min(requestedHeight, workArea.height)
         const bottom = Math.min(Math.max(bounds.y + bounds.height, workArea.y + height), workArea.y + workArea.height)
         window.setBounds({ x: bounds.x, y: bottom - height, width: bounds.width, height }, false)
+        window.show()
+        window.focus()
         return { height }
       }
       case 'douyin.session.save':

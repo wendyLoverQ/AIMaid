@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Button, Container, Divider, Range, Text, TrayMenuSurface, TrayMusicPlayer } from '../../components/ui'
 import type { IpcEventEnvelope } from '../../../shared/ipc'
 import { bridge } from '../../shared/bridge'
@@ -20,16 +20,24 @@ export function TrayMenuPage(): React.JSX.Element {
   const safeAudio: MasterAudioState = { muted: true, volume: 0 }
   const confirmedAudio = useRef(safeAudio)
   const surfaceRef = useRef<HTMLElement>(null)
+  const heightReported = useRef(false)
   const [audio, setAudio] = useState<MasterAudioState>(safeAudio)
   const [music, setMusic] = useState<MusicPlaybackState | null>(null)
   const [error, setError] = useState('')
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    void loadMasterAudio().then((loaded) => {
-      confirmedAudio.current = loaded
-      setAudio(loaded)
-    }).catch((reason: unknown) => setError(messageOf(reason, '主音量设置读取失败。')))
-    void loadCurrentMusic().then(setMusic).catch((reason: unknown) => setError(messageOf(reason, '当前音乐读取失败。')))
+    void Promise.allSettled([loadMasterAudio(), loadCurrentMusic()]).then(([audioResult, musicResult]) => {
+      if (audioResult.status === 'fulfilled') {
+        confirmedAudio.current = audioResult.value
+        setAudio(audioResult.value)
+      } else {
+        setError(messageOf(audioResult.reason, '主音量设置读取失败。'))
+      }
+      if (musicResult.status === 'fulfilled') setMusic(musicResult.value)
+      else setError(messageOf(musicResult.reason, '当前音乐读取失败。'))
+      setReady(true)
+    })
     return bridge.events.subscribe(
       ['music.playback.requested', 'music.playback.state_changed', 'music.playback.stopped'],
       (event) => updateMusicFromEvent(event, setMusic)
@@ -79,23 +87,15 @@ export function TrayMenuPage(): React.JSX.Element {
     await bridge.window.close()
   }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const surface = surfaceRef.current
-    if (surface === null) return
-    let lastHeight = 0
-    const report = (): void => {
-      const height = Math.ceil(surface.getBoundingClientRect().height)
-      if (height === lastHeight) return
-      lastHeight = height
-      void bridge.tray.resize(height).then((response) => {
-        if (!response.success) setError(response.error?.message ?? '托盘尺寸更新失败。')
-      })
-    }
-    const observer = new ResizeObserver(report)
-    observer.observe(surface)
-    report()
-    return () => observer.disconnect()
-  }, [])
+    if (!ready || surface === null || heightReported.current) return
+    heightReported.current = true
+    const height = Math.ceil(surface.getBoundingClientRect().height)
+    void bridge.tray.resize(height).then((response) => {
+      if (!response.success) setError(response.error?.message ?? '托盘尺寸更新失败。')
+    })
+  }, [ready])
   const hasMusic = music !== null && music.url !== '' && (music.isPlaying || music.isPaused)
   return <TrayMenuSurface ref={surfaceRef} onKeyDown={(event) => { if (event.key === 'Escape') void bridge.window.close() }} tabIndex={-1}>
     <Button onClick={() => run('show')}>显示</Button>

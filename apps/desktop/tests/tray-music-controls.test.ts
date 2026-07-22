@@ -11,8 +11,9 @@ describe('tray music controls', () => {
     expect(tray).toContain("type: 'music.current'")
     expect(tray).toContain("type: action === 'toggle-pause' ? 'music.toggle_pause' : 'music.stop'")
     expect(tray).toContain('<TrayMusicPlayer')
-    expect(tray).toContain('new ResizeObserver(report)')
+    expect(tray).not.toContain('ResizeObserver')
     expect(tray).toContain('bridge.tray.resize(height)')
+    expect(tray).toContain('heightReported.current = true')
     expect(player).toContain("label={paused ? '继续播放' : '暂停'}")
     expect(player).toContain('<UiIcon name={paused ? \'play\' : \'pause\'} />')
     expect(player).toContain('label="停止"')
@@ -22,10 +23,15 @@ describe('tray music controls', () => {
 
   it('shrinks the menu when idle and preserves its bottom edge', () => {
     const router = readFileSync(resolve(root, 'src/main/ipc/ipc-router.ts'), 'utf8')
+    const resizeStart = router.indexOf("case 'tray.resize'")
+    const resizeEnd = router.indexOf("case 'douyin.session.save'", resizeStart)
+    const resizeHandler = router.slice(resizeStart, resizeEnd)
     expect(router).toContain("case 'tray.resize'")
     expect(router).toContain('const requestedHeight = readTrayHeight(request.payload)')
     expect(router).toContain('const height = Math.min(requestedHeight, workArea.height)')
     expect(router).toContain('bottom - height')
+    expect(resizeHandler.indexOf('window.show()')).toBeGreaterThan(resizeHandler.indexOf('window.setBounds'))
+    expect(resizeHandler.slice(resizeHandler.indexOf('window.show()'))).not.toContain('window.setBounds')
     expect(router).not.toMatch(/visible \? \d+ : \d+/u)
   })
 

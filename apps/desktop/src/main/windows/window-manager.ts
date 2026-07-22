@@ -23,6 +23,7 @@ export class WindowManager {
   private readonly windows = new Map<WindowKind, BrowserWindow>()
   private destroyingAll = false
   private foreignWindowMoveHandlers: ForeignWindowMoveHandlers | undefined
+  private trayIconPointerDown = false
 
   constructor(
     private readonly factory: WindowFactory,
@@ -33,10 +34,18 @@ export class WindowManager {
     this.foreignWindowMoveHandlers = handlers
   }
 
+  setTrayIconPointerDown(pointerDown: boolean): void {
+    this.trayIconPointerDown = pointerDown
+  }
+
   open(kind: WindowKind, ownerKind?: WindowKind, context: WindowActionContext = {}): BrowserWindow {
     const existing = this.get(kind)
     if (existing !== undefined) {
       this.positionWindow(kind, existing, ownerKind, context)
+      if (kind === 'tray-menu') {
+        this.log.info('window', 'Existing window opened', { kind, windowId: existing.id, ...context })
+        return existing
+      }
       if (kind === 'pet') existing.showInactive()
       else {
         if (kind === 'chat') existing.setAlwaysOnTop(true, 'screen-saver')
@@ -53,7 +62,7 @@ export class WindowManager {
 
     if (kind === 'chat') window.setAlwaysOnTop(true, 'screen-saver')
 
-    if (kind !== 'pet') {
+    if (kind !== 'pet' && kind !== 'tray-menu') {
       this.attachForeignWindowMoveGuard(window)
     }
 
@@ -72,7 +81,9 @@ export class WindowManager {
       window.webContents.once('did-finish-load', showLoadedWindow)
     }
     if (kind === 'chat') window.on('blur', () => window.hide())
-    if (kind === 'tray-menu') window.on('blur', () => window.hide())
+    if (kind === 'tray-menu') window.on('blur', () => {
+      if (!this.trayIconPointerDown) window.hide()
+    })
     window.on('close', (event) => {
       if (!this.destroyingAll && definition.closeBehavior === 'hide') {
         event.preventDefault()
@@ -95,7 +106,7 @@ export class WindowManager {
 
   async openAndWait(kind: WindowKind, ownerKind?: WindowKind, context: WindowActionContext = {}): Promise<BrowserWindow> {
     const window = this.open(kind, ownerKind, context)
-    if (kind === 'pet') return window
+    if (kind === 'pet' || kind === 'tray-menu') return window
 
     if (!window.isVisible()) {
       if (window.webContents.isLoadingMainFrame()) {
