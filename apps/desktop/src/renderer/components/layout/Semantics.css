@@ -2,3 +2,10 @@ body.prompt-surface .ui-main-region > .ui-section[data-variant="prompt"] {
   width: min(272px, calc(100vw - var(--space-4)));
   padding: var(--space-3) var(--space-4);
 }
+
+body.prompt-surface .ui-main-region > .ui-section[data-variant="prompt"] .ui-textarea {
+  min-height: 0;
+  height: auto;
+  max-height: none;
+  resize: none;
+}
