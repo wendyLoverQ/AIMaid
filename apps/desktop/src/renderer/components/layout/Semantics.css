@@ -1,0 +1,3 @@
+body.prompt-surface .ui-main-region > .ui-section[data-variant="prompt"] {
+  width: min(380px, calc(100vw - var(--space-8)));
+}

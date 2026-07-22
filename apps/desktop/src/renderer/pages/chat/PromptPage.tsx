@@ -87,7 +87,7 @@ export function PromptPage(): React.JSX.Element {
             if (event.target === event.currentTarget)
                 void bridge.window.hide();
         }}>
-    <Section aria-label="快捷输入" onMouseDown={(event) => event.stopPropagation()}>
+    <Section variant="prompt" aria-label="快捷输入" onMouseDown={(event) => event.stopPropagation()}>
       <Textarea ref={input} aria-label="快捷输入内容" value={text} rows={2} onChange={(event) => setText(event.target.value)} onKeyDown={(event) => {
             if (event.key === 'Escape') {
                 event.preventDefault();

@@ -3,6 +3,7 @@ import type {
   HTMLAttributes, LabelHTMLAttributes, ProgressHTMLAttributes, PropsWithChildren,
   TimeHTMLAttributes
 } from 'react'
+import './Semantics.css'
 
 type Clean<T> = Omit<T, 'className' | 'style' | 'dangerouslySetInnerHTML'>
 
@@ -12,8 +13,9 @@ export const Container = forwardRef<HTMLDivElement, Clean<HTMLAttributes<HTMLDiv
 export const MainRegion = forwardRef<HTMLElement, Clean<HTMLAttributes<HTMLElement>>>(function MainRegion(props, ref) {
   return <main ref={ref} className="ui-main-region" {...props} />
 })
-export const Section = forwardRef<HTMLElement, Clean<HTMLAttributes<HTMLElement>>>(function Section(props, ref) {
-  return <section ref={ref} className="ui-section" {...props} />
+type SectionProps = Clean<HTMLAttributes<HTMLElement>> & { variant?: 'prompt' }
+export const Section = forwardRef<HTMLElement, SectionProps>(function Section({ variant, ...props }, ref) {
+  return <section ref={ref} className="ui-section" data-variant={variant} {...props} />
 })
 export const Article = forwardRef<HTMLElement, Clean<HTMLAttributes<HTMLElement>>>(function Article(props, ref) {
   return <article ref={ref} className="ui-article" {...props} />
