@@ -1,4 +1,4 @@
-import { Container, PetItemSurface, TransparentCanvas, TransparentStage } from "../../components/ui";
+import { Container, PetCoordinateReadout, PetItemSurface, TransparentCanvas, TransparentStage } from "../../components/ui";
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessageDto } from '../../../shared/business';
 import type { PetPresentationAction, PetPresentationSnapshot } from '../../../shared/presentation';
@@ -33,6 +33,7 @@ export default function PetPage(): React.JSX.Element {
     const [renderScale, setRenderScale] = useState(1);
     const [voiceMenu, setVoiceMenu] = useState({ roleName: '未选择', intimacy: '信赖 5 级' });
     const [visualizerStyle, setVisualizerStyle] = useState<MusicVisualizerStyle>('surround-bars');
+    const [coordinateText, setCoordinateText] = useState('正在读取 PET 绝对坐标…');
     const readySentRef = useRef(false);
     const stageRef = useRef<HTMLElement>(null);
     const itemRef = useRef<HTMLDivElement>(null);
@@ -107,6 +108,47 @@ export default function PetPage(): React.JSX.Element {
             interactionRef.current = null;
         };
     }, [refreshPresentation]);
+    useEffect(() => {
+        const item = itemRef.current;
+        if (item === null)
+            return;
+        let disposed = false;
+        let timer: number | null = null;
+        const refresh = async (): Promise<void> => {
+            timer = null;
+            const rect = item.getBoundingClientRect();
+            const response = await bridge.pet.captureCoordinates({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
+            if (disposed || !response.success || response.payload === null)
+                return;
+            const physical = response.payload.itemPhysicalBounds ?? enclosingPhysicalBounds(response.payload.segments.map((segment) => segment.physicalBounds));
+            if (physical === null) {
+                setCoordinateText('PET 不在任何已识别显示器内');
+                return;
+            }
+            setCoordinateText(`PET 绝对位置 X:${physical.x} Y:${physical.y} ｜ 宽:${physical.width} 高:${physical.height} px`);
+        };
+        const schedule = (): void => {
+            if (timer !== null)
+                window.clearTimeout(timer);
+            timer = window.setTimeout(() => { void refresh(); }, 80);
+        };
+        const resizeObserver = new ResizeObserver(schedule);
+        const mutationObserver = new MutationObserver(schedule);
+        resizeObserver.observe(item);
+        mutationObserver.observe(item, { attributes: true, attributeFilter: ['style'] });
+        window.addEventListener('resize', schedule);
+        const unsubscribe = bridge.pet.onLifecycle(schedule);
+        schedule();
+        return () => {
+            disposed = true;
+            if (timer !== null)
+                window.clearTimeout(timer);
+            resizeObserver.disconnect();
+            mutationObserver.disconnect();
+            window.removeEventListener('resize', schedule);
+            unsubscribe();
+        };
+    }, []);
     useEffect(() => {
         interactionRef.current?.setLocked(menu !== null);
     }, [menu]);
@@ -238,10 +280,20 @@ export default function PetPage(): React.JSX.Element {
       {presentation?.mode === 'live2d' ? <Live2DMode canvasRef={visualCanvasRef} role={presentation.live2dRole} scale={renderScale} registerHitTest={registerHitTest} registerPointerClick={registerPointerClick} registerContourReader={registerLiveContourReader} showBubble={showBubble}/> : null}
       <PetBubble message={bubble} speechHeld={speechHeld} onExpired={expireBubble}/>
     </PetItemSurface>
+    <PetCoordinateReadout text={coordinateText}/>
     {presentation !== null ? <PetAudioContour sourceCanvasRef={visualCanvasRef}
       readContour={presentation.mode === 'live2d' ? readLiveContour : undefined} visualizerStyle={visualizerStyle}/> : null}
     {menu !== null && presentation !== null ? <PetContextMenu position={menu} presentation={presentation} voiceMenu={voiceMenu} execute={(action) => void execute(action)} open={open} cycleVoiceIntimacy={() => void cycleVoiceIntimacy()} clearVoiceCache={() => void clearVoiceCache()} showCurrentConversation={() => void showCurrentConversation()} close={() => setMenu(null)}/> : null}
   </TransparentStage>;
+}
+function enclosingPhysicalBounds(rectangles: Array<{ x: number; y: number; width: number; height: number }>): { x: number; y: number; width: number; height: number } | null {
+    if (rectangles.length === 0)
+        return null;
+    const left = Math.min(...rectangles.map((rectangle) => rectangle.x));
+    const top = Math.min(...rectangles.map((rectangle) => rectangle.y));
+    const right = Math.max(...rectangles.map((rectangle) => rectangle.x + rectangle.width));
+    const bottom = Math.max(...rectangles.map((rectangle) => rectangle.y + rectangle.height));
+    return { x: left, y: top, width: right - left, height: bottom - top };
 }
 async function realtimeTtsEnabled(): Promise<boolean> {
     const response = await bridge.core.invoke({ type: 'settings.get', payload: { keys: ['realtime_tts_enabled'] } });

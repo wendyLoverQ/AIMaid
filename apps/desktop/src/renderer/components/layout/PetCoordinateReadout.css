@@ -1,0 +1,21 @@
+.ui-pet-coordinate-readout {
+  position: fixed;
+  z-index: 1000;
+  left: 50%;
+  top: 50%;
+  max-width: calc(100vw - 24px);
+  padding: 3px 7px;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 28%);
+  border-radius: 4px;
+  color: #fff;
+  background: rgb(0 0 0 / 68%);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 35%);
+  font: 11px/1.35 Consolas, "Microsoft YaHei UI", sans-serif;
+  letter-spacing: 0.1px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  user-select: none;
+}

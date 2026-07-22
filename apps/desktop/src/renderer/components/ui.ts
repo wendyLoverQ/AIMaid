@@ -44,6 +44,7 @@ export { ActionGroup, AppViewport, DetailList, DetailRow, PageToolbar, Surface, 
 export { PageHeader, SettingRow, SettingsSection, Toolbar } from './layout/Composites'
 export { LayoutSlot } from './layout/LayoutSlot'
 export { PetBubbleSurface } from './layout/PetBubbleSurface'
+export { PetCoordinateReadout } from './layout/PetCoordinateReadout'
 export {
   Center, Code, Divider, Fieldset, Form, Grid, Heading, Inline, KeyboardKey, MediaCanvas, MediaImage,
   Page, PageContent, PetAudioContourCanvas, PetItemSurface, SemanticRegion, Stack, Strong, Text, TimeText, TransparentCanvas, TransparentStage,
