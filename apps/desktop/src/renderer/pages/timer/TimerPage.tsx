@@ -128,7 +128,7 @@ export function TimerPage(): React.JSX.Element {
                     setRecords((current) => current.filter((item) => item.id !== id));
                     toast.show('记录已删除。', 'success');
                 }}/>
-            : <ProductWorkspace layout="single">
+            : <ProductWorkspace layout="single" data-product="timer">
         <ProductHero eyebrow={statusText} value={timeText} detail={mode === 'idle' ? undefined : `本次已计时 ${formatDuration(elapsedSeconds)}`} actions={<><Button variant="primary" disabled={mode === 'idle' || (mode === 'countdown' && remainingSeconds === 0)} onClick={toggleRunning}>{running ? '暂停' : '继续计时'}</Button><Button disabled={mode === 'idle'} onClick={reset}>重置</Button></>}/>
         <ProductPanel title="快速开始">
           <ProductGrid density="quick-actions">
@@ -163,7 +163,7 @@ function RecordsPage({ records, back, remove }: {
     const years = useMemo(() => Array.from(new Set([now.getFullYear(), ...records.map((item) => item.savedAt.getFullYear())])).sort((a, b) => b - a), [records, now]);
     const monthRecords = records.filter((item) => item.savedAt.getFullYear() === year && item.savedAt.getMonth() + 1 === month);
     const yearRecords = records.filter((item) => item.savedAt.getFullYear() === year);
-    return <ProductWorkspace layout="single">
+    return <ProductWorkspace layout="single" data-product="timer-records">
     <ProductToolbar lead={<Button onClick={back}>返回计时器</Button>} actions={<>
       <Select label="年份" value={String(year)} options={years.map((value) => ({ value: String(value), label: `${value} 年` }))} onChange={(event) => setYear(Number(event.target.value))}/>
       <Select label="月份" value={String(month)} options={Array.from({ length: 12 }, (_, index) => ({ value: String(index + 1), label: `${index + 1} 月` }))} onChange={(event) => setMonth(Number(event.target.value))}/>

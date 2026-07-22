@@ -11,10 +11,10 @@ describe('window registry and capabilities', () => {
 
   it('opens the timer large enough to show the complete timer and records workspaces', () => {
     expect(WINDOW_REGISTRY.timer.options).toMatchObject({
-      width: 720,
-      height: 760,
-      minWidth: 560,
-      minHeight: 640
+      width: 560,
+      height: 680,
+      minWidth: 520,
+      minHeight: 620
     })
   })
 
