@@ -69,6 +69,42 @@ describe('real C# Core integration', () => {
     }, new AbortController().signal)).rejects.toMatchObject({ code: 'settings.invalid_cache_period' })
   })
 
+  it('persists the music visualizer style in SQLite across a Core restart', async () => {
+    const restartRoot = join(tempRoot, 'music-visualizer-restart')
+    const restartEnvironment = {
+      ...environment,
+      AIMAID_DATA_ROOT: join(restartRoot, 'data'),
+      AIMAID_CONFIG_ROOT: join(restartRoot, 'config'),
+      AIMAID_CACHE_ROOT: join(restartRoot, 'cache'),
+      AIMAID_LOG_ROOT: join(restartRoot, 'logs')
+    }
+    const firstManager = new CoreProcessManager({ command: 'dotnet', args: [assembly], workingDirectory: dirname(assembly), environment: restartEnvironment }, silentLogger)
+    const firstClient = new StdioCoreClient(firstManager, '0.1.0-test', silentLogger)
+    await firstManager.start()
+    await firstClient.start()
+    await firstClient.invoke('request-visualizer-save-before-restart', {
+      type: 'settings.save', payload: { values: { music_visualizer_style: 'bottom-wave' } }
+    }, new AbortController().signal)
+    await firstClient.stop()
+    await firstManager.stop()
+
+    const secondManager = new CoreProcessManager({ command: 'dotnet', args: [assembly], workingDirectory: dirname(assembly), environment: restartEnvironment }, silentLogger)
+    const secondClient = new StdioCoreClient(secondManager, '0.1.0-test', silentLogger)
+    try {
+      await secondManager.start()
+      await secondClient.start()
+      const persisted = await secondClient.invoke('request-visualizer-read-after-restart', {
+        type: 'settings.get', payload: { keys: ['music_visualizer_style'] }
+      }, new AbortController().signal) as { settings: Array<{ key: string; value: string }> }
+      expect(persisted.settings).toContainEqual(expect.objectContaining({
+        key: 'music_visualizer_style', value: 'bottom-wave'
+      }))
+    } finally {
+      await secondClient.stop()
+      await secondManager.stop()
+    }
+  })
+
   it('allows hotkey settings without weakening secret-key protection', async () => {
     await client.invoke('request-settings-save-hotkey', {
       type: 'settings.save', payload: { values: { hotkey_open_chat: 'Ctrl+Shift+F' } }

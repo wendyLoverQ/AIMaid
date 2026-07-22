@@ -239,7 +239,10 @@ export default function PetPage(): React.JSX.Element {
       <PetBubble message={bubble} speechHeld={speechHeld} onExpired={expireBubble}/>
     </PetItemSurface>
     {presentation !== null ? <PetAudioContour sourceCanvasRef={visualCanvasRef}
-      readContour={presentation.mode === 'live2d' ? readLiveContour : undefined} visualizerStyle={visualizerStyle}/> : null}
+      readContour={presentation.mode === 'live2d' ? readLiveContour : undefined}
+      sourceKey={presentation.mode === 'image' ? `image:${presentation.currentImage?.url ?? ''}` :
+        presentation.mode === 'png-sequence' ? `png:${presentation.pngRole}` : `live2d:${presentation.live2dRole}`}
+      visualizerStyle={visualizerStyle}/> : null}
     {menu !== null && presentation !== null ? <PetContextMenu position={menu} presentation={presentation} voiceMenu={voiceMenu} execute={(action) => void execute(action)} open={open} cycleVoiceIntimacy={() => void cycleVoiceIntimacy()} clearVoiceCache={() => void clearVoiceCache()} showCurrentConversation={() => void showCurrentConversation()} close={() => setMenu(null)}/> : null}
   </TransparentStage>;
 }

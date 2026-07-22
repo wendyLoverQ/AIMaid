@@ -3,6 +3,8 @@ import { PetAudioContourCanvas } from '../../components/ui'
 import { ALPHA_CONTOUR_ANGLE_COUNT, buildOuterAlphaContour } from '../../../shared/alpha-contour'
 import type { AlphaContour } from '../../../shared/alpha-contour'
 import { advanceBarDynamics, barSpectrumTarget, spectrumPeak } from '../../../shared/audio-bar-dynamics'
+import { bottomBarIdentity, bottomBarSlots, createBottomBarLayout } from '../../../shared/music-visualizer'
+import type { BottomBarLayout } from '../../../shared/music-visualizer'
 import type { MusicVisualizerStyle } from '../../../shared/music-visualizer'
 import { readPetMusicSpectrum } from './pet-music-playback'
 
@@ -11,9 +13,10 @@ const MASK_REFRESH_MS = 120
 const SURROUND_PADDING = 72
 const BOTTOM_EXTENSION = 88
 
-export function PetAudioContour({ sourceCanvasRef, readContour, visualizerStyle }: {
+export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visualizerStyle }: {
   sourceCanvasRef: React.RefObject<HTMLCanvasElement | null>
   readContour?: (() => AlphaContour | null) | undefined
+  sourceKey: string
   visualizerStyle: MusicVisualizerStyle
 }): React.JSX.Element {
   const overlayRef = useRef<HTMLCanvasElement>(null)
@@ -30,6 +33,7 @@ export function PetAudioContour({ sourceCanvasRef, readContour, visualizerStyle 
     let lastMaskAt = Number.NEGATIVE_INFINITY
     let animationId = 0
     let wasActive = false
+    let bottomLayout: BottomBarLayout | null = null
 
     const render = (now: number): void => {
       const source = sourceCanvasRef.current
@@ -60,6 +64,9 @@ export function PetAudioContour({ sourceCanvasRef, readContour, visualizerStyle 
         contour = nextContour ?? contour
       }
       if (contour !== null) {
+        if (visualizerStyle === 'bottom-wave' && bottomLayout === null) {
+          bottomLayout = createBottomBarLayout(contour, sourceBounds.width)
+        }
         const region = positionOverlay(overlay, sourceBounds, stageBounds, visualizerStyle)
         resizeOverlay(overlay, region.width, region.height)
         const pixelRatio = overlay.width / region.width
@@ -67,7 +74,7 @@ export function PetAudioContour({ sourceCanvasRef, readContour, visualizerStyle 
         context.clearRect(0, 0, region.width, region.height)
         const x = sourceBounds.left - stageBounds.left - region.left
         const y = sourceBounds.top - stageBounds.top - region.top
-        if (visualizerStyle === 'bottom-wave' && contour !== null) drawBottomBars(context, contour, spectrum, dynamics, x, y, sourceBounds.width, sourceBounds.height)
+        if (visualizerStyle === 'bottom-wave' && bottomLayout !== null) drawBottomBars(context, contour, bottomLayout, spectrum, dynamics, x, y, sourceBounds.width, sourceBounds.height)
         else if (visualizerStyle !== 'bottom-wave' && contour !== null) drawSurroundWave(context, contour, spectrum, dynamics, x, y, sourceBounds.width, sourceBounds.height, visualizerStyle)
       }
       animationId = requestAnimationFrame(render)
@@ -75,7 +82,7 @@ export function PetAudioContour({ sourceCanvasRef, readContour, visualizerStyle 
 
     animationId = requestAnimationFrame(render)
     return () => cancelAnimationFrame(animationId)
-  }, [readContour, sourceCanvasRef, visualizerStyle])
+  }, [readContour, sourceCanvasRef, sourceKey, visualizerStyle])
 
   return <PetAudioContourCanvas ref={overlayRef} geometry="full" data-visualizer-style={visualizerStyle} aria-hidden="true" hidden/>
 }
@@ -196,6 +203,7 @@ function drawSurroundWave(
 function drawBottomBars(
   context: CanvasRenderingContext2D,
   contour: AlphaContour,
+  layout: BottomBarLayout,
   spectrum: Uint8Array,
   dynamics: Map<number, number>,
   offsetX: number,
@@ -203,26 +211,22 @@ function drawBottomBars(
   width: number,
   height: number
 ): void {
-  const contourLeft = Math.min(...contour.points.map((point) => point.x))
-  const contourRight = Math.max(...contour.points.map((point) => point.x))
   const contourBottom = Math.max(...contour.points.map((point) => point.y))
-  const left = offsetX + contourLeft * width
-  const usableWidth = Math.max(1, (contourRight - contourLeft) * width)
-  const spacing = 14
-  const count = Math.max(8, Math.floor(usableWidth / spacing))
+  const center = offsetX + layout.normalizedCenterX * width
+  const slots = bottomBarSlots(contour, width, layout.spacing)
   const baseline = offsetY + contourBottom * height + 8
   const peak = spectrumPeak(spectrum)
   const path = new Path2D()
-  for (let index = 0; index < count; index += 1) {
-    const target = barSpectrumTarget(spectrum, peak, index)
-    const level = advanceBarDynamics(dynamics.get(index) ?? 0, target, index)
-    dynamics.set(index, level)
-    const x = left + index / Math.max(1, count - 1) * usableWidth
+  for (const slot of slots) {
+    const identity = bottomBarIdentity(slot)
+    const target = barSpectrumTarget(spectrum, peak, identity)
+    const level = advanceBarDynamics(dynamics.get(identity) ?? 0, target, identity)
+    dynamics.set(identity, level)
+    const x = center + slot * layout.spacing
     const length = 10 + level * 58
     path.moveTo(x, baseline)
     path.lineTo(x, baseline + length)
   }
-  trimDynamics(dynamics, count)
   strokeVisualizer(context, path, 10, 6)
 }
 
