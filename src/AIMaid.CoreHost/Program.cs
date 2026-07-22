@@ -20,7 +20,10 @@ try
     paths.EnsureWritableDirectories();
     CoreLog.Write(Console.Error, "info", "startup_paths_ready", "Core writable directories initialized",
         durationMs: startup.Elapsed.TotalMilliseconds);
-    var store = new SqliteCoreStore(CoreStorageOptions.From(paths));
+    if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("AIMaid CoreHost 需要 Windows DPAPI。");
+    var vaultKey = WindowsSecretProtectionKeyStore.LoadOrCreate(paths);
+    var secretProtector = new AesGcmSecretProtector(new SecretProtectionOptions(vaultKey));
+    var store = new SqliteCoreStore(CoreStorageOptions.From(paths), secretProtector);
     await store.InitializeAsync();
     CoreLog.Write(Console.Error, "info", "startup_store_ready", "Core data store initialized",
         durationMs: startup.Elapsed.TotalMilliseconds);
@@ -40,16 +43,13 @@ try
     var proactive = new ProactiveApplicationService(store, store, events);
     using var statusServers = new StatusServerApplicationService();
     var codexQuota = new CodexQuotaApplicationService();
-    if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("AIMaid CoreHost 需要 Windows DPAPI。");
-    var vaultKey = WindowsSecretProtectionKeyStore.LoadOrCreate(paths);
-    var secretProtector = new AesGcmSecretProtector(new SecretProtectionOptions(vaultKey));
     var domains = new ExtendedDomainApplicationService(
         store,
         secretProtector,
         store,
         new UnconfiguredRemoteMediaResolver(),
         events);
-    using var aiProvider = new SettingsBackedAiProviderClient(domains, store, store);
+    using var aiProvider = new SettingsBackedAiProviderClient(domains, store, store, store);
     var chat = new ChatApplicationService(store, store, aiProvider, events);
     var templateCards = new TemplateCardApplicationService(store, store, aiProvider);
     using var httpAgentExecutor = new HttpApiAgentExecutor();

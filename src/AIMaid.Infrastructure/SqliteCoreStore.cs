@@ -1,6 +1,4 @@
 using System.Globalization;
-using System.Text.Json;
-using System.Text.Json.Nodes;
 using AIMaid.Contracts.Characters;
 using AIMaid.Contracts.Chat;
 using AIMaid.Contracts.Settings;
@@ -10,17 +8,20 @@ using Microsoft.Data.Sqlite;
 
 namespace AIMaid.Infrastructure;
 
-public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsStore, ICharacterStore, IBackgroundTaskStore, IDomainDocumentStore
+public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsStore, ICharacterStore, IBackgroundTaskStore, IDomainDocumentStore, ILlmCallAuditStore
 {
+    public static IReadOnlyDictionary<string, string> RelationalDomainTables => LegacyRelationalDocumentStore.DomainTables;
     private readonly string connectionString;
+    private readonly LegacyRelationalDocumentStore documents;
 
-    public SqliteCoreStore(CoreStorageOptions options)
+    public SqliteCoreStore(CoreStorageOptions options, ISecretProtector? secretProtector = null)
     {
         if (string.IsNullOrWhiteSpace(options.DatabasePath)) throw new ArgumentException("数据库路径不能为空。", nameof(options));
         if (!Path.IsPathFullyQualified(options.DatabasePath)) throw new ArgumentException("数据库路径必须是绝对路径。", nameof(options));
         var fullPath = Path.GetFullPath(options.DatabasePath);
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
         connectionString = new SqliteConnectionStringBuilder { DataSource = fullPath, ForeignKeys = true }.ToString();
+        documents = new LegacyRelationalDocumentStore(connectionString, secretProtector);
     }
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
@@ -29,6 +30,7 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
         await using var command = connection.CreateCommand();
         command.CommandText = """
             PRAGMA journal_mode=WAL;
+            DROP TABLE IF EXISTS CoreDocuments;
             CREATE TABLE IF NOT EXISTS AppSettings (
                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
                 Key TEXT NOT NULL UNIQUE,
@@ -83,19 +85,38 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
                 UpdatedAt TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS IX_CoreBackgroundTasks_Type_UpdatedAt ON CoreBackgroundTasks(TaskType, UpdatedAt DESC);
-            CREATE TABLE IF NOT EXISTS CoreDocuments (
-                Domain TEXT NOT NULL,
-                DocumentId TEXT NOT NULL,
-                Json TEXT NOT NULL,
-                UpdatedAt TEXT NOT NULL,
-                PRIMARY KEY (Domain, DocumentId)
+            CREATE TABLE IF NOT EXISTS ProactiveTriggerRules (
+                Id INTEGER NOT NULL CONSTRAINT PK_ProactiveTriggerRules PRIMARY KEY AUTOINCREMENT,
+                RuleId TEXT NOT NULL,
+                Enabled INTEGER NOT NULL,
+                Event TEXT NOT NULL,
+                ConditionJson TEXT NOT NULL,
+                Priority INTEGER NOT NULL,
+                CooldownSeconds INTEGER NOT NULL,
+                DisturbanceLevel TEXT NOT NULL,
+                AllowTts INTEGER NOT NULL,
+                ActionTag TEXT NOT NULL,
+                TextTemplatesJson TEXT NOT NULL,
+                Source TEXT NOT NULL,
+                CreatedAt TEXT NOT NULL,
+                UpdatedAt TEXT NOT NULL
             );
-            CREATE INDEX IF NOT EXISTS IX_CoreDocuments_Domain_UpdatedAt ON CoreDocuments(Domain, UpdatedAt DESC);
+            CREATE UNIQUE INDEX IF NOT EXISTS IX_ProactiveTriggerRules_RuleId ON ProactiveTriggerRules(RuleId);
+            CREATE INDEX IF NOT EXISTS IX_ProactiveTriggerRules_Event ON ProactiveTriggerRules(Event);
+            CREATE TABLE IF NOT EXISTS ProactiveTriggerStates (
+                Id INTEGER NOT NULL CONSTRAINT PK_ProactiveTriggerStates PRIMARY KEY AUTOINCREMENT,
+                RuleId TEXT NOT NULL,
+                LastTriggeredAt TEXT NULL,
+                TriggerCount INTEGER NOT NULL,
+                LastResult TEXT NOT NULL,
+                UpdatedAt TEXT NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS IX_ProactiveTriggerStates_RuleId ON ProactiveTriggerStates(RuleId);
             """;
         await command.ExecuteNonQueryAsync(cancellationToken);
+        await EnsureAppSettingsColumnsAsync(connection, cancellationToken);
         await EnsureCharacterColumnsAsync(connection, cancellationToken);
-        await NormalizeLegacyDocumentDatesAsync(connection, cancellationToken);
-        await NormalizeLegacyTimerRecordsAsync(connection, cancellationToken);
+        await EnsureTimerRecordColumnsAsync(connection, cancellationToken);
     }
 
     async Task<long> IChatStore.AppendAsync(ChatMessageDto message, CancellationToken cancellationToken)
@@ -266,11 +287,11 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
             INSERT INTO VoiceRoleCards (RoleId, Name, VoiceName, RoleTitle, CardPath, SourceCardJson, TemplateCardJson,
               CardSummary, CardSchemaVersion, TemplateCardSourceHash, TemplateCardGenerationStatus, TemplateCardGenerationMessage,
               TemplateCardGeneratedAt, TemplateCardLastAttemptAt, TemplateCardIterationCount, PreferredVoiceId,
-              ValidationStatus, ValidationMessage, LastValidatedAt, AvatarPath, IsEnabled, UpdatedAt)
+              ValidationStatus, ValidationMessage, LastValidatedAt, AvatarPath, IsEnabled, CreatedAt, UpdatedAt)
             VALUES ($roleId,$name,$voiceName,$roleTitle,$cardPath,$sourceCardJson,$templateCardJson,
               $cardSummary,$cardSchemaVersion,$templateCardSourceHash,$templateCardGenerationStatus,$templateCardGenerationMessage,
               $templateCardGeneratedAt,$templateCardLastAttemptAt,$templateCardIterationCount,$preferredVoiceId,
-              $validationStatus,$validationMessage,$lastValidatedAt,$avatarPath,$isEnabled,$updatedAt)
+              $validationStatus,$validationMessage,$lastValidatedAt,$avatarPath,$isEnabled,$createdAt,$updatedAt)
             ON CONFLICT(RoleId) DO UPDATE SET Name=excluded.Name, VoiceName=excluded.VoiceName, RoleTitle=excluded.RoleTitle,
               CardPath=excluded.CardPath, SourceCardJson=excluded.SourceCardJson, TemplateCardJson=excluded.TemplateCardJson,
               CardSummary=excluded.CardSummary, CardSchemaVersion=excluded.CardSchemaVersion,
@@ -305,6 +326,7 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
         command.Parameters.AddWithValue("$lastValidatedAt", DbValue(character.LastValidatedAt));
         command.Parameters.AddWithValue("$avatarPath", character.AvatarPath);
         command.Parameters.AddWithValue("$isEnabled", character.IsEnabled ? 1 : 0);
+        command.Parameters.AddWithValue("$createdAt", Format(character.UpdatedAt));
         command.Parameters.AddWithValue("$updatedAt", Format(character.UpdatedAt));
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
@@ -364,64 +386,61 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
     }
 
     async Task<string?> IDomainDocumentStore.GetAsync(string domain, string id, CancellationToken cancellationToken)
-    {
-        await using var connection = await OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT Json FROM CoreDocuments WHERE Domain=$domain AND DocumentId=$id";
-        command.Parameters.AddWithValue("$domain", domain);
-        command.Parameters.AddWithValue("$id", id);
-        return await command.ExecuteScalarAsync(cancellationToken) as string;
-    }
+        => await documents.GetAsync(domain, id, cancellationToken);
 
     async Task<IReadOnlyList<string>> IDomainDocumentStore.ListAsync(string domain, CancellationToken cancellationToken)
-    {
-        await using var connection = await OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT Json FROM CoreDocuments WHERE Domain=$domain ORDER BY UpdatedAt DESC, DocumentId";
-        command.Parameters.AddWithValue("$domain", domain);
-        var result = new List<string>();
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken)) result.Add(reader.GetString(0));
-        return result;
-    }
+        => await documents.ListAsync(domain, cancellationToken);
 
     async Task<IReadOnlyList<string>> IDomainDocumentStore.ListIdsAsync(string domain, CancellationToken cancellationToken)
-    {
-        await using var connection = await OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT DocumentId FROM CoreDocuments WHERE Domain=$domain ORDER BY UpdatedAt DESC, DocumentId";
-        command.Parameters.AddWithValue("$domain", domain);
-        var result = new List<string>();
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken)) result.Add(reader.GetString(0));
-        return result;
-    }
+        => await documents.ListIdsAsync(domain, cancellationToken);
 
     async Task IDomainDocumentStore.UpsertAsync(string domain, string id, string json, DateTimeOffset updatedAt, CancellationToken cancellationToken)
+        => await documents.UpsertAsync(domain, id, json, updatedAt, cancellationToken);
+
+    async Task IDomainDocumentStore.DeleteAsync(string domain, string id, CancellationToken cancellationToken)
+        => await documents.DeleteAsync(domain, id, cancellationToken);
+
+    async Task ILlmCallAuditStore.WriteAsync(LlmCallAuditRecord record, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(domain) || string.IsNullOrWhiteSpace(id))
-            throw new ArgumentException("文档域和 ID 不能为空。");
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO CoreDocuments (Domain, DocumentId, Json, UpdatedAt)
-            VALUES ($domain, $id, $json, $updatedAt)
-            ON CONFLICT(Domain, DocumentId) DO UPDATE SET Json=excluded.Json, UpdatedAt=excluded.UpdatedAt;
+            INSERT INTO LlmCallLogs (CreatedAt, CompletedAt, ConversationId, CorrelationId, Source, Provider, Model, Endpoint,
+                RequestUrl, SystemPrompt, UserPrompt, RequestJson, ResponseStatusCode, ResponseId, PreviousResponseId,
+                RawResponseJson, ResponseText, ParsedResponseJson, AudioPath, VoiceId, Error, DurationMs, UpdatedAt,
+                PromptTokens, CompletionTokens, TotalTokens)
+            VALUES ($createdAt, $completedAt, $conversationId, $correlationId, $source, $provider, $model, $endpoint,
+                $requestUrl, $systemPrompt, $userPrompt, $requestJson, $statusCode, $responseId, $previousResponseId,
+                $rawResponse, $responseText, $parsedResponse, $audioPath, $voiceId, $error, $durationMs, $updatedAt,
+                $promptTokens, $completionTokens, $totalTokens);
             """;
-        command.Parameters.AddWithValue("$domain", domain);
-        command.Parameters.AddWithValue("$id", id);
-        command.Parameters.AddWithValue("$json", json);
-        command.Parameters.AddWithValue("$updatedAt", Format(updatedAt));
-        await command.ExecuteNonQueryAsync(cancellationToken);
-    }
-
-    async Task IDomainDocumentStore.DeleteAsync(string domain, string id, CancellationToken cancellationToken)
-    {
-        await using var connection = await OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = "DELETE FROM CoreDocuments WHERE Domain=$domain AND DocumentId=$id";
-        command.Parameters.AddWithValue("$domain", domain);
-        command.Parameters.AddWithValue("$id", id);
+        var now = Format(DateTimeOffset.Now);
+        command.Parameters.AddWithValue("$createdAt", Format(record.CreatedAt));
+        command.Parameters.AddWithValue("$completedAt", record.CompletedAt is { } c ? Format(c) : now);
+        command.Parameters.AddWithValue("$conversationId", record.ConversationId);
+        command.Parameters.AddWithValue("$correlationId", record.ConversationId);
+        command.Parameters.AddWithValue("$source", record.Source);
+        command.Parameters.AddWithValue("$provider", record.Provider);
+        command.Parameters.AddWithValue("$model", record.Model);
+        command.Parameters.AddWithValue("$endpoint", record.Endpoint);
+        command.Parameters.AddWithValue("$requestUrl", record.RequestUrl);
+        command.Parameters.AddWithValue("$systemPrompt", string.Empty);
+        command.Parameters.AddWithValue("$userPrompt", string.Empty);
+        command.Parameters.AddWithValue("$requestJson", string.Empty);
+        command.Parameters.AddWithValue("$statusCode", record.ResponseStatusCode);
+        command.Parameters.AddWithValue("$responseId", record.ResponseId);
+        command.Parameters.AddWithValue("$previousResponseId", string.Empty);
+        command.Parameters.AddWithValue("$rawResponse", string.Empty);
+        command.Parameters.AddWithValue("$responseText", record.ResponseText);
+        command.Parameters.AddWithValue("$parsedResponse", string.Empty);
+        command.Parameters.AddWithValue("$audioPath", string.Empty);
+        command.Parameters.AddWithValue("$voiceId", string.Empty);
+        command.Parameters.AddWithValue("$error", record.Error);
+        command.Parameters.AddWithValue("$durationMs", record.DurationMs);
+        command.Parameters.AddWithValue("$updatedAt", now);
+        command.Parameters.AddWithValue("$promptTokens", record.PromptTokens);
+        command.Parameters.AddWithValue("$completionTokens", record.CompletionTokens);
+        command.Parameters.AddWithValue("$totalTokens", record.TotalTokens);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -451,108 +470,6 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
     private static DateTimeOffset? ParseNullable(SqliteDataReader reader, int ordinal) => reader.IsDBNull(ordinal) ? null : Parse(reader.GetString(ordinal));
     private static object DbValue(DateTimeOffset? value) => value.HasValue ? Format(value.Value) : DBNull.Value;
 
-    private static async Task NormalizeLegacyDocumentDatesAsync(SqliteConnection connection, CancellationToken cancellationToken)
-    {
-        var repairs = new List<(string Domain, string DocumentId, string Json)>();
-        await using (var select = connection.CreateCommand())
-        {
-            select.CommandText = "SELECT Domain, DocumentId, Json FROM CoreDocuments";
-            await using var reader = await select.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                var json = reader.GetString(2);
-                JsonNode? node;
-                try { node = JsonNode.Parse(json); }
-                catch (JsonException) { continue; }
-                if (node is null || !NormalizeDateProperties(node)) continue;
-                repairs.Add((reader.GetString(0), reader.GetString(1), node.ToJsonString()));
-            }
-        }
-        if (repairs.Count == 0) return;
-
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        foreach (var repair in repairs)
-        {
-            await using var update = connection.CreateCommand();
-            update.Transaction = (SqliteTransaction)transaction;
-            update.CommandText = "UPDATE CoreDocuments SET Json=$json WHERE Domain=$domain AND DocumentId=$id";
-            update.Parameters.AddWithValue("$json", repair.Json);
-            update.Parameters.AddWithValue("$domain", repair.Domain);
-            update.Parameters.AddWithValue("$id", repair.DocumentId);
-            await update.ExecuteNonQueryAsync(cancellationToken);
-        }
-        await transaction.CommitAsync(cancellationToken);
-    }
-
-    private static bool NormalizeDateProperties(JsonNode node)
-    {
-        var changed = false;
-        if (node is JsonObject jsonObject)
-        {
-            foreach (var property in jsonObject.ToArray())
-            {
-                if (property.Value is JsonValue value && property.Key.EndsWith("At", StringComparison.OrdinalIgnoreCase) &&
-                    value.TryGetValue<string>(out var text) && TryNormalizeLegacyDate(text, out var normalized) &&
-                    !string.Equals(text, normalized, StringComparison.Ordinal))
-                {
-                    jsonObject[property.Key] = normalized;
-                    changed = true;
-                }
-                else if (property.Value is not null)
-                {
-                    changed |= NormalizeDateProperties(property.Value);
-                }
-            }
-        }
-        else if (node is JsonArray jsonArray)
-        {
-            foreach (var item in jsonArray)
-                if (item is not null) changed |= NormalizeDateProperties(item);
-        }
-        return changed;
-    }
-
-    private static bool TryNormalizeLegacyDate(string value, out string normalized)
-    {
-        normalized = string.Empty;
-        if (!DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture,
-                DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.AssumeLocal, out var parsed)) return false;
-        normalized = Format(parsed);
-        return true;
-    }
-
-    private static async Task NormalizeLegacyTimerRecordsAsync(SqliteConnection connection, CancellationToken cancellationToken)
-    {
-        var repairs = new List<(string DocumentId, string Json)>();
-        await using (var select = connection.CreateCommand())
-        {
-            select.CommandText = "SELECT DocumentId, Json FROM CoreDocuments WHERE Domain='timer_record'";
-            await using var reader = await select.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                JsonObject? record;
-                try { record = JsonNode.Parse(reader.GetString(1)) as JsonObject; }
-                catch (JsonException) { continue; }
-                if (record is null || record.Any(property => property.Key.Equals("RecordId", StringComparison.OrdinalIgnoreCase))) continue;
-                record["RecordId"] = reader.GetString(0);
-                repairs.Add((reader.GetString(0), record.ToJsonString()));
-            }
-        }
-        if (repairs.Count == 0) return;
-
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        foreach (var repair in repairs)
-        {
-            await using var update = connection.CreateCommand();
-            update.Transaction = (SqliteTransaction)transaction;
-            update.CommandText = "UPDATE CoreDocuments SET Json=$json WHERE Domain='timer_record' AND DocumentId=$id";
-            update.Parameters.AddWithValue("$json", repair.Json);
-            update.Parameters.AddWithValue("$id", repair.DocumentId);
-            await update.ExecuteNonQueryAsync(cancellationToken);
-        }
-        await transaction.CommitAsync(cancellationToken);
-    }
-
     private static async Task EnsureCharacterColumnsAsync(SqliteConnection connection, CancellationToken cancellationToken)
     {
         var columns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -576,5 +493,52 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
             alter.CommandText = $"ALTER TABLE VoiceRoleCards ADD COLUMN {name} {definition}";
             await alter.ExecuteNonQueryAsync(cancellationToken);
         }
+        await using var backfill = connection.CreateCommand();
+        backfill.CommandText = """
+            UPDATE VoiceRoleCards
+            SET AvatarPath=COALESCE((SELECT AvatarPath FROM VoiceRoles WHERE VoiceRoles.RoleId=VoiceRoleCards.RoleId LIMIT 1),'')
+            WHERE COALESCE(AvatarPath,'')='';
+            """;
+        await backfill.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task EnsureTimerRecordColumnsAsync(SqliteConnection connection, CancellationToken cancellationToken)
+    {
+        var hasRecordId = false;
+        await using (var info = connection.CreateCommand())
+        {
+            info.CommandText = "PRAGMA table_info(TimerRecords)";
+            await using var reader = await info.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                if (reader.GetString(1).Equals("RecordId", StringComparison.OrdinalIgnoreCase)) hasRecordId = true;
+        }
+        if (!hasRecordId)
+        {
+            await using var alter = connection.CreateCommand();
+            alter.CommandText = "ALTER TABLE TimerRecords ADD COLUMN RecordId TEXT NULL";
+            await alter.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await using var backfill = connection.CreateCommand();
+        backfill.CommandText = "UPDATE TimerRecords SET RecordId='legacy_timer_' || Id WHERE COALESCE(RecordId,'')=''";
+        await backfill.ExecuteNonQueryAsync(cancellationToken);
+        await using var index = connection.CreateCommand();
+        index.CommandText = "CREATE UNIQUE INDEX IF NOT EXISTS IX_TimerRecords_RecordId ON TimerRecords(RecordId)";
+        await index.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task EnsureAppSettingsColumnsAsync(SqliteConnection connection, CancellationToken cancellationToken)
+    {
+        var hasUpdatedAt = false;
+        await using (var info = connection.CreateCommand())
+        {
+            info.CommandText = "PRAGMA table_info(AppSettings)";
+            await using var reader = await info.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                if (reader.GetString(1).Equals("UpdatedAt", StringComparison.OrdinalIgnoreCase)) hasUpdatedAt = true;
+        }
+        if (hasUpdatedAt) return;
+        await using var alter = connection.CreateCommand();
+        alter.CommandText = "ALTER TABLE AppSettings ADD COLUMN UpdatedAt TEXT NOT NULL DEFAULT '1970-01-01T00:00:00+00:00'";
+        await alter.ExecuteNonQueryAsync(cancellationToken);
     }
 }

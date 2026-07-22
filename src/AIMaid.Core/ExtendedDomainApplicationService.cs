@@ -553,14 +553,6 @@ public sealed class AgentApplicationService :
 
         var recent = await chatStore.LoadRecentAsync(conversationId, 10, cancellationToken);
         var capabilities = await HandleAsync(new ListAgentCapabilitiesQuery(true), cancellationToken);
-        if (command.ToolStep > 1 && TryCreateExplicitMusicCompletion(conversationId, command.Content, command.ToolResultJson, out var musicCompletion))
-        {
-            var messageId = await chatStore.AppendAsync(new ChatMessageDto(0, conversationId, "assistant", musicCompletion.Message,
-                character.RoleId, string.Empty, command.Source, string.Empty, DateTimeOffset.Now), cancellationToken);
-            return OperationResult<AgentDecisionDto>.Success(musicCompletion with { MessageId = messageId });
-        }
-        if (command.ToolStep == 1 && TryCreateExplicitMusicDecision(conversationId, command.Content, capabilities, out var explicitMusicDecision))
-            return OperationResult<AgentDecisionDto>.Success(explicitMusicDecision);
         var values = new Dictionary<string, string>
         {
             ["roleId"] = character.RoleId,
@@ -597,75 +589,6 @@ public sealed class AgentApplicationService :
             decision = decision with { MessageId = messageId };
         }
         return OperationResult<AgentDecisionDto>.Success(decision);
-    }
-
-    private static bool TryCreateExplicitMusicDecision(
-        string conversationId,
-        string content,
-        IReadOnlyList<AgentCapabilityDto> capabilities,
-        out AgentDecisionDto decision)
-    {
-        decision = default!;
-        var capability = capabilities.FirstOrDefault(item =>
-            item.CapabilityName.Equals("music.search", StringComparison.OrdinalIgnoreCase));
-        if (capability is null) return false;
-        if (!TryReadExplicitMusicSongName(content, out var songName)) return false;
-        decision = new AgentDecisionDto(
-            conversationId,
-            "tool_call",
-            string.Empty,
-            "normal",
-            capability.CapabilityName,
-            JsonSerializer.Serialize(new { songName }),
-            "用户明确要求播放指定歌曲",
-            string.Empty,
-            string.Empty,
-            string.Empty);
-        return true;
-    }
-
-    private static bool TryCreateExplicitMusicCompletion(
-        string conversationId,
-        string content,
-        string? toolResultJson,
-        out AgentDecisionDto decision)
-    {
-        decision = default!;
-        if (!TryReadExplicitMusicSongName(content, out _) || string.IsNullOrWhiteSpace(toolResultJson)) return false;
-        try
-        {
-            using var document = JsonDocument.Parse(toolResultJson);
-            var root = document.RootElement;
-            if (!root.TryGetProperty("capabilityName", out var capability) ||
-                !string.Equals(capability.GetString(), "music.search", StringComparison.OrdinalIgnoreCase) ||
-                !root.TryGetProperty("result", out var result) || result.ValueKind != JsonValueKind.Object ||
-                !result.TryGetProperty("status", out var status) || status.GetString() != "completed" ||
-                !result.TryGetProperty("output", out var output)) return false;
-            var message = output.GetString()?.Trim();
-            if (string.IsNullOrWhiteSpace(message)) return false;
-            decision = new AgentDecisionDto(conversationId, "final_response", message, "normal",
-                string.Empty, "{}", "音乐工具执行完成", string.Empty, string.Empty, string.Empty);
-            return true;
-        }
-        catch (JsonException)
-        {
-            return false;
-        }
-    }
-
-    private static bool TryReadExplicitMusicSongName(string content, out string songName)
-    {
-        var text = content.Trim();
-        foreach (var prefix in new[] { "播放", "放", "播", "听", "来一首", "来首" })
-        {
-            if (!text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
-            songName = text[prefix.Length..].Trim();
-            if (songName.StartsWith("歌曲", StringComparison.Ordinal)) songName = songName[2..].Trim();
-            else if (songName.StartsWith("音乐", StringComparison.Ordinal)) songName = songName[2..].Trim();
-            return songName.Length > 0;
-        }
-        songName = string.Empty;
-        return false;
     }
 
     private static AgentDecisionDto ParseDecision(string conversationId, string raw)

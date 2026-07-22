@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -16,15 +17,28 @@ public sealed class AiProviderHttpClient : IAiProviderClient
 {
     private readonly HttpClient httpClient;
     private readonly AiProviderOptions options;
+    private readonly ILlmCallAuditStore? auditStore;
 
-    public AiProviderHttpClient(HttpClient httpClient, AiProviderOptions options)
+    public AiProviderHttpClient(HttpClient httpClient, AiProviderOptions options, ILlmCallAuditStore? auditStore = null)
     {
         this.httpClient = httpClient;
         this.options = options;
+        this.auditStore = auditStore;
     }
 
     public async IAsyncEnumerable<string> StreamChatAsync(AiChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        var stopwatch = Stopwatch.StartNew();
+        var responseText = new StringBuilder();
+        int statusCode = 0;
+        string responseId = string.Empty;
+        string? errorText = null;
+        int promptTokens = 0;
+        int completionTokens = 0;
+        int totalTokens = 0;
+        var source = request.SourceKey.Length > 0 ? request.SourceKey : "chat_reply";
+        var endpoint = options.Endpoint.ToString();
+
         var messages = request.History.Select(x => new { role = x.Role, content = x.Content }).ToArray();
         var payload = new Dictionary<string, object?>
         {
@@ -43,41 +57,90 @@ public sealed class AiProviderHttpClient : IAiProviderClient
             Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
         };
         if (!string.IsNullOrWhiteSpace(options.ApiKey)) httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiKey);
-        HttpResponseMessage response;
+
         try
         {
-            response = await httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        }
-        catch (HttpRequestException exception)
-        {
-            throw new AiProviderRequestException(exception.StatusCode,
-                $"LLM 上游连接失败：{SanitizeErrorText(exception.Message)}", exception);
-        }
-        using (response)
-        {
-            if (!response.IsSuccessStatusCode)
+            HttpResponseMessage response;
+            try
             {
-                var body = await response.Content.ReadAsStringAsync(cancellationToken);
-                throw new AiProviderRequestException(response.StatusCode,
-                    $"LLM 上游返回 HTTP {(int)response.StatusCode} ({response.ReasonPhrase ?? "Unknown"})：{DescribeErrorBody(body)}");
+                response = await httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             }
-            if (!request.StreamResponse)
+            catch (HttpRequestException exception)
             {
-                using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
-                if (TryReadChatCompletionMessage(document.RootElement, out var content)) yield return content;
-                yield break;
+                errorText = $"LLM 上游连接失败：{SanitizeErrorText(exception.Message)}";
+                statusCode = (int)(exception.StatusCode ?? 0);
+                throw new AiProviderRequestException(exception.StatusCode, errorText, exception);
             }
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var reader = new StreamReader(stream);
-            while (await reader.ReadLineAsync(cancellationToken) is { } line)
+
+            using (response)
             {
-                if (!line.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) continue;
-                var json = line[5..].Trim();
-                if (json.Length == 0 || json == "[DONE]") continue;
-                using var document = JsonDocument.Parse(json);
-                var root = document.RootElement;
-                if (TryReadChatCompletionDelta(root, out var delta) || TryReadResponsesDelta(root, out delta))
-                    yield return delta;
+                statusCode = (int)response.StatusCode;
+                responseId = response.Headers.TryGetValues("x-request-id", out var requestIds)
+                    ? requestIds.FirstOrDefault() ?? string.Empty : string.Empty;
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                    errorText = $"LLM 上游返回 HTTP {statusCode} ({response.ReasonPhrase ?? "Unknown"})：{DescribeErrorBody(body)}";
+                    throw new AiProviderRequestException(response.StatusCode, errorText);
+                }
+
+                if (!request.StreamResponse)
+                {
+                    var raw = await response.Content.ReadAsStringAsync(cancellationToken);
+                    using var document = JsonDocument.Parse(raw);
+                    ExtractUsage(document.RootElement, ref promptTokens, ref completionTokens, ref totalTokens);
+                    if (TryReadChatCompletionMessage(document.RootElement, out var content))
+                    {
+                        responseText.Append(content);
+                        yield return content;
+                    }
+                }
+                else
+                {
+                    var collected = new List<string>();
+                    await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                    using var reader = new StreamReader(stream);
+                    while (await reader.ReadLineAsync(cancellationToken) is { } line)
+                    {
+                        if (!line.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) continue;
+                        var json = line[5..].Trim();
+                        if (json.Length == 0 || json == "[DONE]") continue;
+                        using var document = JsonDocument.Parse(json);
+                        var root = document.RootElement;
+                        ExtractUsage(root, ref promptTokens, ref completionTokens, ref totalTokens);
+                        if (TryReadChatCompletionDelta(root, out var delta) || TryReadResponsesDelta(root, out delta))
+                        {
+                            responseText.Append(delta);
+                            collected.Add(delta);
+                        }
+                    }
+                    foreach (var delta in collected) yield return delta;
+                }
+            }
+        }
+        finally
+        {
+            if (auditStore is not null)
+            {
+                var record = new LlmCallAuditRecord(
+                    ConversationId: request.ConversationId,
+                    Source: source,
+                    Provider: options.Model,
+                    Model: options.Model,
+                    Endpoint: endpoint,
+                    RequestUrl: endpoint,
+                    ResponseStatusCode: statusCode,
+                    ResponseId: responseId,
+                    ResponseText: responseText.ToString(),
+                    Error: errorText ?? string.Empty,
+                    DurationMs: stopwatch.ElapsedMilliseconds,
+                    PromptTokens: promptTokens,
+                    CompletionTokens: completionTokens,
+                    TotalTokens: totalTokens,
+                    CreatedAt: DateTimeOffset.Now,
+                    CompletedAt: DateTimeOffset.Now);
+                _ = Task.Run(() => auditStore.WriteAsync(record, CancellationToken.None));
             }
         }
     }
@@ -144,6 +207,14 @@ public sealed class AiProviderHttpClient : IAiProviderClient
             !root.TryGetProperty("delta", out var delta)) return false;
         value = delta.GetString() ?? string.Empty;
         return value.Length > 0;
+    }
+
+    private static void ExtractUsage(JsonElement root, ref int promptTokens, ref int completionTokens, ref int totalTokens)
+    {
+        if (!root.TryGetProperty("usage", out var usage) && !root.TryGetProperty("usage_metadata", out usage)) return;
+        if (usage.TryGetProperty("prompt_tokens", out var pt) && pt.TryGetInt32(out var p)) promptTokens = p;
+        if (usage.TryGetProperty("completion_tokens", out var ct) && ct.TryGetInt32(out var c)) completionTokens = c;
+        if (usage.TryGetProperty("total_tokens", out var tt) && tt.TryGetInt32(out var t)) totalTokens = t;
     }
 }
 

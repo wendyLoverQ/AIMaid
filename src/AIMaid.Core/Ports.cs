@@ -125,6 +125,29 @@ public interface IAgentCapabilityExecutor
     Task<AgentExecutionResult> ExecuteAsync(AgentCapabilityDto capability, string argsJson, CancellationToken cancellationToken = default);
 }
 
+public sealed record LlmCallAuditRecord(
+    string ConversationId,
+    string Source,
+    string Provider,
+    string Model,
+    string Endpoint,
+    string RequestUrl,
+    int ResponseStatusCode,
+    string ResponseId,
+    string ResponseText,
+    string Error,
+    long DurationMs,
+    int PromptTokens,
+    int CompletionTokens,
+    int TotalTokens,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? CompletedAt = null);
+
+public interface ILlmCallAuditStore
+{
+    Task WriteAsync(LlmCallAuditRecord record, CancellationToken cancellationToken = default);
+}
+
 public interface ISecretProtector
 {
     string Protect(string plaintext);

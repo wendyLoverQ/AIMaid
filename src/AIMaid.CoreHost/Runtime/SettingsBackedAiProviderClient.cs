@@ -10,7 +10,8 @@ namespace AIMaid.CoreHost.Runtime;
 public sealed class SettingsBackedAiProviderClient(
     ExtendedDomainApplicationService domains,
     ICharacterStore characters,
-    ISettingsStore settings) : IAiProviderClient, IDisposable
+    ISettingsStore settings,
+    ILlmCallAuditStore? auditStore = null) : IAiProviderClient, IDisposable
 {
     private readonly HttpClient httpClient = new();
 
@@ -45,7 +46,7 @@ public sealed class SettingsBackedAiProviderClient(
             endpoint,
             configuration.Model,
             configuration.ApiKey,
-            reasoningEffort));
+            reasoningEffort), auditStore);
         await foreach (var delta in client.StreamChatAsync(effectiveRequest, cancellationToken)) yield return delta;
     }
 
