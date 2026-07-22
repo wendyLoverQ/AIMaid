@@ -26,6 +26,7 @@ describe('pet-relative window positioning', () => {
   })
 
   it('uses the legacy display-mode alignment rules', () => {
+    expect(petWindowAlignment('chat', 'live2d')).toBe('center')
     expect(petWindowAlignment('video', 'live2d')).toBe('right-of-center')
     expect(petWindowAlignment('video', 'image')).toBe('center')
     expect(petWindowAlignment('video', 'png-sequence')).toBe('center')

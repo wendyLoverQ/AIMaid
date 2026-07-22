@@ -58,7 +58,7 @@ export function resolvePetVisualBounds(
 }
 
 export function petWindowAlignment(kind: WindowKind, displayMode?: PetDisplayMode): PetWindowAlignment {
-  return kind === 'status' || displayMode === 'image' || displayMode === 'png-sequence'
+  return kind === 'chat' || kind === 'status' || displayMode === 'image' || displayMode === 'png-sequence'
     ? 'center'
     : 'right-of-center'
 }
