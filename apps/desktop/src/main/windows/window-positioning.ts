@@ -17,19 +17,17 @@ export function resolvePetVisualBounds(
   petWindowBounds: Bounds,
   rendererVisualBounds?: Bounds
 ): Bounds {
-  if (rendererVisualBounds !== undefined) return rendererVisualBounds
-
-  const initial = {
+  const relative = rendererVisualBounds ?? {
     x: Math.round((petWindowBounds.width - PET_BASE_WINDOW_WIDTH) / 2),
     y: Math.round((petWindowBounds.height - PET_BASE_WINDOW_HEIGHT) / 2),
     width: PET_BASE_WINDOW_WIDTH,
     height: PET_BASE_WINDOW_HEIGHT
   }
   return {
-    x: petWindowBounds.x + initial.x,
-    y: petWindowBounds.y + initial.y,
-    width: initial.width,
-    height: initial.height
+    x: petWindowBounds.x + relative.x,
+    y: petWindowBounds.y + relative.y,
+    width: relative.width,
+    height: relative.height
   }
 }
 

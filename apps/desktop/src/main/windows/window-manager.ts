@@ -229,15 +229,22 @@ export class WindowManager {
     if (kind === 'pet' || kind === 'tray-menu') return
     const owner = ownerKind === undefined ? undefined : this.get(ownerKind)
     if (ownerKind === 'pet' && owner !== undefined) {
-      const petBounds = resolvePetVisualBounds(owner.getBounds(), this.petVisualBounds)
+      const petBounds = this.petVisualBounds ?? resolvePetVisualBounds(owner.getBounds())
       const petCenter = { x: petBounds.x + petBounds.width / 2, y: petBounds.y + petBounds.height / 2 }
       const workArea = screen.getDisplayNearestPoint(petCenter).workArea
-      window.setBounds(positionWindowNearPet(
+      const targetBounds = positionWindowNearPet(
         window.getBounds(),
         petBounds,
         workArea,
         petWindowAlignment(kind, context.petDisplayMode)
-      ), false)
+      )
+      window.setBounds(targetBounds, false)
+      this.log.info('window-positioning', 'Pet-owned window positioned', {
+        kind,
+        petBounds,
+        workArea,
+        windowBounds: window.getBounds()
+      })
       return
     }
     const ownerCentered = owner !== undefined && OWNER_CENTERED_WINDOWS.has(kind)

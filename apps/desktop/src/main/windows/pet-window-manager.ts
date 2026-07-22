@@ -15,6 +15,7 @@ import type { Logger } from '../logging/logger'
 import type { CoreClient } from '../core/core-client'
 import type { WindowManager } from './window-manager'
 import type { WindowActionContext } from './window-manager'
+import { resolvePetVisualBounds } from './window-positioning'
 
 export class PetWindowManager {
   private static readonly MIN_SCALE = 0.25
@@ -206,8 +207,17 @@ export class PetWindowManager {
   }
 
   reportVisualBounds(contents: WebContents, bounds: PetVisualBounds): void {
-    this.requireWindow(contents)
-    this.windows.updatePetVisualBounds(bounds)
+    const window = this.requireWindow(contents)
+    const absoluteBounds = resolvePetVisualBounds(
+      window.getBounds(),
+      bounds
+    )
+    this.log.debug('window-positioning', 'Pet item bounds reported', {
+      petWindowBounds: window.getBounds(),
+      itemRelativeBounds: bounds,
+      itemAbsoluteBounds: absoluteBounds
+    })
+    this.windows.updatePetVisualBounds(absoluteBounds)
   }
 
   runtimeStatus(): PetRuntimeSnapshot {

@@ -198,8 +198,8 @@ export class PetItemInteractionController {
       const bounds = this.options.item.getBoundingClientRect()
       if (bounds.width <= 0 || bounds.height <= 0) return
       this.options.reportVisualBounds({
-        x: Math.round(window.screenX + bounds.x),
-        y: Math.round(window.screenY + bounds.y),
+        x: Math.round(bounds.x),
+        y: Math.round(bounds.y),
         width: Math.round(bounds.width),
         height: Math.round(bounds.height)
       })

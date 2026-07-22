@@ -33,11 +33,18 @@ describe('pet-relative window positioning', () => {
     expect(petWindowAlignment('status', 'live2d')).toBe('center')
   })
 
-  it('uses renderer-reported absolute item bounds without recalculation', () => {
+  it('converts the renderer item rectangle to an absolute desktop rectangle once', () => {
     expect(resolvePetVisualBounds(
       { x: -1920, y: -200, width: 4480, height: 1640 },
       { x: 1200, y: 420, width: 560, height: 980 }
-    )).toEqual({ x: 1200, y: 420, width: 560, height: 980 })
+    )).toEqual({ x: -720, y: 220, width: 560, height: 980 })
+  })
+
+  it('preserves negative virtual-desktop origins on a three-screen layout', () => {
+    expect(resolvePetVisualBounds(
+      { x: -1152, y: -1011, width: 4928, height: 3073 },
+      { x: 1512, y: 913, width: 560, height: 980 }
+    )).toEqual({ x: 360, y: -98, width: 560, height: 980 })
   })
 
   it('centers the actual chat window size on the reported item center', () => {
