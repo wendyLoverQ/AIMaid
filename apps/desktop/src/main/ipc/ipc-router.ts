@@ -505,7 +505,20 @@ function readPetVisualBounds(payload: unknown): PetVisualBounds {
       (values[2] as number) <= 0 || (values[3] as number) <= 0) {
     throw new TypeError('Invalid pet visual bounds payload')
   }
-  return { x: values[0] as number, y: values[1] as number, width: values[2] as number, height: values[3] as number }
+  const anchorX = payload.anchorX
+  const anchorY = payload.anchorY
+  if ((anchorX === undefined) !== (anchorY === undefined) ||
+      (anchorX !== undefined && (typeof anchorX !== 'number' || !Number.isFinite(anchorX))) ||
+      (anchorY !== undefined && (typeof anchorY !== 'number' || !Number.isFinite(anchorY)))) {
+    throw new TypeError('Invalid pet visual anchor payload')
+  }
+  return {
+    x: values[0] as number,
+    y: values[1] as number,
+    width: values[2] as number,
+    height: values[3] as number,
+    ...(anchorX === undefined ? {} : { anchorX, anchorY: anchorY as number })
+  }
 }
 
 function toIpcError(error: unknown): IpcError {

@@ -7,8 +7,8 @@ describe('pet-relative window positioning', () => {
 
   it('places regular tool windows to the right of the pet center', () => {
     expect(positionWindowNearPet(
-      { x: 0, y: 0, width: 480, height: 560 }, pet, workArea, 'right-of-center'
-    )).toEqual({ x: 1416, y: 420, width: 480, height: 560 })
+      { x: 0, y: 0, width: 480, height: 560 }, pet, workArea, 'right-of-pet'
+    )).toEqual({ x: 1440, y: 420, width: 480, height: 560 })
   })
 
   it('centers the status window on the pet anchor', () => {
@@ -17,16 +17,26 @@ describe('pet-relative window positioning', () => {
     )).toEqual({ x: 1160, y: 320, width: 480, height: 720 })
   })
 
+  it('uses the model right edge horizontally and body center vertically', () => {
+    expect(positionWindowNearPet(
+      { x: 0, y: 0, width: 480, height: 360 },
+      { x: 300, y: 100, width: 260, height: 700 },
+      workArea,
+      'right-of-pet',
+      { x: 430, y: 450 }
+    )).toEqual({ x: 576, y: 270, width: 480, height: 360 })
+  })
+
   it('keeps windows inside the pet display work area', () => {
     const secondary = { x: -1600, y: 0, width: 1600, height: 900 }
     const edgePet = { x: -320, y: 500, width: 280, height: 480 }
     expect(positionWindowNearPet(
-      { x: 0, y: 0, width: 760, height: 560 }, edgePet, secondary, 'right-of-center'
+      { x: 0, y: 0, width: 760, height: 560 }, edgePet, secondary, 'right-of-pet'
     )).toEqual({ x: -760, y: 340, width: 760, height: 560 })
   })
 
   it('uses the legacy display-mode alignment rules', () => {
-    expect(petWindowAlignment('video', 'live2d')).toBe('right-of-center')
+    expect(petWindowAlignment('video', 'live2d')).toBe('right-of-pet')
     expect(petWindowAlignment('video', 'image')).toBe('center')
     expect(petWindowAlignment('video', 'png-sequence')).toBe('center')
     expect(petWindowAlignment('status', 'live2d')).toBe('center')

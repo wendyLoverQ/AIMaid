@@ -1,6 +1,7 @@
 import { Container, PetItemSurface, TransparentCanvas, TransparentStage } from "../../components/ui";
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessageDto } from '../../../shared/business';
+import type { PetVisualBounds } from '../../../shared/pet';
 import type { PetPresentationAction, PetPresentationSnapshot } from '../../../shared/presentation';
 import type { WindowKind } from '../../../shared/windows';
 import { UiIcon } from '../../components/ui';
@@ -30,9 +31,17 @@ export default function PetPage(): React.JSX.Element {
     const itemRef = useRef<HTMLDivElement>(null);
     const hitTestRef = useRef<PetHitTest>(() => false);
     const interactionRef = useRef<PetItemInteractionController | null>(null);
+    const visualBoundsReaderRef = useRef<(() => PetVisualBounds | null) | null>(null);
     const registerHitTest = useCallback((hitTest: PetHitTest | null): void => {
         hitTestRef.current = hitTest ?? (() => false);
         interactionRef.current?.refreshHitTest();
+    }, []);
+    const registerVisualBoundsReader = useCallback((reader: (() => PetVisualBounds | null) | null): void => {
+        visualBoundsReaderRef.current = reader;
+        interactionRef.current?.refreshVisualBounds();
+    }, []);
+    const refreshVisualBounds = useCallback((): void => {
+        interactionRef.current?.refreshVisualBounds();
     }, []);
     const refreshPresentation = useCallback(async (): Promise<void> => {
         const response = await bridge.pet.presentation.get();
@@ -64,7 +73,7 @@ export default function PetPage(): React.JSX.Element {
             dragMove: () => { void bridge.pet.dragMove(); },
             dragEnd: () => { void bridge.pet.dragEnd(); },
             updateWindow: (update) => { void bridge.pet.updateWindow(update); },
-            reportVisualBounds: (bounds) => { void bridge.pet.reportVisualBounds(bounds); },
+            reportVisualBounds: (bounds) => { void bridge.pet.reportVisualBounds(visualBoundsReaderRef.current?.() ?? bounds); },
             onScale: setRenderScale
         });
         interactionRef.current = interaction;
@@ -219,7 +228,7 @@ export default function PetPage(): React.JSX.Element {
       {presentation === null ? <Container>{error ?? '正在读取桌宠显示模式…'}</Container> : null}
       {presentation?.mode === 'image' ? <ImageMode presentation={presentation} scale={renderScale} onAdvance={() => void execute('next-image')} onFirstFrame={revealPetWindow} registerHitTest={registerHitTest}/> : null}
       {presentation?.mode === 'png-sequence' ? <PngSequenceMode presentation={presentation} scale={renderScale} onFirstFrame={revealPetWindow} registerHitTest={registerHitTest}/> : null}
-      {presentation?.mode === 'live2d' ? <Live2DMode role={presentation.live2dRole} scale={renderScale} externalError={error} message={bubble} registerHitTest={registerHitTest}/> : null}
+      {presentation?.mode === 'live2d' ? <Live2DMode role={presentation.live2dRole} scale={renderScale} externalError={error} message={bubble} registerHitTest={registerHitTest} registerVisualBoundsReader={registerVisualBoundsReader} onGeometryChanged={refreshVisualBounds}/> : null}
       {presentation !== null && presentation.mode !== 'live2d' ? <PetBubble text={error ?? bubble} visible={(error ?? bubble).length > 0}/> : null}
     </PetItemSurface>
     {menu !== null && presentation !== null ? <PetContextMenu position={menu} presentation={presentation} voiceMenu={voiceMenu} execute={(action) => void execute(action)} open={open} cycleVoiceIntimacy={() => void cycleVoiceIntimacy()} clearVoiceCache={() => void clearVoiceCache()} showCurrentConversation={() => void showCurrentConversation()} close={() => setMenu(null)}/> : null}
@@ -464,12 +473,14 @@ function PetContextMenu({ position, presentation, voiceMenu, execute, open, cycl
     return <ContextMenuSurface label="桌宠菜单" items={items} position={position} footer={`版本 ${bridge.app.version}`} onClose={close}/>;
 }
 function modeLabel(mode: PetPresentationSnapshot['mode']): string { return mode === 'image' ? '图片' : mode === 'png-sequence' ? 'PNG' : 'Live2D'; }
-function Live2DMode({ role, scale, externalError, message, registerHitTest }: {
+function Live2DMode({ role, scale, externalError, message, registerHitTest, registerVisualBoundsReader, onGeometryChanged }: {
     role: string;
     scale: number;
     externalError: string | null;
     message: string;
     registerHitTest: (hitTest: PetHitTest | null) => void;
+    registerVisualBoundsReader: (reader: (() => PetVisualBounds | null) | null) => void;
+    onGeometryChanged: () => void;
 }): React.JSX.Element {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const runtimeRef = useRef<PetRuntime | null>(null);
@@ -480,7 +491,7 @@ function Live2DMode({ role, scale, externalError, message, registerHitTest }: {
         if (canvas === null)
             return;
         const runtime = new PetRuntime(canvas, {
-            onState: () => undefined,
+            onState: (state) => { if (state === 'ready') requestAnimationFrame(onGeometryChanged); },
             onError: setError,
             onScale: () => undefined,
             onMetrics: () => undefined
@@ -488,12 +499,14 @@ function Live2DMode({ role, scale, externalError, message, registerHitTest }: {
         runtimeRef.current = runtime;
         runtime.setScale(scale);
         registerHitTest((x, y) => runtime.containsPoint(x, y));
+        registerVisualBoundsReader(() => runtime.getVisualBounds());
         return () => {
             registerHitTest(null);
+            registerVisualBoundsReader(null);
             runtimeRef.current = null;
             runtime.dispose();
         };
-    }, [registerHitTest]);
+    }, [onGeometryChanged, registerHitTest, registerVisualBoundsReader]);
     useEffect(() => {
         const runtime = runtimeRef.current;
         if (runtime === null)
@@ -502,7 +515,8 @@ function Live2DMode({ role, scale, externalError, message, registerHitTest }: {
     }, [role]);
     useEffect(() => {
         runtimeRef.current?.setScale(scale);
-    }, [scale]);
+        requestAnimationFrame(onGeometryChanged);
+    }, [onGeometryChanged, scale]);
     useEffect(() => bridge.events.subscribe(['system.stream.progress', 'system.stream.completed', 'request.cancelled'], (event) => {
         if (event.type === 'system.stream.completed')
             setBubble('处理已完成。');

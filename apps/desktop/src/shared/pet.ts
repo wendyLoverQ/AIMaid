@@ -51,6 +51,8 @@ export interface PetVisualBounds {
   y: number
   width: number
   height: number
+  anchorX?: number
+  anchorY?: number
 }
 
 export interface PetLifecycleEvent {

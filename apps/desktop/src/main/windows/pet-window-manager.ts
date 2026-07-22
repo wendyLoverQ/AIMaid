@@ -27,6 +27,7 @@ export class PetWindowManager {
   private lastMetricsLogAt = 0
   private lastMetrics: PetPerformanceMetrics | null = null
   private lastMetricsAt: number | null = null
+  private loggedAnchoredVisualBounds = false
   private installed = false
   private dragState: {
     startCursorX: number
@@ -208,6 +209,10 @@ export class PetWindowManager {
   reportVisualBounds(contents: WebContents, bounds: PetVisualBounds): void {
     this.requireWindow(contents)
     this.windows.updatePetVisualBounds(bounds)
+    if (!this.loggedAnchoredVisualBounds && bounds.anchorX !== undefined && bounds.anchorY !== undefined) {
+      this.loggedAnchoredVisualBounds = true
+      this.log.info('pet-window', 'Live2D visual bounds and body anchor received', { bounds })
+    }
   }
 
   runtimeStatus(): PetRuntimeSnapshot {
@@ -217,6 +222,7 @@ export class PetWindowManager {
   private attach(window: BrowserWindow): void {
     this.attachedWindowId = window.id
     this.ready = false
+    this.loggedAnchoredVisualBounds = false
     this.ignoreMouseEvents = undefined
     this.forwardMouseMoves = false
     window.setMaximumSize(PetWindowManager.MAX_WINDOW_SIZE, PetWindowManager.MAX_WINDOW_SIZE)
