@@ -29,6 +29,7 @@ const app = spawn(electronPath, ['.', `--remote-debugging-port=${port}`, `--user
 })
 
 let client
+let trayClient
 try {
   const target = await waitForTarget((candidate) => candidate.url.includes('window=pet'))
   client = await connect(target.webSocketDebuggerUrl)
@@ -81,12 +82,47 @@ try {
   const screenshot = await client.send('Page.captureScreenshot', { format: 'png', fromSurface: true })
   const screenshotPath = resolve(outputDirectory, 'live2d-dynamic-contour.png')
   await writeFile(screenshotPath, Buffer.from(screenshot.data, 'base64'))
-  await evaluate(client, `window.aimaid.core.invoke({ type: 'music.stop', payload: {} })`)
 
-  const proof = { playback: playback.payload, ...metrics, screenshot: screenshotPath }
+  await evaluate(client, `window.aimaid.window.open('tray-menu')`)
+  const trayTarget = await waitForTarget((candidate) => candidate.url.includes('window=tray-menu'))
+  trayClient = await connect(trayTarget.webSocketDebuggerUrl)
+  await trayClient.send('Page.enable')
+  await waitFor(() => evaluate(trayClient, `document.body.innerText.includes('NIGHT DANCER') && document.body.innerText.includes('imase')`))
+  const trayScreenshot = await trayClient.send('Page.captureScreenshot', { format: 'png', fromSurface: true })
+  const trayScreenshotPath = resolve(outputDirectory, 'tray-music-controls.png')
+  await writeFile(trayScreenshotPath, Buffer.from(trayScreenshot.data, 'base64'))
+
+  await evaluate(trayClient, `Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.trim() === '暂停')?.click()`)
+  await waitFor(() => evaluate(trayClient, `document.body.innerText.includes('继续播放')`))
+  await waitFor(() => evaluate(client, `(() => {
+    const canvas = document.querySelector('.ui-pet-audio-contour');
+    const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+    for (let index = 3; index < pixels.length; index += 4) if (pixels[index] > 0) return false;
+    return true;
+  })()`))
+
+  await evaluate(trayClient, `Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.trim() === '继续播放')?.click()`)
+  await waitFor(() => evaluate(trayClient, `Array.from(document.querySelectorAll('button')).some((button) => button.textContent?.trim() === '暂停')`))
+  await waitFor(() => evaluate(client, `(() => {
+    const canvas = document.querySelector('.ui-pet-audio-contour');
+    const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+    for (let index = 3; index < pixels.length; index += 4) if (pixels[index] > 0) return true;
+    return false;
+  })()`))
+
+  await evaluate(trayClient, `Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.trim() === '停止')?.click()`)
+  await waitFor(() => evaluate(trayClient, `document.body.innerText.includes('当前未播放音乐')`))
+
+  const proof = {
+    playback: playback.payload,
+    ...metrics,
+    screenshot: screenshotPath,
+    trayControls: { currentSong: true, pause: true, resume: true, stop: true, screenshot: trayScreenshotPath }
+  }
   await writeFile(resolve(outputDirectory, 'proof.json'), `${JSON.stringify(proof, null, 2)}\n`)
   console.log(JSON.stringify(proof, null, 2))
 } finally {
+  trayClient?.close()
   client?.close()
   app.kill()
   await delay(300)

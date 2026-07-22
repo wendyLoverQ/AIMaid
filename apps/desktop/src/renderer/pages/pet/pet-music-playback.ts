@@ -6,6 +6,7 @@ interface MusicPlaybackState {
   title: string
   singer: string
   isPlaying: boolean
+  isPaused: boolean
 }
 
 let activeAnalyser: AnalyserNode | null = null
@@ -19,6 +20,7 @@ export function readPetMusicSpectrum(target: Uint8Array<ArrayBuffer>): boolean {
 export function startPetMusicPlayback(): () => void {
   let audio: HTMLAudioElement | null = null
   let audioContext: AudioContext | null = null
+  let analyser: AnalyserNode | null = null
   let playbackUrl = ''
   let disposed = false
   let masterAudio = { muted: false, volume: 100 }
@@ -28,6 +30,7 @@ export function startPetMusicPlayback(): () => void {
     audio = null
     playbackUrl = ''
     activeAnalyser = null
+    analyser = null
     void audioContext?.close()
     audioContext = null
   }
@@ -59,14 +62,15 @@ export function startPetMusicPlayback(): () => void {
 
     const context = new AudioContext()
     const source = context.createMediaElementSource(element)
-    const analyser = context.createAnalyser()
-    analyser.fftSize = 1024
-    analyser.smoothingTimeConstant = 0.72
-    source.connect(analyser)
-    analyser.connect(context.destination)
+    const nextAnalyser = context.createAnalyser()
+    nextAnalyser.fftSize = 1024
+    nextAnalyser.smoothingTimeConstant = 0.72
+    source.connect(nextAnalyser)
+    nextAnalyser.connect(context.destination)
     audio = element
     audioContext = context
-    activeAnalyser = analyser
+    analyser = nextAnalyser
+    activeAnalyser = nextAnalyser
     await context.resume()
     await element.play()
   }
@@ -88,6 +92,24 @@ export function startPetMusicPlayback(): () => void {
       return
     }
     const data = readEventData(event.payload)
+    if (event.type === 'music.playback.state_changed' && isRecord(data) && isPlaybackState(data.playback)) {
+      const state = data.playback
+      if (state.url !== playbackUrl || audio === null) {
+        if (state.isPlaying) void play(state)
+        return
+      }
+      if (state.isPaused) {
+        audio.pause()
+        activeAnalyser = null
+      } else if (state.isPlaying) {
+        activeAnalyser = analyser
+        void audioContext?.resume().then(() => audio?.play()).catch((reason: unknown) => {
+          console.error('[MusicPlayback] resume failed', reason)
+          void stop()
+        })
+      }
+      return
+    }
     if (event.type === 'music.playback.requested' && isRecord(data) && isPlaybackState(data.playback)) {
       void play(data.playback).catch((reason: unknown) => {
         console.error('[MusicPlayback] start failed', reason)
@@ -97,7 +119,7 @@ export function startPetMusicPlayback(): () => void {
   }
 
   const unsubscribe = bridge.events.subscribe(
-    ['music.playback.requested', 'music.playback.stopped', 'settings.changed'],
+    ['music.playback.requested', 'music.playback.state_changed', 'music.playback.stopped', 'settings.changed'],
     onCoreEvent
   )
   void bridge.core.invoke({ type: 'music.current', payload: {} }).then((response) => {
@@ -131,7 +153,7 @@ function readEventData(value: unknown): unknown {
 
 function isPlaybackState(value: unknown): value is MusicPlaybackState {
   return isRecord(value) && typeof value.url === 'string' && typeof value.title === 'string' &&
-    typeof value.singer === 'string' && typeof value.isPlaying === 'boolean'
+    typeof value.singer === 'string' && typeof value.isPlaying === 'boolean' && typeof value.isPaused === 'boolean'
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

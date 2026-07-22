@@ -134,6 +134,7 @@ export type CoreRequest =
   | { type: 'pet.voice_cache.clear'; payload: Record<string, never> }
   | { type: 'music.current'; payload: Record<string, never> }
   | { type: 'music.search_and_play'; payload: { songName: string } }
+  | { type: 'music.toggle_pause'; payload: Record<string, never> }
   | { type: 'music.stop'; payload: Record<string, never> }
   | { type: 'status.resources'; payload: Record<string, never> }
   | { type: 'status.network'; payload: Record<string, never> }
@@ -172,6 +173,7 @@ export const CORE_EVENT_TYPES = [
   'agent.approval_requested',
   'agent.tool_call_completed',
   'music.playback.requested',
+  'music.playback.state_changed',
   'music.playback.stopped',
   'core.stderr',
   'core.exit'
@@ -408,6 +410,7 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
     case 'pet.voice_cache.clear':
     case 'pet.voice_intimacy.cycle':
     case 'music.current':
+    case 'music.toggle_pause':
     case 'music.stop':
     case 'status.resources':
     case 'status.network':

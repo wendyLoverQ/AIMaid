@@ -134,8 +134,8 @@ describe('real C# Core integration', () => {
 
     const playback = await client.invoke('request-music-current', {
       type: 'music.current', payload: {}
-    }, new AbortController().signal) as { url: string; title: string; singer: string; isPlaying: boolean }
-    expect(playback).toMatchObject({ title: 'NIGHT DANCER', singer: 'imase', isPlaying: true })
+    }, new AbortController().signal) as { url: string; title: string; singer: string; isPlaying: boolean; isPaused: boolean }
+    expect(playback).toMatchObject({ title: 'NIGHT DANCER', singer: 'imase', isPlaying: true, isPaused: false })
     expect(playback.url).toMatch(/^https:\/\//u)
     const response = await fetch(playback.url, { headers: { Range: 'bytes=0-4095' } })
     expect(response.ok).toBe(true)
@@ -143,6 +143,20 @@ describe('real C# Core integration', () => {
     const totalLength = Number(response.headers.get('content-range')?.match(/\/(\d+)$/u)?.[1] ?? response.headers.get('content-length'))
     expect(totalLength).toBeGreaterThan(1_000_000)
     expect((await response.arrayBuffer()).byteLength).toBeGreaterThan(0)
+
+    const paused = await client.invoke('request-music-pause', {
+      type: 'music.toggle_pause', payload: {}
+    }, new AbortController().signal)
+    expect(paused).toMatchObject({ title: 'NIGHT DANCER', isPlaying: false, isPaused: true })
+    const resumed = await client.invoke('request-music-resume', {
+      type: 'music.toggle_pause', payload: {}
+    }, new AbortController().signal)
+    expect(resumed).toMatchObject({ title: 'NIGHT DANCER', isPlaying: true, isPaused: false })
+    await client.invoke('request-music-stop', { type: 'music.stop', payload: {} }, new AbortController().signal)
+    const stopped = await client.invoke('request-music-stopped-state', {
+      type: 'music.current', payload: {}
+    }, new AbortController().signal)
+    expect(stopped).toMatchObject({ url: '', title: '', isPlaying: false, isPaused: false })
   }, 120_000)
 
   it('keeps a separately verified music API available for provider failover', async () => {

@@ -10,7 +10,7 @@ public sealed class MusicApplicationService : IDisposable
     private readonly IEventPublisher events;
     private readonly ISettingsStore settings;
     private readonly object stateGate = new();
-    private MusicPlaybackStateDto state = new(string.Empty, string.Empty, string.Empty, false);
+    private MusicPlaybackStateDto state = new(string.Empty, string.Empty, string.Empty, false, false);
 
     public MusicApplicationService(IEventPublisher events, ISettingsStore settings)
     {
@@ -62,7 +62,7 @@ public sealed class MusicApplicationService : IDisposable
                     continue;
                 }
 
-                var playback = new MusicPlaybackStateDto(url, song.Title, song.Singer, true);
+                var playback = new MusicPlaybackStateDto(url, song.Title, song.Singer, true, false);
                 lock (stateGate) state = playback;
                 await events.PublishAsync(new MusicPlaybackRequestedEvent(
                     EventIdentity.NewId(), DateTimeOffset.Now, playback), cancellationToken);
@@ -80,9 +80,24 @@ public sealed class MusicApplicationService : IDisposable
 
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
-        lock (stateGate) state = state with { IsPlaying = false };
+        lock (stateGate) state = new MusicPlaybackStateDto(string.Empty, string.Empty, string.Empty, false, false);
         await events.PublishAsync(new MusicPlaybackStoppedEvent(
             EventIdentity.NewId(), DateTimeOffset.Now), cancellationToken);
+    }
+
+    public async Task<OperationResult<MusicPlaybackStateDto>> TogglePauseAsync(CancellationToken cancellationToken = default)
+    {
+        MusicPlaybackStateDto next;
+        lock (stateGate)
+        {
+            if (string.IsNullOrWhiteSpace(state.Url) || (!state.IsPlaying && !state.IsPaused))
+                return OperationResult<MusicPlaybackStateDto>.Failure("music.not_playing", "当前没有正在播放的音乐");
+            next = state with { IsPlaying = state.IsPaused, IsPaused = state.IsPlaying };
+            state = next;
+        }
+        await events.PublishAsync(new MusicPlaybackStateChangedEvent(
+            EventIdentity.NewId(), DateTimeOffset.Now, next), cancellationToken);
+        return OperationResult<MusicPlaybackStateDto>.Success(next);
     }
 
     private async Task<MusicSong?> SearchMetingFirstAsync(string songName, CancellationToken cancellationToken)

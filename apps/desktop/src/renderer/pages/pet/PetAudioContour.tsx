@@ -99,8 +99,8 @@ function drawAudioBars(
 ): void {
   const size = Math.min(width, height)
   const baseGap = size * 0.012
-  const minimumLength = size * 0.004
-  const waveRange = size * 0.085
+  const minimumLength = size * 0.012
+  const waveRange = size * 0.14
   const centerX = contour.center.x * width
   const centerY = contour.center.y * height
   const bars = new Path2D()
@@ -110,7 +110,7 @@ function drawAudioBars(
     return { start: point, end: next, length: Math.hypot(next.x - point.x, next.y - point.y) }
   })
   const perimeter = segments.reduce((sum, segment) => sum + segment.length, 0)
-  const spacing = Math.max(2.5, size * 0.006)
+  const spacing = Math.max(6, size * 0.018)
   const peak = spectrumPeak(spectrum)
   let segmentIndex = 0
   let segmentStartDistance = 0
@@ -149,12 +149,12 @@ function drawAudioBars(
   context.lineCap = 'butt'
   context.strokeStyle = accent
   context.globalAlpha = 0.22
-  context.lineWidth = Math.max(2.5, size * 0.009)
+  context.lineWidth = Math.max(5, size * 0.016)
   context.shadowColor = accent
   context.shadowBlur = size * 0.012
   context.stroke(bars)
   context.globalAlpha = 0.96
-  context.lineWidth = Math.max(1.4, size * 0.004)
+  context.lineWidth = Math.max(3, size * 0.008)
   context.shadowBlur = size * 0.008
   context.stroke(bars)
   context.restore()

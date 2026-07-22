@@ -53,7 +53,7 @@ public sealed class CoreProtocolHost(
         "reminder.list", "reminder.save", "reminder.delete", "reminder.set_enabled", "reminder.set_allow_tts", "reminder.process_due",
         "character.list", "character.set_current", "character.save", "character.delete", "character.voice_assets", "character.voice_asset.add", "character.avatar.import", "character.voices", "character.voices.set", "character.binding.get", "character.binding.set", "character.binding.clear", "character.template.generate",
         "agent.capabilities.list", "agent.capability.save", "agent.execute", "agent.decide",
-        "pet.voice_menu.get", "pet.voice_intimacy.cycle", "pet.voice_cache.clear", "music.current", "music.search_and_play", "music.stop", "market.symbols", "market.snapshot", "market.chart_snapshot", "market.list", "market.record", "status.resources", "status.network", "status.role", "status.tts", "status.llm_latencies", "status.server.health", "status.server.summary", "status.codex_quota", "tts.playback.set"
+        "pet.voice_menu.get", "pet.voice_intimacy.cycle", "pet.voice_cache.clear", "music.current", "music.search_and_play", "music.toggle_pause", "music.stop", "market.symbols", "market.snapshot", "market.chart_snapshot", "market.list", "market.record", "status.resources", "status.network", "status.role", "status.tts", "status.llm_latencies", "status.server.health", "status.server.summary", "status.codex_quota", "tts.playback.set"
         , "notebook.list", "notebook.save", "notebook.delete", "video.list", "video.import_file", "video.import_folder", "video.refresh_metadata",
         "video.toggle_favorite", "video.set_display_name", "video.set_remark", "video.update_progress",
         "video.album.create", "video.album.rename", "video.album.delete", "video.album.move",
@@ -177,6 +177,7 @@ public sealed class CoreProtocolHost(
             AgentApprovalRequestedEvent value => (Type: "agent.approval_requested", CorrelationId: value.ApprovalToken, Payload: (object)value),
             AgentToolCallCompletedEvent value => (Type: "agent.tool_call_completed", CorrelationId: value.ToolCall.CallId, Payload: (object)value),
             MusicPlaybackRequestedEvent value => (Type: "music.playback.requested", CorrelationId: value.EventId, Payload: (object)value),
+            MusicPlaybackStateChangedEvent value => (Type: "music.playback.state_changed", CorrelationId: value.EventId, Payload: (object)value),
             MusicPlaybackStoppedEvent value => (Type: "music.playback.stopped", CorrelationId: value.EventId, Payload: (object)value),
             _ => (Type: string.Empty, CorrelationId: string.Empty, Payload: (object)businessEvent)
         };
@@ -623,6 +624,9 @@ public sealed class CoreProtocolHost(
                 case "music.search_and_play":
                     await HandleValueResultAsync(request, await music.SearchAndPlayAsync(
                         ReadRequiredString(request.Payload, "songName"), source.Token), source.Token);
+                    break;
+                case "music.toggle_pause":
+                    await HandleValueResultAsync(request, await music.TogglePauseAsync(source.Token), source.Token);
                     break;
                 case "music.stop":
                     await music.StopAsync(source.Token);
