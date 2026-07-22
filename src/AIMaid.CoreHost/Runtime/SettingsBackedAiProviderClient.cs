@@ -11,7 +11,7 @@ public sealed class SettingsBackedAiProviderClient(
     ExtendedDomainApplicationService domains,
     ICharacterStore characters,
     ISettingsStore settings,
-    ILlmCallAuditStore? auditStore = null) : IAiProviderClient, IDisposable
+    ILlmCallAuditStore auditStore) : IAiProviderClient, IDisposable
 {
     private readonly HttpClient httpClient = new();
 

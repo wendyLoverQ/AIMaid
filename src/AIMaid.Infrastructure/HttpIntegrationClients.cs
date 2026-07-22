@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using AIMaid.Core;
@@ -15,11 +16,17 @@ public sealed class AiProviderRequestException(
 
 public sealed class AiProviderHttpClient : IAiProviderClient
 {
+    private static readonly JsonSerializerOptions AuditJsonOptions = new()
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        WriteIndented = false
+    };
+
     private readonly HttpClient httpClient;
     private readonly AiProviderOptions options;
-    private readonly ILlmCallAuditStore? auditStore;
+    private readonly ILlmCallAuditStore auditStore;
 
-    public AiProviderHttpClient(HttpClient httpClient, AiProviderOptions options, ILlmCallAuditStore? auditStore = null)
+    public AiProviderHttpClient(HttpClient httpClient, AiProviderOptions options, ILlmCallAuditStore auditStore)
     {
         this.httpClient = httpClient;
         this.options = options;
@@ -38,11 +45,14 @@ public sealed class AiProviderHttpClient : IAiProviderClient
         int totalTokens = 0;
         var source = request.SourceKey.Length > 0 ? request.SourceKey : "chat_reply";
         var endpoint = options.Endpoint.ToString();
+        var model = string.IsNullOrWhiteSpace(request.ModelName) ? options.Model : request.ModelName;
 
         var messages = request.History.Select(x => new { role = x.Role, content = x.Content }).ToArray();
+        var systemPrompt = request.History.FirstOrDefault(x => x.Role == "system")?.Content ?? string.Empty;
+        var userPrompt = request.History.LastOrDefault(x => x.Role == "user")?.Content ?? string.Empty;
         var payload = new Dictionary<string, object?>
         {
-            ["model"] = string.IsNullOrWhiteSpace(request.ModelName) ? options.Model : request.ModelName,
+            ["model"] = model,
             ["messages"] = messages,
             ["stream"] = request.StreamResponse
         };
@@ -52,12 +62,36 @@ public sealed class AiProviderHttpClient : IAiProviderClient
             payload["response_format"] = new { type = "json_object" };
         if (request.Temperature is not null) payload["temperature"] = request.Temperature.Value;
         if (request.MaxTokens is not null) payload["max_tokens"] = request.MaxTokens.Value;
+        var requestJson = JsonSerializer.Serialize(payload, AuditJsonOptions);
+
+        // 1. 发起请求前先插入记录
+        var auditId = await auditStore.InsertAsync(new LlmCallAuditRecord(
+            ConversationId: request.ConversationId,
+            Source: source,
+            Provider: options.Model,
+            Model: model,
+            Endpoint: endpoint,
+            RequestUrl: endpoint,
+            SystemPrompt: systemPrompt,
+            UserPrompt: userPrompt,
+            RequestJson: requestJson,
+            ResponseStatusCode: 0,
+            ResponseId: string.Empty,
+            ResponseText: string.Empty,
+            Error: string.Empty,
+            DurationMs: 0,
+            PromptTokens: 0,
+            CompletionTokens: 0,
+            TotalTokens: 0,
+            CreatedAt: DateTimeOffset.Now), cancellationToken);
+
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, options.Endpoint)
         {
             Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
         };
         if (!string.IsNullOrWhiteSpace(options.ApiKey)) httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiKey);
 
+        var collected = new List<string>();
         try
         {
             HttpResponseMessage response;
@@ -93,12 +127,11 @@ public sealed class AiProviderHttpClient : IAiProviderClient
                     if (TryReadChatCompletionMessage(document.RootElement, out var content))
                     {
                         responseText.Append(content);
-                        yield return content;
+                        collected.Add(content);
                     }
                 }
                 else
                 {
-                    var collected = new List<string>();
                     await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
                     using var reader = new StreamReader(stream);
                     while (await reader.ReadLineAsync(cancellationToken) is { } line)
@@ -115,33 +148,43 @@ public sealed class AiProviderHttpClient : IAiProviderClient
                             collected.Add(delta);
                         }
                     }
-                    foreach (var delta in collected) yield return delta;
                 }
             }
         }
-        finally
+        catch (AiProviderRequestException)
         {
-            if (auditStore is not null)
-            {
-                var record = new LlmCallAuditRecord(
-                    ConversationId: request.ConversationId,
-                    Source: source,
-                    Provider: options.Model,
-                    Model: options.Model,
-                    Endpoint: endpoint,
-                    RequestUrl: endpoint,
-                    ResponseStatusCode: statusCode,
-                    ResponseId: responseId,
-                    ResponseText: responseText.ToString(),
-                    Error: errorText ?? string.Empty,
-                    DurationMs: stopwatch.ElapsedMilliseconds,
-                    PromptTokens: promptTokens,
-                    CompletionTokens: completionTokens,
-                    TotalTokens: totalTokens,
-                    CreatedAt: DateTimeOffset.Now,
-                    CompletedAt: DateTimeOffset.Now);
-                _ = Task.Run(() => auditStore.WriteAsync(record, CancellationToken.None));
-            }
+            // 2. 异常时更新错误信息
+            await UpdateAuditAsync(auditId, statusCode, responseId, responseText.ToString(), errorText ?? string.Empty,
+                stopwatch.ElapsedMilliseconds, promptTokens, completionTokens, totalTokens);
+            throw;
+        }
+
+        // 3. 正常完成时更新数据库
+        await UpdateAuditAsync(auditId, statusCode, responseId, responseText.ToString(), errorText ?? string.Empty,
+            stopwatch.ElapsedMilliseconds, promptTokens, completionTokens, totalTokens);
+
+        foreach (var delta in collected) yield return delta;
+    }
+
+    private async Task UpdateAuditAsync(long auditId, int statusCode, string responseId, string responseText, string error,
+        long durationMs, int promptTokens, int completionTokens, int totalTokens)
+    {
+        try
+        {
+            await auditStore.UpdateAsync(auditId, new LlmCallAuditCompletion(
+                ResponseStatusCode: statusCode,
+                ResponseId: responseId,
+                ResponseText: responseText,
+                Error: error,
+                DurationMs: durationMs,
+                PromptTokens: promptTokens,
+                CompletionTokens: completionTokens,
+                TotalTokens: totalTokens,
+                CompletedAt: DateTimeOffset.Now));
+        }
+        catch
+        {
+            // 审计日志写入失败不影响主流程
         }
     }
 

@@ -400,23 +400,22 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
     async Task IDomainDocumentStore.DeleteAsync(string domain, string id, CancellationToken cancellationToken)
         => await documents.DeleteAsync(domain, id, cancellationToken);
 
-    async Task ILlmCallAuditStore.WriteAsync(LlmCallAuditRecord record, CancellationToken cancellationToken)
+    async Task<long> ILlmCallAuditStore.InsertAsync(LlmCallAuditRecord record, CancellationToken cancellationToken)
     {
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO LlmCallLogs (CreatedAt, CompletedAt, ConversationId, CorrelationId, Source, Provider, Model, Endpoint,
+            INSERT INTO LlmCallLogs (CreatedAt, ConversationId, CorrelationId, Source, Provider, Model, Endpoint,
                 RequestUrl, SystemPrompt, UserPrompt, RequestJson, ResponseStatusCode, ResponseId, PreviousResponseId,
                 RawResponseJson, ResponseText, ParsedResponseJson, AudioPath, VoiceId, Error, DurationMs, UpdatedAt,
                 PromptTokens, CompletionTokens, TotalTokens)
-            VALUES ($createdAt, $completedAt, $conversationId, $correlationId, $source, $provider, $model, $endpoint,
-                $requestUrl, $systemPrompt, $userPrompt, $requestJson, $statusCode, $responseId, $previousResponseId,
-                $rawResponse, $responseText, $parsedResponse, $audioPath, $voiceId, $error, $durationMs, $updatedAt,
-                $promptTokens, $completionTokens, $totalTokens);
+            VALUES ($createdAt, $conversationId, $correlationId, $source, $provider, $model, $endpoint,
+                $requestUrl, $systemPrompt, $userPrompt, $requestJson, 0, '', '',
+                '', '', '', '', '', '', 0, $updatedAt,
+                0, 0, 0);
+            SELECT last_insert_rowid();
             """;
-        var now = Format(DateTimeOffset.Now);
         command.Parameters.AddWithValue("$createdAt", Format(record.CreatedAt));
-        command.Parameters.AddWithValue("$completedAt", record.CompletedAt is { } c ? Format(c) : now);
         command.Parameters.AddWithValue("$conversationId", record.ConversationId);
         command.Parameters.AddWithValue("$correlationId", record.ConversationId);
         command.Parameters.AddWithValue("$source", record.Source);
@@ -424,23 +423,37 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
         command.Parameters.AddWithValue("$model", record.Model);
         command.Parameters.AddWithValue("$endpoint", record.Endpoint);
         command.Parameters.AddWithValue("$requestUrl", record.RequestUrl);
-        command.Parameters.AddWithValue("$systemPrompt", string.Empty);
-        command.Parameters.AddWithValue("$userPrompt", string.Empty);
-        command.Parameters.AddWithValue("$requestJson", string.Empty);
-        command.Parameters.AddWithValue("$statusCode", record.ResponseStatusCode);
-        command.Parameters.AddWithValue("$responseId", record.ResponseId);
-        command.Parameters.AddWithValue("$previousResponseId", string.Empty);
-        command.Parameters.AddWithValue("$rawResponse", string.Empty);
-        command.Parameters.AddWithValue("$responseText", record.ResponseText);
-        command.Parameters.AddWithValue("$parsedResponse", string.Empty);
-        command.Parameters.AddWithValue("$audioPath", string.Empty);
-        command.Parameters.AddWithValue("$voiceId", string.Empty);
-        command.Parameters.AddWithValue("$error", record.Error);
-        command.Parameters.AddWithValue("$durationMs", record.DurationMs);
-        command.Parameters.AddWithValue("$updatedAt", now);
-        command.Parameters.AddWithValue("$promptTokens", record.PromptTokens);
-        command.Parameters.AddWithValue("$completionTokens", record.CompletionTokens);
-        command.Parameters.AddWithValue("$totalTokens", record.TotalTokens);
+        command.Parameters.AddWithValue("$systemPrompt", record.SystemPrompt);
+        command.Parameters.AddWithValue("$userPrompt", record.UserPrompt);
+        command.Parameters.AddWithValue("$requestJson", record.RequestJson);
+        command.Parameters.AddWithValue("$updatedAt", Format(DateTimeOffset.Now));
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return (long)result!;
+    }
+
+    async Task ILlmCallAuditStore.UpdateAsync(long id, LlmCallAuditCompletion completion, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE LlmCallLogs SET
+                ResponseStatusCode = $statusCode, ResponseId = $responseId, ResponseText = $responseText,
+                Error = $error, DurationMs = $durationMs, PromptTokens = $promptTokens,
+                CompletionTokens = $completionTokens, TotalTokens = $totalTokens,
+                CompletedAt = $completedAt, UpdatedAt = $updatedAt
+            WHERE rowid = $id;
+            """;
+        command.Parameters.AddWithValue("$statusCode", completion.ResponseStatusCode);
+        command.Parameters.AddWithValue("$responseId", completion.ResponseId);
+        command.Parameters.AddWithValue("$responseText", completion.ResponseText);
+        command.Parameters.AddWithValue("$error", completion.Error);
+        command.Parameters.AddWithValue("$durationMs", completion.DurationMs);
+        command.Parameters.AddWithValue("$promptTokens", completion.PromptTokens);
+        command.Parameters.AddWithValue("$completionTokens", completion.CompletionTokens);
+        command.Parameters.AddWithValue("$totalTokens", completion.TotalTokens);
+        command.Parameters.AddWithValue("$completedAt", Format(completion.CompletedAt));
+        command.Parameters.AddWithValue("$updatedAt", Format(DateTimeOffset.Now));
+        command.Parameters.AddWithValue("$id", id);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -448,6 +461,9 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
     {
         var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
+        using var pragma = connection.CreateCommand();
+        pragma.CommandText = "PRAGMA encoding = 'UTF-8';";
+        await pragma.ExecuteNonQueryAsync(cancellationToken);
         return connection;
     }
 

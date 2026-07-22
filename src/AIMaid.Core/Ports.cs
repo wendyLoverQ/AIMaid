@@ -132,6 +132,9 @@ public sealed record LlmCallAuditRecord(
     string Model,
     string Endpoint,
     string RequestUrl,
+    string SystemPrompt,
+    string UserPrompt,
+    string RequestJson,
     int ResponseStatusCode,
     string ResponseId,
     string ResponseText,
@@ -143,9 +146,23 @@ public sealed record LlmCallAuditRecord(
     DateTimeOffset CreatedAt,
     DateTimeOffset? CompletedAt = null);
 
+public sealed record LlmCallAuditCompletion(
+    int ResponseStatusCode,
+    string ResponseId,
+    string ResponseText,
+    string Error,
+    long DurationMs,
+    int PromptTokens,
+    int CompletionTokens,
+    int TotalTokens,
+    DateTimeOffset CompletedAt);
+
 public interface ILlmCallAuditStore
 {
-    Task WriteAsync(LlmCallAuditRecord record, CancellationToken cancellationToken = default);
+    /// <summary>发起请求时立即写入，返回记录 ID。</summary>
+    Task<long> InsertAsync(LlmCallAuditRecord record, CancellationToken cancellationToken = default);
+    /// <summary>收到回复后按 ID 更新结果。</summary>
+    Task UpdateAsync(long id, LlmCallAuditCompletion completion, CancellationToken cancellationToken = default);
 }
 
 public interface ISecretProtector
