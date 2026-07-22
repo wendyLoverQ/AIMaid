@@ -50,7 +50,7 @@ public sealed class CoreProtocolHost(
 {
     private static readonly HashSet<string> RequestTypes = new(StringComparer.Ordinal)
     {
-        "system.handshake", "system.health", "system.window.fit_virtual_desktop", "system.window.center_on_client_rect", "system.keyboard.wait_release", "system.shutdown", "system.cancel", "system.stream", "settings.get", "settings.save", "chat.history", "chat.send", "chat.update_metadata", "tts.speak", "asr.transcribe",
+        "system.handshake", "system.health", "system.window.fit_virtual_desktop", "system.window.center_on_client_rect", "system.shutdown", "system.cancel", "system.stream", "settings.get", "settings.save", "chat.history", "chat.send", "chat.update_metadata", "tts.speak", "asr.transcribe",
         "reminder.list", "reminder.save", "reminder.delete", "reminder.set_enabled", "reminder.set_allow_tts", "reminder.process_due",
         "character.list", "character.set_current", "character.save", "character.delete", "character.voice_assets", "character.voice_asset.add", "character.avatar.import", "character.voices", "character.voices.set", "character.binding.get", "character.binding.set", "character.binding.clear", "character.template.generate",
         "agent.capabilities.list", "agent.capability.save", "agent.execute", "agent.decide",
@@ -229,12 +229,6 @@ public sealed class CoreProtocolHost(
                             ReadDouble(request.Payload, "viewportWidth", positive: true),
                             ReadDouble(request.Payload, "viewportHeight", positive: true)),
                         source.Token);
-                    break;
-                case "system.keyboard.wait_release":
-                    await WindowsKeyboardState.WaitForReleaseAsync(
-                        ReadIntArray(request.Payload, "virtualKeys", 1, 255, 8),
-                        source.Token);
-                    await writer.SuccessAsync(request, new { released = true }, source.Token);
                     break;
                 case "settings.get":
                     await HandleSettingsGetAsync(request, source.Token);
@@ -1087,14 +1081,6 @@ public sealed class CoreProtocolHost(
         if (!payload.TryGetProperty(name, out var element) || element.ValueKind != JsonValueKind.Array) throw new ArgumentException($"缺少或无效的 {name}。");
         var values = element.EnumerateArray().Select(value => value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : string.Empty).ToArray();
         if (values.Length is < 1 or > 1000 || values.Any(string.IsNullOrWhiteSpace)) throw new ArgumentException($"{name} 必须包含 1 到 1000 个有效 ID。");
-        return values;
-    }
-    private static IReadOnlyList<int> ReadIntArray(JsonElement payload, string name, int minimum, int maximum, int maximumCount)
-    {
-        if (!payload.TryGetProperty(name, out var element) || element.ValueKind != JsonValueKind.Array) throw new ArgumentException($"缺少或无效的 {name}。");
-        var values = element.EnumerateArray().Select(value => value.TryGetInt32(out var number) ? number : int.MinValue).Distinct().ToArray();
-        if (values.Length is < 1 || values.Length > maximumCount || values.Any(value => value < minimum || value > maximum))
-            throw new ArgumentException($"{name} 必须包含 1 到 {maximumCount} 个有效整数。");
         return values;
     }
     private static IReadOnlyList<T> ReadArray<T>(JsonElement payload, string name)

@@ -1,4 +1,4 @@
-import { MainRegion, Section, Textarea } from '../../components/ui';
+import { IconButton, Inline, MainRegion, Section, Textarea, UiIcon } from '../../components/ui';
 import { useEffect, useRef, useState } from 'react';
 import type { ChatCommandLauncherDto } from '../../../shared/business';
 import { loadCharacters } from '../../features/characters/character-api';
@@ -13,33 +13,112 @@ export interface PromptSubmission {
 }
 export function PromptPage(): React.JSX.Element {
     const input = useRef<HTMLTextAreaElement>(null);
+    const recorder = useRef<MediaRecorder | undefined>(undefined);
+    const recordingStream = useRef<MediaStream | undefined>(undefined);
+    const chunks = useRef<Blob[]>([]);
+    const discardRecording = useRef(false);
     const [text, setText] = useState('');
+    const [recording, setRecording] = useState(false);
+    const [transcribing, setTranscribing] = useState(false);
     useEffect(() => {
-        let disposed = false;
         document.body.classList.add('prompt-surface');
         const focus = (): void => {
             setText('');
             requestAnimationFrame(() => input.current?.focus());
-            void bridge.voiceInput.consume().then(async (response) => {
-                const payload = response.payload;
-                if (disposed || !response.success || payload === null || payload.id === null || payload.text === null)
-                    return;
-                setText(payload.text);
-                const acknowledged = await bridge.voiceInput.acknowledge(payload.id);
-                if (!acknowledged.success || !acknowledged.payload?.acknowledged)
-                    throw new Error(acknowledged.error?.message ?? '语音输入状态确认失败。');
-                if (!disposed)
-                    void submit(false, false, payload.text);
-            }).catch((reason: unknown) => publishPetBubble(reason instanceof Error ? reason.message : String(reason), 'error', 'error'));
         };
         window.addEventListener('focus', focus);
         focus();
         return () => {
-            disposed = true;
+            discardRecording.current = true;
+            if (recorder.current?.state === 'recording')
+                recorder.current.stop();
+            recordingStream.current?.getTracks().forEach((track) => track.stop());
             document.body.classList.remove('prompt-surface');
             window.removeEventListener('focus', focus);
         };
     }, []);
+    async function transcribe(audio: Blob, characterId: string): Promise<void> {
+        setTranscribing(true);
+        publishPetBubble('正在识别语音…', 'processing', 'think');
+        try {
+            const imported = await bridge.speech.importAudioData(await blobToDataUrl(audio));
+            if (!imported.success || imported.payload === null)
+                throw new Error(imported.error?.message ?? '录音保存失败。');
+            const response = await bridge.core.invoke({ type: 'asr.transcribe', payload: {
+                    audioPath: imported.payload.path,
+                    characterId,
+                    language: 'zh',
+                    requestId: `aimaid_${crypto.randomUUID().replaceAll('-', '')}`
+                } }, 120000);
+            if (!response.success || typeof response.payload !== 'string')
+                throw new Error(response.error?.message ?? '语音识别失败。');
+            const recognized = response.payload.trim();
+            if (recognized === '')
+                throw new Error('语音识别没有返回文字。');
+            setText(recognized);
+            await submit(false, false, recognized);
+        }
+        catch (reason) {
+            publishPetBubble(reason instanceof Error ? reason.message : String(reason), 'error', 'error');
+        }
+        finally {
+            setTranscribing(false);
+        }
+    }
+    async function startRecording(): Promise<void> {
+        if (recording || transcribing)
+            return;
+        if (navigator.mediaDevices?.getUserMedia === undefined || typeof MediaRecorder === 'undefined') {
+            publishPetBubble('当前系统不支持麦克风录音。', 'error', 'error');
+            return;
+        }
+        try {
+            const character = await currentCharacter();
+            if (character === undefined)
+                throw new Error('请先选择一个聊天角色。');
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false });
+            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+            const next = new MediaRecorder(stream, { mimeType });
+            chunks.current = [];
+            discardRecording.current = false;
+            recordingStream.current = stream;
+            recorder.current = next;
+            next.ondataavailable = (event) => {
+                if (event.data.size > 0)
+                    chunks.current.push(event.data);
+            };
+            next.onerror = () => publishPetBubble('麦克风录音失败，请检查系统权限。', 'error', 'error');
+            next.onstop = () => {
+                stream.getTracks().forEach((track) => track.stop());
+                recordingStream.current = undefined;
+                recorder.current = undefined;
+                setRecording(false);
+                if (discardRecording.current) {
+                    chunks.current = [];
+                    return;
+                }
+                const audio = new Blob(chunks.current, { type: next.mimeType });
+                chunks.current = [];
+                if (audio.size === 0) {
+                    publishPetBubble('没有录到声音，请重试。', 'error', 'error');
+                    return;
+                }
+                void transcribe(audio, character.roleId);
+            };
+            next.start(500);
+            setRecording(true);
+            publishPetBubble('正在听主人说话…', 'status', 'listen');
+        }
+        catch (reason) {
+            recordingStream.current?.getTracks().forEach((track) => track.stop());
+            publishPetBubble(reason instanceof Error ? reason.message : '无法访问麦克风，请检查系统权限。', 'error', 'error');
+        }
+    }
+    function stopRecording(discard = false): void {
+        discardRecording.current = discard;
+        if (recorder.current?.state === 'recording')
+            recorder.current.stop();
+    }
     async function submit(continueConversation: boolean, ttsPreviewOnly: boolean, promptText = text): Promise<void> {
         const prompt = promptText.trim();
         if (prompt === '')
@@ -101,9 +180,11 @@ export function PromptPage(): React.JSX.Element {
                 void bridge.window.hide();
         }}>
     <Section variant="prompt" aria-label="快捷输入" onMouseDown={(event) => event.stopPropagation()}>
+      <Inline wrap={false} align="center">
       <Textarea ref={input} aria-label="快捷输入内容" value={text} rows={2} onChange={(event) => setText(event.target.value)} onKeyDown={(event) => {
             if (event.key === 'Escape') {
                 event.preventDefault();
+                stopRecording(true);
                 void bridge.window.hide();
                 return;
             }
@@ -112,6 +193,17 @@ export function PromptPage(): React.JSX.Element {
             event.preventDefault();
             void submit(event.ctrlKey, event.shiftKey);
       }}/>
+      <IconButton
+        size="sm"
+        label={recording ? '结束录音' : transcribing ? '正在识别语音' : '语音输入'}
+        tooltip={recording ? '结束录音并发送' : '录音并发送'}
+        loading={transcribing}
+        aria-pressed={recording}
+        onClick={() => recording ? stopRecording() : void startRecording()}
+      >
+        <UiIcon name={recording ? 'stop' : 'microphone'}/>
+      </IconButton>
+      </Inline>
     </Section>
   </MainRegion>;
 }
@@ -210,4 +302,12 @@ function actionTagForVoiceStyle(voiceStyle: string): string {
     if (normalized === 'soft')
         return 'smile';
     return 'speak';
+}
+function blobToDataUrl(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('录音读取失败。'));
+        reader.onerror = () => reject(reader.error ?? new Error('录音读取失败。'));
+        reader.readAsDataURL(blob);
+    });
 }

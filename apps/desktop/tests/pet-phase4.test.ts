@@ -61,9 +61,9 @@ describe('phase 4 PetWindow integration', () => {
     const chat = WINDOW_REGISTRY.chat.options
     const manager = readFileSync(resolve(import.meta.dirname, '../src/main/windows/window-manager.ts'), 'utf8')
     expect(chat.alwaysOnTop).toBe(true)
-    expect(manager).toContain("if (kind === 'chat' || kind === 'voice-input') window.setAlwaysOnTop(true, 'screen-saver')")
-    expect(manager).toContain("if (kind === 'chat' || kind === 'voice-input') existing.setAlwaysOnTop(true, 'screen-saver')")
-    expect(manager).toContain("if (kind === 'chat' || kind === 'voice-input') existing.moveTop()")
+    expect(manager).toContain("if (kind === 'chat') window.setAlwaysOnTop(true, 'screen-saver')")
+    expect(manager).toContain("if (kind === 'chat') existing.setAlwaysOnTop(true, 'screen-saver')")
+    expect(manager).toContain("if (kind === 'chat') existing.moveTop()")
   })
 
   it('discovers bundled Live2D roles and switches the requested model manifest', async () => {

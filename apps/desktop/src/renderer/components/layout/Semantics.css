@@ -4,8 +4,14 @@ body.prompt-surface .ui-main-region > .ui-section[data-variant="prompt"] {
 }
 
 body.prompt-surface .ui-main-region > .ui-section[data-variant="prompt"] .ui-textarea {
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
   height: auto;
   max-height: none;
   resize: none;
+}
+
+body.prompt-surface .ui-main-region > .ui-section[data-variant="prompt"] > .ui-inline {
+  flex-wrap: nowrap;
 }

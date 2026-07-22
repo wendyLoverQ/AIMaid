@@ -128,13 +128,6 @@ export class SystemSettingsService {
 
   private async execute(action: HotkeyAction): Promise<void> {
     const definition = HOTKEY_ACTIONS.find((item) => item.action === action)!
-    if (action === 'open-voice-input') {
-      const existing = this.windows.get('voice-input')
-      if (existing !== undefined && existing.isVisible()) return
-      const window = this.windows.open('voice-input', 'pet', { trigger: 'global-hotkey' })
-      await this.petWindows.positionWindowAtItem(window)
-      return
-    }
     if ('target' in definition && definition.target !== undefined) {
       const shown = this.windows.toggle(definition.target, 'pet', { trigger: 'global-hotkey' })
       const targetWindow = shown ? this.windows.get(definition.target) : undefined

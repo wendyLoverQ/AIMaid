@@ -2,7 +2,6 @@ import type { WindowKind } from './windows'
 
 export const HOTKEY_ACTIONS = [
   { action: 'open-chat', label: '聊天输入', settingKey: 'hotkey_open_chat', defaultGesture: 'Ctrl+Shift+F', target: 'chat' },
-  { action: 'open-voice-input', label: '语音快速输入', settingKey: 'hotkey_open_voice_input', defaultGesture: 'Ctrl+Shift+S', target: 'voice-input' },
   { action: 'open-workbench', label: '工作台', settingKey: 'hotkey_open_workbench', defaultGesture: '', target: 'main' },
   { action: 'open-character-manager', label: '角色管理', settingKey: 'hotkey_open_character_manager', defaultGesture: '', target: 'characters' },
   { action: 'open-notebook', label: '记事本', settingKey: 'hotkey_open_notebook', defaultGesture: 'Ctrl+Shift+R', target: 'notebook' },

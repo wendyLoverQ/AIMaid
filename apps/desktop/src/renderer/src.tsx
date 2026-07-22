@@ -17,4 +17,4 @@ const content = (
   </GlobalUiRoot>
 )
 
-createRoot(root).render(bridge.window.kind === 'pet' || bridge.window.kind === 'voice-input' ? content : <StrictMode>{content}</StrictMode>)
+createRoot(root).render(bridge.window.kind === 'pet' ? content : <StrictMode>{content}</StrictMode>)

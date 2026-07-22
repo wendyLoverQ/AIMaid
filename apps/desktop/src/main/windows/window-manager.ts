@@ -45,13 +45,10 @@ export class WindowManager {
       }
       if (kind === 'pet') existing.showInactive()
       else {
-        if (kind === 'chat' || kind === 'voice-input') existing.setAlwaysOnTop(true, 'screen-saver')
-        if (kind === 'voice-input') existing.showInactive()
-        else {
-          existing.show()
-          existing.focus()
-        }
-        if (kind === 'chat' || kind === 'voice-input') existing.moveTop()
+        if (kind === 'chat') existing.setAlwaysOnTop(true, 'screen-saver')
+        existing.show()
+        existing.focus()
+        if (kind === 'chat') existing.moveTop()
       }
       this.log.info('window', 'Existing window opened', { kind, windowId: existing.id, ...context })
       return existing
@@ -60,7 +57,7 @@ export class WindowManager {
     const definition = WINDOW_REGISTRY[kind]
     const window = this.factory.create(definition)
 
-    if (kind === 'chat' || kind === 'voice-input') window.setAlwaysOnTop(true, 'screen-saver')
+    if (kind === 'chat') window.setAlwaysOnTop(true, 'screen-saver')
 
     if (kind !== 'pet' && kind !== 'tray-menu') {
       this.attachForeignWindowMoveGuard(window)
@@ -73,12 +70,9 @@ export class WindowManager {
       const showLoadedWindow = (): void => {
         if (shown || window.isDestroyed()) return
         shown = true
-        if (kind === 'voice-input') window.showInactive()
-        else {
-          window.show()
-          window.focus()
-        }
-        if (kind === 'chat' || kind === 'voice-input') window.moveTop()
+        window.show()
+        window.focus()
+        if (kind === 'chat') window.moveTop()
       }
       window.once('ready-to-show', showLoadedWindow)
       window.webContents.once('did-finish-load', showLoadedWindow)

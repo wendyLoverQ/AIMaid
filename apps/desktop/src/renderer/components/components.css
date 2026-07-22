@@ -1086,15 +1086,6 @@ body:has(.tray-menu-shell) #root { min-width: 0; }
 body.prompt-surface, body.prompt-surface #root { width: 100%; height: 100%; background: transparent; }
 body.prompt-surface .ui-main-region { width: 100vw; height: 100vh; padding: 0; place-items: center; background: transparent; }
 body.prompt-surface .ui-main-region > .ui-section { width: min(380px, calc(100vw - var(--space-8))); padding: var(--space-6) var(--space-7); border: var(--border-default); border-radius: var(--radius-lg); background: var(--color-bg-surface); box-shadow: var(--shadow-md); }
-body.voice-input-surface, body.voice-input-surface #root { width: 100%; height: 100%; min-width: 0; overflow: hidden; background: transparent; }
-.ui-voice-input-orb { position: absolute; inset: 50% auto auto 50%; display: grid; width: 2.75rem; height: 2.75rem; padding: 0; place-items: center; border: var(--focus-ring-width) solid rgba(255,255,255,.9); border-radius: 50%; color: #fff; background: radial-gradient(circle at 35% 30%, #ff7899 0%, #e23f69 48%, #a81843 100%); box-shadow: 0 4px 14px rgba(108,18,52,.3), inset 0 1px 0 rgba(255,255,255,.44); transform: translate(-50%, -50%); cursor: pointer; }
-.ui-voice-input-orb:disabled { opacity: 1; cursor: wait; }
-.ui-voice-input-orb__pulse { position: absolute; inset: -.35rem; border: var(--focus-ring-width) solid rgba(226,63,105,.46); border-radius: 50%; pointer-events: none; }
-.ui-voice-input-orb--recording .ui-voice-input-orb__pulse { animation: ui-voice-input-pulse 1.35s ease-out infinite; }
-.ui-voice-input-orb--transcribing { background: radial-gradient(circle at 35% 30%, #8d9cff 0%, #5968df 52%, #303da6 100%); }
-.ui-voice-input-orb--error { background: radial-gradient(circle at 35% 30%, #ffad78 0%, #dc563f 52%, #9c2924 100%); }
-.ui-voice-input-orb__icon { font-size: .7rem; line-height: 1; text-shadow: 0 1px 6px rgba(0,0,0,.22); }
-@keyframes ui-voice-input-pulse { from { opacity: .8; transform: scale(.92); } to { opacity: 0; transform: scale(1.16); } }
 .ui-pet-bubble { position: absolute; z-index: var(--z-sticky); top: var(--space-3); left: 50%; width: min(420px, calc(100% - var(--space-8))); min-height: 72px; padding: var(--space-6) var(--space-7); color: var(--color-text-primary); background: var(--color-bg-elevated); border: var(--focus-ring-width) solid var(--color-accent); border-radius: var(--radius-xl); box-shadow: var(--shadow-md); backdrop-filter: blur(8px); transform: translateX(-50%); cursor: pointer; pointer-events: auto; animation: ui-pet-bubble-in var(--duration-overlay-in) var(--ease-standard) both; }
 .ui-pet-bubble::before, .ui-pet-bubble::after { position: absolute; left: 64%; transform: translateX(-50%); clip-path: polygon(0 0, 100% 0, 46% 100%); content: ''; }
 .ui-pet-bubble::before { bottom: -21px; width: 34px; height: 23px; background: var(--color-accent); }

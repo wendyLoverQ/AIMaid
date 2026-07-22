@@ -44,12 +44,8 @@ export const WINDOW_CAPABILITIES: Readonly<Record<WindowKind, WindowCapabilities
     events: true
   },
   chat: {
-    requests: [...MODULE_REQUESTS, 'media.registerLocalFile', 'voice-input.consume', 'voice-input.acknowledge'],
+    requests: [...MODULE_REQUESTS, 'media.registerLocalFile', 'speech.audio.importData'],
     events: true
-  },
-  'voice-input': {
-    requests: ['window.close', 'core.invoke', 'speech.audio.importData', 'voice-input.complete'],
-    events: false
   },
   settings: {
     requests: ['window.open', 'window.show', 'window.hide', 'window.close', 'window.quit', 'window.focus',

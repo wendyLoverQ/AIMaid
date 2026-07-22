@@ -50,8 +50,6 @@ export {
   VisualRegion, VisuallyHidden
 } from './layout/Primitives'
 export { KeyboardKey as Keycap } from './layout/Primitives'
-export { VoiceInputOrb } from './feedback/VoiceInputOrb'
-export type { VoiceInputOrbState } from './feedback/VoiceInputOrb'
 export { ScrollArea } from './layout/ScrollArea'
 export { TrayMenuSurface } from './layout/TrayMenuSurface'
 export { WindowTitleBar } from './layout/WindowTitleBar'

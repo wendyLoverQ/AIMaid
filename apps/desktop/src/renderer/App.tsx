@@ -1,6 +1,5 @@
 import { lazy, Suspense } from 'react'
 import { PromptPage } from './pages/chat/PromptPage'
-import { VoiceInputPage } from './pages/chat/VoiceInputPage'
 import { CharacterPage } from './features/characters/CharacterPage'
 import { TemplateCardPage } from './features/characters/TemplateCardPage'
 import { CharacterEditorPage } from './features/characters/CharacterEditorPage'
@@ -40,8 +39,6 @@ export function App(): React.JSX.Element {
       )
     case 'chat':
       return <PromptPage />
-    case 'voice-input':
-      return <VoiceInputPage />
     case 'settings':
       return <SettingsPage />
     case 'reminders':

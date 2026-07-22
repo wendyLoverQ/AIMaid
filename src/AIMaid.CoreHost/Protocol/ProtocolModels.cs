@@ -8,7 +8,7 @@ public static class ProtocolConstants
     public const string Version = "1.0";
     public static readonly string[] Capabilities =
     [
-        "system.health", "system.window.fit_virtual_desktop", "system.window.center_on_client_rect", "system.keyboard.wait_release", "system.shutdown", "system.cancel", "system.stream", "settings.get", "settings.save", "chat.history", "chat.send", "chat.update_metadata", "tts.speak",
+        "system.health", "system.window.fit_virtual_desktop", "system.window.center_on_client_rect", "system.shutdown", "system.cancel", "system.stream", "settings.get", "settings.save", "chat.history", "chat.send", "chat.update_metadata", "tts.speak",
         "reminder.list", "reminder.save", "reminder.delete", "reminder.set_enabled", "reminder.set_allow_tts", "reminder.process_due",
         "character.list", "character.set_current", "character.save", "character.delete", "character.voice_assets", "character.voice_asset.add", "character.avatar.import", "character.voices", "character.voices.set", "character.binding.get", "character.binding.set", "character.binding.clear", "character.template.generate",
         "agent.capabilities.list", "agent.capability.save", "agent.execute", "agent.decide",

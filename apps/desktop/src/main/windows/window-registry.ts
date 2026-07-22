@@ -54,26 +54,6 @@ export const WINDOW_REGISTRY: Readonly<Record<WindowKind, WindowDefinition>> = {
       show: false
     }
   },
-  'voice-input': {
-    id: 'voice-input',
-    route: 'voice-input',
-    closeBehavior: 'destroy',
-    options: {
-      width: 64,
-      height: 64,
-      transparent: true,
-      backgroundColor: '#00000000',
-      frame: false,
-      resizable: false,
-      alwaysOnTop: true,
-      focusable: false,
-      skipTaskbar: true,
-      hasShadow: false,
-      maximizable: false,
-      fullscreenable: false,
-      show: false
-    }
-  },
   settings: {
     id: 'settings',
     route: 'settings',

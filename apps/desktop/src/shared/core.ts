@@ -4,7 +4,6 @@ export const CORE_PROTOCOL_VERSION = '1.0' as const
 
 export const CORE_DEFAULT_REQUEST_TIMEOUT_MS = 30_000
 export const CORE_LONG_REQUEST_TIMEOUT_MS = 120_000
-export const CORE_HOLD_REQUEST_TIMEOUT_MS = 600_000
 
 const LONG_RUNNING_CORE_REQUEST_TYPES = new Set<string>([
   'chat.send',
@@ -24,7 +23,6 @@ const LONG_RUNNING_CORE_REQUEST_TYPES = new Set<string>([
 ])
 
 export function coreRequestTimeoutMs(type: CoreRequest['type']): number {
-  if (type === 'system.keyboard.wait_release') return CORE_HOLD_REQUEST_TIMEOUT_MS
   return LONG_RUNNING_CORE_REQUEST_TYPES.has(type)
     ? CORE_LONG_REQUEST_TIMEOUT_MS
     : CORE_DEFAULT_REQUEST_TIMEOUT_MS
@@ -34,7 +32,6 @@ export type CoreRequest =
   | { type: 'system.health'; payload: Record<string, never> }
   | { type: 'system.window.fit_virtual_desktop'; payload: { windowHandle: string } }
   | { type: 'system.window.center_on_client_rect'; payload: { petWindowHandle: string; targetWindowHandle: string; x: number; y: number; width: number; height: number; viewportWidth: number; viewportHeight: number } }
-  | { type: 'system.keyboard.wait_release'; payload: { virtualKeys: number[] } }
   | { type: 'settings.get'; payload: { keys?: string[] } }
   | { type: 'settings.save'; payload: { values: Record<string, string> } }
   | { type: 'chat.history'; payload: { conversationId?: string; limit?: number } }
@@ -226,9 +223,6 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
         isFiniteNumber(value.payload.x) && isFiniteNumber(value.payload.y) &&
         isPositiveFiniteNumber(value.payload.width) && isPositiveFiniteNumber(value.payload.height) &&
         isPositiveFiniteNumber(value.payload.viewportWidth) && isPositiveFiniteNumber(value.payload.viewportHeight)
-    case 'system.keyboard.wait_release':
-      return Array.isArray(value.payload.virtualKeys) && value.payload.virtualKeys.length >= 1 && value.payload.virtualKeys.length <= 8 &&
-        value.payload.virtualKeys.every((key) => isIntegerInRange(key, 1, 255))
     case 'settings.get':
       return value.payload.keys === undefined || (
         Array.isArray(value.payload.keys) &&
