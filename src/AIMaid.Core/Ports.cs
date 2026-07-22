@@ -150,6 +150,7 @@ public sealed record LlmCallAuditCompletion(
     int ResponseStatusCode,
     string ResponseId,
     string ResponseText,
+    string RawResponseJson,
     string Error,
     long DurationMs,
     int PromptTokens,

@@ -171,10 +171,12 @@ public sealed class AiProviderHttpClient : IAiProviderClient
     {
         try
         {
+            var decoded = Regex.Unescape(responseText);
             await auditStore.UpdateAsync(auditId, new LlmCallAuditCompletion(
                 ResponseStatusCode: statusCode,
                 ResponseId: responseId,
-                ResponseText: responseText,
+                ResponseText: decoded,
+                RawResponseJson: responseText,
                 Error: error,
                 DurationMs: durationMs,
                 PromptTokens: promptTokens,

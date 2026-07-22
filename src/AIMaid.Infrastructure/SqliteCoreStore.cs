@@ -438,14 +438,15 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
         command.CommandText = """
             UPDATE LlmCallLogs SET
                 ResponseStatusCode = $statusCode, ResponseId = $responseId, ResponseText = $responseText,
-                Error = $error, DurationMs = $durationMs, PromptTokens = $promptTokens,
-                CompletionTokens = $completionTokens, TotalTokens = $totalTokens,
+                RawResponseJson = $rawResponse, Error = $error, DurationMs = $durationMs,
+                PromptTokens = $promptTokens, CompletionTokens = $completionTokens, TotalTokens = $totalTokens,
                 CompletedAt = $completedAt, UpdatedAt = $updatedAt
             WHERE rowid = $id;
             """;
         command.Parameters.AddWithValue("$statusCode", completion.ResponseStatusCode);
         command.Parameters.AddWithValue("$responseId", completion.ResponseId);
         command.Parameters.AddWithValue("$responseText", completion.ResponseText);
+        command.Parameters.AddWithValue("$rawResponse", completion.RawResponseJson);
         command.Parameters.AddWithValue("$error", completion.Error);
         command.Parameters.AddWithValue("$durationMs", completion.DurationMs);
         command.Parameters.AddWithValue("$promptTokens", completion.PromptTokens);
