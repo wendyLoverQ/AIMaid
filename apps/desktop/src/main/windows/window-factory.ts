@@ -31,7 +31,7 @@ export class WindowFactory {
         experimentalFeatures: false,
         webviewTag: definition.id === 'douyin-login',
         spellcheck: false,
-        backgroundThrottling: definition.id !== 'pet',
+        backgroundThrottling: false,
         additionalArguments: [`--aimaid-window=${definition.id}`, `--aimaid-version=${app.getVersion()}`]
       }
     })
