@@ -6,12 +6,14 @@ export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonEle
   size?: 'sm' | 'md' | 'lg'
   loading?: boolean
   tooltip?: string
+  variant?: 'default' | 'promptVoice'
 }
 
-export function IconButton({ label, tooltip, size = 'md', loading = false, disabled, className = '', children, ...props }: IconButtonProps): React.JSX.Element {
+export function IconButton({ label, tooltip, size = 'md', loading = false, disabled, variant = 'default', className = '', children, ...props }: IconButtonProps): React.JSX.Element {
+  const variantClass = variant === 'promptVoice' ? 'prompt-voice-button' : ''
   return (
     <button
-      className={`ui-icon-button ui-control--${size} ${className}`.trim()}
+      className={`ui-icon-button ui-control--${size} ${variantClass} ${className}`.trim()}
       type="button"
       aria-label={label}
       title={tooltip ?? label}

@@ -259,12 +259,23 @@ public sealed class SpeechHttpClient : ITtsClient, IAsrClient
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         using var document = JsonDocument.Parse(body);
         var root = document.RootElement;
-        if (!response.IsSuccessStatusCode || root.TryGetProperty("success", out var success) && success.ValueKind == JsonValueKind.False)
+        if (!response.IsSuccessStatusCode)
         {
-            var message = root.TryGetProperty("error", out var error) && error.TryGetProperty("message", out var errorMessage)
+            var message = root.ValueKind == JsonValueKind.String
+                ? root.GetString()
+                : root.ValueKind == JsonValueKind.Object && root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object && error.TryGetProperty("message", out var errorMessage)
+                    ? errorMessage.GetString()
+                    : null;
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(message) ? $"AIProvider 语音识别失败（HTTP {(int)response.StatusCode}）。" : message);
+        }
+        if (root.ValueKind != JsonValueKind.Object)
+            throw new InvalidDataException("AIProvider ASR 响应不是有效对象。");
+        if (root.TryGetProperty("success", out var success) && success.ValueKind == JsonValueKind.False)
+        {
+            var message = root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object && error.TryGetProperty("message", out var errorMessage)
                 ? errorMessage.GetString()
                 : null;
-            throw new InvalidOperationException(string.IsNullOrWhiteSpace(message) ? $"AIProvider 语音识别失败（HTTP {(int)response.StatusCode}）。" : message);
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(message) ? "AIProvider 语音识别失败。" : message);
         }
         if (!root.TryGetProperty("data", out var data) || !data.TryGetProperty("text", out var text) || text.ValueKind != JsonValueKind.String)
             throw new InvalidDataException("AIProvider ASR 响应缺少 data.text。");

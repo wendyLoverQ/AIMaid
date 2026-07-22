@@ -14,6 +14,7 @@ describe('chat prompt voice input', () => {
     expect(prompt).toContain('await submit(false, false, recognized)')
     expect(prompt).toContain('async function transcribe(audio: Blob)')
     expect(prompt).toContain('void transcribe(audio)')
+    expect(prompt).toContain('variant="promptVoice"')
     expect(canRequest('chat', 'speech.audio.importData')).toBe(true)
   })
 

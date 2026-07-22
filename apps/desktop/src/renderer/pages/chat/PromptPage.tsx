@@ -190,6 +190,7 @@ export function PromptPage(): React.JSX.Element {
             void submit(event.ctrlKey, event.shiftKey);
       }}/>
       <IconButton
+        variant="promptVoice"
         size="sm"
         label={recording ? '结束录音' : transcribing ? '正在识别语音' : '语音输入'}
         tooltip={recording ? '结束录音并发送' : '录音并发送'}

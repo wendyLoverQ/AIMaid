@@ -1,6 +1,6 @@
 body.prompt-surface .ui-main-region > .ui-section[data-variant="prompt"] {
   width: min(272px, calc(100vw - var(--space-4)));
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-3) var(--space-2);
 }
 
 body.prompt-surface .ui-main-region > .ui-section[data-variant="prompt"] .ui-textarea {
@@ -14,4 +14,17 @@ body.prompt-surface .ui-main-region > .ui-section[data-variant="prompt"] .ui-tex
 
 body.prompt-surface .ui-main-region > .ui-section[data-variant="prompt"] > .ui-inline {
   flex-wrap: nowrap;
+  gap: var(--space-1);
+}
+
+body.prompt-surface .prompt-voice-button.ui-icon-button {
+  width: 1.5rem;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--radius-sm);
+}
+
+body.prompt-surface .prompt-voice-button .ui-icon {
+  width: .875rem;
+  height: .875rem;
 }
