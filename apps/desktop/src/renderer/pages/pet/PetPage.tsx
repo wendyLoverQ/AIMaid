@@ -1,7 +1,6 @@
 import { Container, PetItemSurface, TransparentCanvas, TransparentStage } from "../../components/ui";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessageDto } from '../../../shared/business';
-import type { PetItemBoundsReader, PetItemLocalBounds } from '../../../shared/pet';
 import type { PetPresentationAction, PetPresentationSnapshot } from '../../../shared/presentation';
 import type { AlphaContour } from '../../../shared/alpha-contour';
 import { MUSIC_VISUALIZER_STYLE_KEY, parseMusicVisualizerStyle } from '../../../shared/music-visualizer';
@@ -42,7 +41,6 @@ export default function PetPage(): React.JSX.Element {
     const hitTestRef = useRef<PetHitTest>(() => false);
     const pointerClickRef = useRef<PetPointerClick>(() => undefined);
     const interactionRef = useRef<PetItemInteractionController | null>(null);
-    const itemBoundsReaderRef = useRef<PetItemBoundsReader>(() => null);
     useEffect(() => startPetMusicPlayback(), []);
     useEffect(() => {
         const load = (): void => {
@@ -63,13 +61,6 @@ export default function PetPage(): React.JSX.Element {
     }, []);
     const registerPointerClick = useCallback((click: PetPointerClick | null): void => {
         pointerClickRef.current = click ?? (() => undefined);
-    }, []);
-    const registerItemBounds = useCallback((reader: PetItemBoundsReader | null): void => {
-        itemBoundsReaderRef.current = reader ?? (() => null);
-        interactionRef.current?.refreshItemBounds();
-    }, []);
-    const refreshItemBounds = useCallback((): void => {
-        interactionRef.current?.refreshItemBounds();
     }, []);
     const refreshPresentation = useCallback(async (): Promise<void> => {
         const response = await bridge.pet.presentation.get();
@@ -95,14 +86,13 @@ export default function PetPage(): React.JSX.Element {
             return;
         const interaction = new PetItemInteractionController({
             item,
-            getItemBounds: () => itemBoundsReaderRef.current(),
             hitTest: (x, y) => hitTestRef.current(x, y),
             setIgnoreMouseEvents: (ignore) => { void bridge.pet.setIgnoreMouseEvents(ignore); },
             dragStart: () => { void bridge.pet.dragStart(); },
             dragMove: () => { void bridge.pet.dragMove(); },
             dragEnd: () => { void bridge.pet.dragEnd(); },
             updateWindow: (update) => { void bridge.pet.updateWindow(update); },
-            reportVisualBounds: (bounds: PetItemLocalBounds) => { void bridge.pet.reportVisualBounds(bounds); },
+            reportVisualBounds: (bounds) => { void bridge.pet.reportVisualBounds(bounds); },
             onScale: setRenderScale,
             onClick: (event) => pointerClickRef.current(event)
         });
@@ -244,9 +234,9 @@ export default function PetPage(): React.JSX.Element {
         }}>
     <PetItemSurface ref={itemRef}>
       {presentation === null ? <Container>{error ?? '正在读取桌宠显示模式…'}</Container> : null}
-      {presentation?.mode === 'image' ? <ImageMode canvasRef={visualCanvasRef} presentation={presentation} scale={renderScale} onAdvance={() => void execute('next-image')} onFirstFrame={revealPetWindow} registerHitTest={registerHitTest} registerItemBounds={registerItemBounds} refreshItemBounds={refreshItemBounds}/> : null}
-      {presentation?.mode === 'png-sequence' ? <PngSequenceMode canvasRef={visualCanvasRef} presentation={presentation} scale={renderScale} onFirstFrame={revealPetWindow} registerHitTest={registerHitTest} registerItemBounds={registerItemBounds} refreshItemBounds={refreshItemBounds}/> : null}
-      {presentation?.mode === 'live2d' ? <Live2DMode canvasRef={visualCanvasRef} role={presentation.live2dRole} scale={renderScale} registerHitTest={registerHitTest} registerPointerClick={registerPointerClick} registerContourReader={registerLiveContourReader} registerItemBounds={registerItemBounds} refreshItemBounds={refreshItemBounds} showBubble={showBubble}/> : null}
+      {presentation?.mode === 'image' ? <ImageMode canvasRef={visualCanvasRef} presentation={presentation} scale={renderScale} onAdvance={() => void execute('next-image')} onFirstFrame={revealPetWindow} registerHitTest={registerHitTest}/> : null}
+      {presentation?.mode === 'png-sequence' ? <PngSequenceMode canvasRef={visualCanvasRef} presentation={presentation} scale={renderScale} onFirstFrame={revealPetWindow} registerHitTest={registerHitTest}/> : null}
+      {presentation?.mode === 'live2d' ? <Live2DMode canvasRef={visualCanvasRef} role={presentation.live2dRole} scale={renderScale} registerHitTest={registerHitTest} registerPointerClick={registerPointerClick} registerContourReader={registerLiveContourReader} showBubble={showBubble}/> : null}
       <PetBubble message={bubble} speechHeld={speechHeld} onExpired={expireBubble}/>
     </PetItemSurface>
     {presentation !== null ? <PetAudioContour sourceCanvasRef={visualCanvasRef}
@@ -286,21 +276,14 @@ function latestAssistantAudioPaths(messages: readonly ChatMessageDto[]): string[
     }
     return paths;
 }
-function ImageMode({ canvasRef, presentation, scale, onAdvance, onFirstFrame, registerHitTest, registerItemBounds, refreshItemBounds }: {
+function ImageMode({ canvasRef, presentation, scale, onAdvance, onFirstFrame, registerHitTest }: {
     canvasRef: React.RefObject<HTMLCanvasElement | null>;
     presentation: PetPresentationSnapshot;
     scale: number;
     onAdvance: () => void;
     onFirstFrame: () => void;
     registerHitTest: (hitTest: PetHitTest | null) => void;
-    registerItemBounds: (reader: PetItemBoundsReader | null) => void;
-    refreshItemBounds: () => void;
 }): React.JSX.Element {
-    useLayoutEffect(() => {
-        const readBounds: PetItemBoundsReader = () => readCanvasBounds(canvasRef.current);
-        registerItemBounds(readBounds);
-        return () => registerItemBounds(null);
-    }, [canvasRef, registerItemBounds]);
     useEffect(() => {
         const canvas = canvasRef.current;
         if (canvas === null)
@@ -314,11 +297,7 @@ function ImageMode({ canvasRef, presentation, scale, onAdvance, onFirstFrame, re
         const timer = window.setInterval(onAdvance, presentation.imageIntervalSeconds * 1000);
         return () => window.clearInterval(timer);
     }, [onAdvance, presentation.currentImage, presentation.imageIntervalSeconds, presentation.paused]);
-    const handleFirstFrame = useCallback((): void => {
-        onFirstFrame();
-        refreshItemBounds();
-    }, [onFirstFrame, refreshItemBounds]);
-    useDrawCanvasImage(canvasRef, presentation.currentImage?.url ?? null, scale, handleFirstFrame);
+    useDrawCanvasImage(canvasRef, presentation.currentImage?.url ?? null, scale, onFirstFrame);
     const backingScale = scale * Math.min(window.devicePixelRatio || 1, 2);
     const canvasWidth = Math.max(1, Math.round(PET_CANVAS_WIDTH * backingScale));
     const canvasHeight = Math.max(1, Math.round(PET_CANVAS_HEIGHT * backingScale));
@@ -333,23 +312,15 @@ async function loadMusicVisualizerStyle(): Promise<MusicVisualizerStyle> {
     const payload = response.payload as { settings?: Array<{ key: string; value: string }> } | null;
     return parseMusicVisualizerStyle(payload?.settings?.find((item) => item.key === MUSIC_VISUALIZER_STYLE_KEY)?.value);
 }
-function PngSequenceMode({ canvasRef, presentation, scale, onFirstFrame, registerHitTest, registerItemBounds, refreshItemBounds }: {
+function PngSequenceMode({ canvasRef, presentation, scale, onFirstFrame, registerHitTest }: {
     canvasRef: React.RefObject<HTMLCanvasElement | null>;
     presentation: PetPresentationSnapshot;
     scale: number;
     onFirstFrame: () => void;
     registerHitTest: (hitTest: PetHitTest | null) => void;
-    registerItemBounds: (reader: PetItemBoundsReader | null) => void;
-    refreshItemBounds: () => void;
 }): React.JSX.Element {
     const frameRef = useRef(0);
     const cacheRef = useRef(new Map<string, HTMLImageElement>());
-    const itemBoundsReportedRef = useRef(false);
-    useLayoutEffect(() => {
-        const readBounds: PetItemBoundsReader = () => readCanvasBounds(canvasRef.current);
-        registerItemBounds(readBounds);
-        return () => registerItemBounds(null);
-    }, [canvasRef, registerItemBounds]);
     useEffect(() => {
         const canvas = canvasRef.current;
         if (canvas === null)
@@ -357,11 +328,7 @@ function PngSequenceMode({ canvasRef, presentation, scale, onFirstFrame, registe
         registerHitTest((x, y) => isOpaqueCanvasPoint(canvas, x, y));
         return () => registerHitTest(null);
     }, [registerHitTest]);
-    useEffect(() => {
-        frameRef.current = 0;
-        itemBoundsReportedRef.current = false;
-        cacheRef.current.clear();
-    }, [presentation.pngRole]);
+    useEffect(() => { frameRef.current = 0; cacheRef.current.clear(); }, [presentation.pngRole]);
     useEffect(() => {
         const canvas = canvasRef.current;
         if (canvas === null || presentation.pngFrames.length === 0)
@@ -387,20 +354,12 @@ function PngSequenceMode({ canvasRef, presentation, scale, onFirstFrame, registe
             if (image.complete && image.naturalWidth > 0) {
                 drawPetImage(canvas, image);
                 onFirstFrame();
-                if (!itemBoundsReportedRef.current) {
-                    itemBoundsReportedRef.current = true;
-                    refreshItemBounds();
-                }
             }
             else
                 image.addEventListener('load', () => {
                     if (!disposed) {
                         drawPetImage(canvas, image);
                         onFirstFrame();
-                        if (!itemBoundsReportedRef.current) {
-                            itemBoundsReportedRef.current = true;
-                            refreshItemBounds();
-                        }
                     }
                 }, { once: true });
             for (let offset = 1; offset <= 24; offset++)
@@ -427,7 +386,7 @@ function PngSequenceMode({ canvasRef, presentation, scale, onFirstFrame, registe
         };
         animationId = requestAnimationFrame(render);
         return () => { disposed = true; cancelAnimationFrame(animationId); cacheRef.current.clear(); };
-    }, [onFirstFrame, presentation.paused, presentation.pngFps, presentation.pngFrames, presentation.pngRole, presentation.pngSourceFps, refreshItemBounds, scale]);
+    }, [onFirstFrame, presentation.paused, presentation.pngFps, presentation.pngFrames, presentation.pngRole, presentation.pngSourceFps, scale]);
     const backingScale = scale * Math.min(window.devicePixelRatio || 1, 2);
     const canvasWidth = Math.max(1, Math.round(PET_CANVAS_WIDTH * backingScale));
     const canvasHeight = Math.max(1, Math.round(PET_CANVAS_HEIGHT * backingScale));
@@ -468,14 +427,6 @@ function drawPetImage(canvas: HTMLCanvasElement, image: HTMLImageElement): void 
     const drawY = (height - drawHeight) / 2;
     context.clearRect(0, 0, width, height);
     context.drawImage(image, drawX, drawY, drawWidth, drawHeight);
-}
-function readCanvasBounds(canvas: HTMLCanvasElement | null): PetItemLocalBounds | null {
-    if (canvas === null)
-        return null;
-    const rect = canvas.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0)
-        return null;
-    return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
 }
 function isOpaqueCanvasPoint(canvas: HTMLCanvasElement, clientX: number, clientY: number): boolean {
     const rect = canvas.getBoundingClientRect();
@@ -539,28 +490,22 @@ function PetContextMenu({ position, presentation, voiceMenu, execute, open, cycl
     return <ContextMenuSurface label="桌宠菜单" items={items} position={position} footer={`版本 ${bridge.app.version}`} onClose={close}/>;
 }
 function modeLabel(mode: PetPresentationSnapshot['mode']): string { return mode === 'image' ? '图片' : mode === 'png-sequence' ? 'PNG' : 'Live2D'; }
-function Live2DMode({ canvasRef, role, scale, registerHitTest, registerPointerClick, registerContourReader, registerItemBounds, refreshItemBounds, showBubble }: {
+function Live2DMode({ canvasRef, role, scale, registerHitTest, registerPointerClick, registerContourReader, showBubble }: {
     canvasRef: React.RefObject<HTMLCanvasElement | null>;
     role: string;
     scale: number;
     registerHitTest: (hitTest: PetHitTest | null) => void;
     registerPointerClick: (click: PetPointerClick | null) => void;
     registerContourReader: (reader: (() => AlphaContour | null) | null) => void;
-    registerItemBounds: (reader: PetItemBoundsReader | null) => void;
-    refreshItemBounds: () => void;
     showBubble: PetBubbleQueue['show'];
 }): React.JSX.Element {
     const runtimeRef = useRef<PetRuntime | null>(null);
-    useLayoutEffect(() => {
-        registerItemBounds(() => runtimeRef.current?.getItemClientBounds() ?? null);
-        return () => registerItemBounds(null);
-    }, [registerItemBounds]);
     useEffect(() => {
         const canvas = canvasRef.current;
         if (canvas === null)
             return;
         const runtime = new PetRuntime(canvas, {
-            onState: (state) => { if (state === 'ready') refreshItemBounds(); },
+            onState: () => undefined,
             onError: (message) => { if (message !== null) showBubble(message, 'error'); },
             onScale: () => undefined,
             onMetrics: () => undefined
@@ -581,17 +526,16 @@ function Live2DMode({ canvasRef, role, scale, registerHitTest, registerPointerCl
             runtimeRef.current = null;
             runtime.dispose();
         };
-    }, [canvasRef, refreshItemBounds, registerContourReader, registerHitTest, registerPointerClick, showBubble]);
+    }, [canvasRef, registerContourReader, registerHitTest, registerPointerClick, showBubble]);
     useEffect(() => {
         const runtime = runtimeRef.current;
         if (runtime === null)
             return;
-        void runtime.initialize(role).then(() => runtime.switchModel(role)).then(refreshItemBounds);
-    }, [refreshItemBounds, role]);
+        void runtime.initialize(role).then(() => runtime.switchModel(role));
+    }, [role]);
     useEffect(() => {
         runtimeRef.current?.setScale(scale);
-        refreshItemBounds();
-    }, [refreshItemBounds, scale]);
+    }, [scale]);
     useEffect(() => bridge.events.subscribe(['system.stream.progress', 'system.stream.completed', 'request.cancelled'], (event) => {
         if (event.type === 'system.stream.completed')
             showBubble('处理已完成。', 'feedback');

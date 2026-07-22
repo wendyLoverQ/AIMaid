@@ -7,7 +7,7 @@ import type {
   PetLifecycleEvent,
   PetLifecycleSignal,
   PetPerformanceMetrics,
-  PetItemLocalBounds,
+  PetRendererVisualBounds,
   PetRuntimeSnapshot,
   PetWindowUpdate
 } from '../../shared/pet'
@@ -15,6 +15,14 @@ import type { Logger } from '../logging/logger'
 import type { CoreClient } from '../core/core-client'
 import type { WindowManager } from './window-manager'
 import type { WindowActionContext } from './window-manager'
+import { physicalPetItemBoundsToDip } from './window-positioning'
+
+interface PhysicalWindowBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
 
 export class PetWindowManager {
   private static readonly MIN_SCALE = 0.25
@@ -27,6 +35,8 @@ export class PetWindowManager {
   private lastMetricsLogAt = 0
   private lastMetrics: PetPerformanceMetrics | null = null
   private lastMetricsAt: number | null = null
+  private physicalWindowBounds: PhysicalWindowBounds | undefined
+  private lastRendererVisualBounds: PetRendererVisualBounds | undefined
   private installed = false
   private dragState: {
     startCursorX: number
@@ -205,15 +215,10 @@ export class PetWindowManager {
     this.log.info('pet-performance', 'Live2D metrics', { ...metrics })
   }
 
-  reportVisualBounds(contents: WebContents, bounds: PetItemLocalBounds): void {
+  reportVisualBounds(contents: WebContents, bounds: PetRendererVisualBounds): void {
     const window = this.requireWindow(contents)
-    const contentBounds = window.getContentBounds()
-    this.windows.updatePetVisualBounds({
-      x: Math.round(contentBounds.x + bounds.x),
-      y: Math.round(contentBounds.y + bounds.y),
-      width: Math.round(bounds.width),
-      height: Math.round(bounds.height)
-    })
+    this.lastRendererVisualBounds = bounds
+    this.updateAbsoluteVisualBounds(window, bounds)
   }
 
   runtimeStatus(): PetRuntimeSnapshot {
@@ -274,11 +279,32 @@ export class PetWindowManager {
   private async fitVirtualDesktop(window: BrowserWindow): Promise<void> {
     const handle = window.getNativeWindowHandle()
     const windowHandle = (handle.length >= 8 ? handle.readBigUInt64LE() : BigInt(handle.readUInt32LE())).toString()
-    const bounds = await this.core.invoke(randomUUID(), {
+    const result = await this.core.invoke(randomUUID(), {
       type: 'system.window.fit_virtual_desktop',
       payload: { windowHandle }
     }, new AbortController().signal)
+    const bounds = readPhysicalWindowBounds(result)
+    this.physicalWindowBounds = bounds
+    if (this.lastRendererVisualBounds !== undefined) this.updateAbsoluteVisualBounds(window, this.lastRendererVisualBounds)
     this.log.info('pet-window', 'Pet window fitted to Windows virtual desktop', { bounds, electronBounds: window.getBounds() })
+  }
+
+  private updateAbsoluteVisualBounds(window: BrowserWindow, rendererBounds: PetRendererVisualBounds): void {
+    const physicalWindowBounds = this.physicalWindowBounds
+    if (physicalWindowBounds === undefined) return
+    const absoluteBounds = physicalPetItemBoundsToDip(
+      physicalWindowBounds,
+      rendererBounds,
+      rendererBounds.scaleFactor,
+      (point) => screen.screenToDipPoint(point),
+      (point) => screen.getDisplayNearestPoint(point).scaleFactor
+    )
+    this.log.debug('window-positioning', 'Pet item physical bounds mapped', {
+      physicalWindowBounds,
+      rendererBounds,
+      itemDipBounds: absoluteBounds
+    })
+    this.windows.updatePetVisualBounds(absoluteBounds)
   }
 
   private readonly handleDisplaysChanged = (): void => {
@@ -303,4 +329,18 @@ export class PetWindowManager {
     if (window === undefined) throw new Error('PetWindow is unavailable')
     return window
   }
+}
+
+function readPhysicalWindowBounds(value: unknown): PhysicalWindowBounds {
+  if (typeof value !== 'object' || value === null) throw new TypeError('Invalid physical pet window bounds')
+  const record = value as Record<string, unknown>
+  const x = record.x ?? record.X
+  const y = record.y ?? record.Y
+  const width = record.width ?? record.Width
+  const height = record.height ?? record.Height
+  if (![x, y, width, height].every((item) => typeof item === 'number' && Number.isFinite(item)) ||
+      (width as number) <= 0 || (height as number) <= 0) {
+    throw new TypeError('Invalid physical pet window bounds')
+  }
+  return { x: x as number, y: y as number, width: width as number, height: height as number }
 }
