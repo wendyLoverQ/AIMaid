@@ -49,7 +49,7 @@ export function PetAudioContour({ sourceCanvasRef, readContour, geometry = 'cont
           : readContour()
         contour = nextContour ?? contour
       }
-      if (hasAudio && contour !== null) drawAudioContour(context, contour, spectrum, smoothed, bounds.width, bounds.height)
+      if (hasAudio && contour !== null) drawAudioBars(context, contour, spectrum, smoothed, bounds.width, bounds.height)
       animationId = requestAnimationFrame(render)
     }
 
@@ -88,7 +88,7 @@ function resizeOverlay(canvas: HTMLCanvasElement, bounds: DOMRect): void {
   if (canvas.height !== height) canvas.height = height
 }
 
-function drawAudioContour(
+function drawAudioBars(
   context: CanvasRenderingContext2D,
   contour: AlphaContour,
   spectrum: Uint8Array,
@@ -97,42 +97,49 @@ function drawAudioContour(
   height: number
 ): void {
   const size = Math.min(width, height)
-  const baseGap = size * 0.008
-  const waveRange = size * 0.05
+  const baseGap = size * 0.012
+  const minimumLength = size * 0.015
+  const waveRange = size * 0.065
   const centerX = contour.center.x * width
   const centerY = contour.center.y * height
-  const path = new Path2D()
-  for (let index = 0; index < contour.points.length; index += 1) {
+  const bars = new Path2D()
+  const pointStep = 4
+  for (let index = 0; index < contour.points.length; index += pointStep) {
     const point = contour.points[index]!
+    const previous = contour.points[(index - pointStep + contour.points.length) % contour.points.length]!
+    const next = contour.points[(index + pointStep) % contour.points.length]!
     const x = point.x * width
     const y = point.y * height
-    const dx = x - centerX
-    const dy = y - centerY
-    const distance = Math.max(0.001, Math.hypot(dx, dy))
-    const mirroredIndex = index < contour.points.length / 2 ? index : contour.points.length - 1 - index
-    const band = spectrum[Math.max(0, Math.min(spectrum.length - 1, mirroredIndex))]! / 255
+    const tangentX = next.x * width - previous.x * width
+    const tangentY = next.y * height - previous.y * height
+    const tangentLength = Math.max(0.001, Math.hypot(tangentX, tangentY))
+    let normalX = tangentY / tangentLength
+    let normalY = -tangentX / tangentLength
+    if (normalX * (x - centerX) + normalY * (y - centerY) < 0) {
+      normalX *= -1
+      normalY *= -1
+    }
+    const barIndex = Math.floor(index / pointStep)
+    const bandIndex = Math.round(barIndex / (contour.points.length / pointStep - 1) * (spectrum.length - 1))
+    const band = spectrum[bandIndex]! / 255
     smoothed[index] = smoothed[index]! * 0.68 + band * 0.32
-    const displacement = baseGap + smoothed[index]! * waveRange
-    const targetX = x + dx / distance * displacement
-    const targetY = y + dy / distance * displacement
-    if (index === 0) path.moveTo(targetX, targetY)
-    else path.lineTo(targetX, targetY)
+    const barLength = minimumLength + smoothed[index]! * waveRange
+    bars.moveTo(x + normalX * baseGap, y + normalY * baseGap)
+    bars.lineTo(x + normalX * (baseGap + barLength), y + normalY * (baseGap + barLength))
   }
-  path.closePath()
 
   const accent = getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim() || '#6e8fff'
   context.save()
-  context.lineJoin = 'round'
-  context.lineCap = 'round'
+  context.lineCap = 'butt'
   context.strokeStyle = accent
-  context.globalAlpha = 0.24
-  context.lineWidth = Math.max(3, size * 0.014)
+  context.globalAlpha = 0.22
+  context.lineWidth = Math.max(2.5, size * 0.009)
   context.shadowColor = accent
-  context.shadowBlur = size * 0.035
-  context.stroke(path)
-  context.globalAlpha = 0.92
-  context.lineWidth = Math.max(1.25, size * 0.0045)
   context.shadowBlur = size * 0.012
-  context.stroke(path)
+  context.stroke(bars)
+  context.globalAlpha = 0.96
+  context.lineWidth = Math.max(1.4, size * 0.004)
+  context.shadowBlur = size * 0.008
+  context.stroke(bars)
   context.restore()
 }

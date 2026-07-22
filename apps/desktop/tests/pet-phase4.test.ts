@@ -126,7 +126,9 @@ describe('phase 4 PetWindow integration', () => {
     expect(page.match(/<PetAudioContour /gu)?.length).toBe(3)
     expect(page).toContain('readContour={readContour}')
     expect(contour).toContain('captureAlphaContour(source, maskCanvas)')
-    expect(contour).toContain('const displacement = baseGap + smoothed[index]! * waveRange')
+    expect(contour).toContain('bars.moveTo(')
+    expect(contour).toContain('bars.lineTo(')
+    expect(contour).not.toContain('path.closePath()')
     expect(router).not.toContain("this.windows.open('music-visualizer')")
   })
 
