@@ -7,6 +7,7 @@ import type { Live2DActionTagMap } from '../../../shared/live2d-action-tag';
 import { createCubismMaskBufferPlan } from '../../../shared/live2d-mask-buffer';
 import { buildOuterAlphaContour } from '../../../shared/alpha-contour';
 import type { AlphaContour } from '../../../shared/alpha-contour';
+import type { PetItemLocalBounds } from '../../../shared/pet';
 import { PET_BASE_WINDOW_HEIGHT, PET_BASE_WINDOW_WIDTH, PET_ITEM_PADDING } from '../../../shared/pet-geometry';
 
 let Live2DModel: typeof Live2DModelType | null = null;
@@ -42,7 +43,7 @@ type LoadedLive2DModel = Container & {
   scale: { set: (x: number, y?: number) => void; x: number; y: number };
   anchor: { set: (x: number, y: number) => void };
   children: unknown[];
-  getBounds: () => { x: number; y: number; width: number; height: number };
+  getBounds: (skipUpdate?: boolean) => { x: number; y: number; width: number; height: number };
   destroy: (options?: { children?: boolean }) => void;
   internalModel?: {
     width?: number;
@@ -94,6 +95,23 @@ export class Live2DPlayer {
 
   containsClientPoint(clientX: number, clientY: number): boolean {
     return this.containsPoint(clientX, clientY);
+  }
+
+  getItemClientBounds(): PetItemLocalBounds | null {
+    if (this.model === null || !this.pixiInitialized) return null;
+    const bounds = this.model.getBounds(false);
+    const canvasRect = this.canvas.getBoundingClientRect();
+    const rendererWidth = this.app.renderer.screen.width;
+    const rendererHeight = this.app.renderer.screen.height;
+    if (bounds.width <= 0 || bounds.height <= 0 || rendererWidth <= 0 || rendererHeight <= 0) return null;
+    const scaleX = canvasRect.width / rendererWidth;
+    const scaleY = canvasRect.height / rendererHeight;
+    return {
+      x: canvasRect.left + bounds.x * scaleX,
+      y: canvasRect.top + bounds.y * scaleY,
+      width: bounds.width * scaleX,
+      height: bounds.height * scaleY
+    };
   }
 
   /**

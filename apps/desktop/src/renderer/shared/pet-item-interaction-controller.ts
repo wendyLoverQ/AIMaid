@@ -1,5 +1,5 @@
-import type { PetRendererVisualBounds, PetWindowUpdate } from '../../shared/pet'
-import { PET_BASE_WINDOW_HEIGHT, PET_BASE_WINDOW_WIDTH } from '../../shared/pet-geometry'
+import type { PetItemBoundsReader, PetItemLocalBounds, PetWindowUpdate } from '../../shared/pet'
+import { PET_CANVAS_HEIGHT, PET_CANVAS_WIDTH } from '../../shared/pet-geometry'
 
 const STORAGE_KEY = 'aimaid.pet-item-state.v1'
 const MIN_SCALE = 0.25
@@ -16,13 +16,14 @@ interface PersistedItemState {
 
 export interface PetItemInteractionOptions {
   item: HTMLElement
+  getItemBounds: PetItemBoundsReader
   hitTest: (clientX: number, clientY: number) => boolean
   setIgnoreMouseEvents: (ignore: boolean) => void
   dragStart: () => void
   dragMove: () => void
   dragEnd: () => void
   updateWindow: (update: PetWindowUpdate) => void
-  reportVisualBounds: (bounds: PetRendererVisualBounds) => void
+  reportVisualBounds: (bounds: PetItemLocalBounds) => void
   onScale: (scale: number) => void
   onClick: (event: MouseEvent) => void
 }
@@ -42,6 +43,7 @@ export class PetItemInteractionController {
   private lastPointerY = Number.NaN
   private moveFrame: number | null = null
   private boundsFrame: number | null = null
+  private lastReportedBounds: PetItemLocalBounds | null = null
   private saveTimer: number | null = null
   private ignoringMouse = true
   private lastHitState: boolean | undefined
@@ -60,6 +62,7 @@ export class PetItemInteractionController {
     window.addEventListener('mouseleave', this.onMouseLeave)
     window.addEventListener('wheel', this.onWheel, { capture: true, passive: false })
     window.addEventListener('blur', this.onBlur)
+    window.addEventListener('resize', this.refreshItemBounds)
   }
 
   dispose(): void {
@@ -69,8 +72,12 @@ export class PetItemInteractionController {
     window.removeEventListener('mouseleave', this.onMouseLeave)
     window.removeEventListener('wheel', this.onWheel, true)
     window.removeEventListener('blur', this.onBlur)
+    window.removeEventListener('resize', this.refreshItemBounds)
     if (this.moveFrame !== null) cancelAnimationFrame(this.moveFrame)
-    if (this.boundsFrame !== null) cancelAnimationFrame(this.boundsFrame)
+    if (this.boundsFrame !== null) {
+      cancelAnimationFrame(this.boundsFrame)
+      this.boundsFrame = null
+    }
     if (this.saveTimer !== null) window.clearTimeout(this.saveTimer)
   }
 
@@ -83,6 +90,10 @@ export class PetItemInteractionController {
   refreshHitTest(): void {
     if (this.locked || !Number.isFinite(this.lastPointerX) || this.dragging) return
     this.setIgnoring(!this.isInteractivePoint(this.lastPointerX, this.lastPointerY))
+  }
+
+  refreshItemBounds = (): void => {
+    this.queueItemBoundsReport()
   }
 
   resetPosition(): void {
@@ -182,30 +193,46 @@ export class PetItemInteractionController {
   }
 
   private applyItemTransform(): void {
-    this.options.item.style.left = `calc(50% + ${this.offsetX}px)`
-    this.options.item.style.top = `calc(50% + ${this.offsetY}px)`
-    this.options.item.style.width = `${Math.round(PET_BASE_WINDOW_WIDTH * this.scale)}px`
-    this.options.item.style.height = `${Math.round(PET_BASE_WINDOW_HEIGHT * this.scale)}px`
-    this.options.item.style.transform = 'translate(-50%, -50%)'
+    this.options.item.style.left = '0'
+    this.options.item.style.top = '0'
+    this.options.item.style.width = '100%'
+    this.options.item.style.height = '100%'
+    this.options.item.style.transform = 'none'
+    this.options.item.style.setProperty('--pet-item-offset-x', `${this.offsetX}px`)
+    this.options.item.style.setProperty('--pet-item-offset-y', `${this.offsetY}px`)
+    this.options.item.style.setProperty('--pet-item-canvas-width', `${Math.round(PET_CANVAS_WIDTH * this.scale)}px`)
+    this.options.item.style.setProperty('--pet-item-canvas-height', `${Math.round(PET_CANVAS_HEIGHT * this.scale)}px`)
     this.options.onScale(this.scale)
-    this.queueVisualBoundsReport()
+    this.queueItemBoundsReport()
   }
 
-  private queueVisualBoundsReport(): void {
+  private queueItemBoundsReport(): void {
     if (this.boundsFrame !== null) return
     this.boundsFrame = requestAnimationFrame(() => {
       this.boundsFrame = null
-      const bounds = this.options.item.getBoundingClientRect()
-      if (bounds.width <= 0 || bounds.height <= 0) return
-      this.options.reportVisualBounds({
-        x: Math.round(bounds.x),
-        y: Math.round(bounds.y),
-        width: Math.round(bounds.width),
-        height: Math.round(bounds.height),
-        scaleFactor: window.devicePixelRatio
-      })
+      const value = this.options.getItemBounds()
+      if (value === null || !Number.isFinite(value.x) || !Number.isFinite(value.y) ||
+          !Number.isFinite(value.width) || !Number.isFinite(value.height) ||
+          value.width <= 0 || value.height <= 0) return
+      const next: PetItemLocalBounds = {
+        x: value.x,
+        y: value.y,
+        width: value.width,
+        height: value.height
+      }
+      if (sameLocalBounds(this.lastReportedBounds, next)) return
+      this.lastReportedBounds = next
+      this.options.reportVisualBounds(next)
     })
   }
+}
+
+function sameLocalBounds(left: PetItemLocalBounds | null, right: PetItemLocalBounds): boolean {
+  if (left === null) return false
+  return Math.abs(left.x - right.x) < 0.25
+    && Math.abs(left.y - right.y) < 0.25
+    && Math.abs(left.width - right.width) < 0.25
+    && Math.abs(left.height - right.height) < 0.25
 }
 
 function readPersistedItemState(): PersistedItemState | null {

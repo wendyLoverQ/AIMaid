@@ -1,4 +1,4 @@
-import type { PetLifecycleEvent, PetPerformanceMetrics, PetRuntimeState } from '../../shared/pet'
+import type { PetItemLocalBounds, PetLifecycleEvent, PetPerformanceMetrics, PetRuntimeState } from '../../shared/pet'
 import type { AlphaContour } from '../../shared/alpha-contour'
 import { bridge } from '../shared/bridge'
 import { PerformanceMonitor } from './performance-monitor'
@@ -93,6 +93,9 @@ export class PetRuntime {
 
   captureAlphaContour(): AlphaContour | null {
     return this.state === 'ready' ? this.player.captureAlphaContour() : null
+  }
+  getItemClientBounds(): PetItemLocalBounds | null {
+    return this.state === 'ready' ? this.player.getItemClientBounds() : null
   }
   setScale(scale: number): void {
     this.desiredScale = scale

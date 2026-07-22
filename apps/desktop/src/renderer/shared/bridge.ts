@@ -1,7 +1,7 @@
 import type { CoreEventType, CoreRequest, CoreStatus } from '../../shared/core'
 import type { IpcEventEnvelope, IpcResponseEnvelope } from '../../shared/ipc'
 import type { WindowKind } from '../../shared/windows'
-import type { PetAssetManifest, PetLifecycleEvent, PetPerformanceMetrics, PetRendererVisualBounds, PetRuntimeSnapshot, PetWindowUpdate } from '../../shared/pet'
+import type { PetAssetManifest, PetItemLocalBounds, PetLifecycleEvent, PetPerformanceMetrics, PetRuntimeSnapshot, PetWindowUpdate } from '../../shared/pet'
 import type { PetPresentationAction, PetPresentationSnapshot } from '../../shared/presentation'
 import type { HotkeyAction, PlatformSettingsSnapshot } from '../../shared/system-settings'
 
@@ -66,7 +66,7 @@ export const bridge = Object.freeze({
     dragEnd: (): Promise<IpcResponseEnvelope> => requireCapability(window.aimaid.pet?.dragEnd, 'pet.dragEnd')(),
     updateWindow: (update: PetWindowUpdate): Promise<IpcResponseEnvelope> =>
       requireCapability(window.aimaid.pet?.updateWindow, 'pet.updateWindow')(update),
-    reportVisualBounds: (bounds: PetRendererVisualBounds): Promise<IpcResponseEnvelope> =>
+    reportVisualBounds: (bounds: PetItemLocalBounds): Promise<IpcResponseEnvelope> =>
       requireCapability(window.aimaid.pet?.reportVisualBounds, 'pet.reportVisualBounds')(bounds),
     reportMetrics: (metrics: PetPerformanceMetrics): Promise<IpcResponseEnvelope> =>
       requireCapability(window.aimaid.pet?.reportMetrics, 'pet.reportMetrics')(metrics),
