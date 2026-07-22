@@ -102,6 +102,38 @@ describe('phase 4 PetWindow integration', () => {
     }
   })
 
+  it('cycles image playback folders from the configured gallery root', async () => {
+    const root = mkdtempSync(resolve(tmpdir(), 'aimaid-image-folders-'))
+    try {
+      const resources = resolve(root, 'live2d')
+      const ui = resolve(root, 'ui')
+      const notebook = resolve(root, 'notebook')
+      const images = resolve(root, 'images')
+      const png = resolve(root, 'png')
+      mkdirSync(resources, { recursive: true })
+      mkdirSync(ui, { recursive: true })
+      mkdirSync(notebook, { recursive: true })
+      mkdirSync(resolve(images, '扶她'), { recursive: true })
+      mkdirSync(resolve(images, '妹妹'), { recursive: true })
+      mkdirSync(png, { recursive: true })
+      writeFileSync(resolve(images, '扶她', '01.png'), 'one')
+      writeFileSync(resolve(images, '妹妹', '01.png'), 'two')
+      const log = { info: () => undefined, warn: () => undefined } as never
+      const assets = new PetAssetService(resources, ui, notebook, log)
+      const presentation = new PetPresentationService(resolve(root, 'presentation.json'), assets, log, images, png)
+
+      const before = presentation.snapshot()
+      const after = await presentation.execute('cycle-image-folder', null as never)
+
+      expect(before.imageRoot).toBe(images)
+      expect(before.imageFolderName).toBe('扶她')
+      expect(after.imageFolderName).toBe('妹妹')
+      expect(after.currentImage?.name).toBe('01.png')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('uses the comic bubble timing state without manual page controls', () => {
     const bubble = readFileSync(resolve(import.meta.dirname, '../src/renderer/pages/pet/PetBubble.tsx'), 'utf8')
     expect(bubble).not.toContain('上一页')

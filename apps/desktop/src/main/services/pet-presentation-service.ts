@@ -9,6 +9,7 @@ import type { PetAssetService } from './pet-asset-service'
 interface PersistedPresentation {
   mode: PetDisplayMode
   paused: boolean
+  imageRoot: string
   imageFolder: string
   imageIndex: number
   imageIntervalIndex: number
@@ -39,7 +40,8 @@ export class PetPresentationService {
 
   snapshot(): PetPresentationSnapshot {
     if (!isDirectory(this.state.pngRoot)) this.state.pngRoot = this.bundledPngRoot
-    this.state.imageFolder = this.resolveImageFolder(this.state.imageFolder)
+    if (!isDirectory(this.state.imageRoot)) this.state.imageRoot = this.bundledImageRoot
+    this.state.imageFolder = this.resolveImageFolder(this.state.imageRoot, this.state.imageFolder)
     const images = this.listMedia(this.state.imageFolder)
     const roles = this.listDirectories(this.state.pngRoot)
     if (!roles.includes(this.state.pngRole)) this.state.pngRole = roles[0] ?? ''
@@ -62,7 +64,9 @@ export class PetPresentationService {
     return {
       mode: this.state.mode,
       paused: this.state.paused,
+      imageRoot: this.state.imageRoot,
       imageFolder: this.state.imageFolder,
+      imageFolderName: this.imageFolderName(this.state.imageFolder),
       imageIntervalSeconds: IMAGE_INTERVALS[this.state.imageIntervalIndex] ?? IMAGE_INTERVALS[1],
       currentImage: images[imageIndex] ?? null,
       pngRoot: this.state.pngRoot,
@@ -84,6 +88,7 @@ export class PetPresentationService {
       case 'next-image': this.nextImage(); break
       case 'cycle-image-interval': this.state.imageIntervalIndex = (this.state.imageIntervalIndex + 1) % IMAGE_INTERVALS.length; break
       case 'choose-image-folder': await this.chooseImageFolder(parent); break
+      case 'cycle-image-folder': await this.cycleImageFolder(parent); break
       case 'cycle-png-fps': this.state.pngFps = nextValue(PNG_FPS_VALUES, this.state.pngFps); break
       case 'cycle-png-role': this.cyclePngRole(); break
       case 'toggle-png-carousel': this.state.pngCarousel = !this.state.pngCarousel; break
@@ -136,12 +141,28 @@ export class PetPresentationService {
       title: '选择图片文件夹',
       properties: ['openDirectory']
     }
-    if (existsSync(this.state.imageFolder)) options.defaultPath = this.state.imageFolder
+    if (existsSync(this.state.imageRoot)) options.defaultPath = this.state.imageRoot
     const result = await dialog.showOpenDialog(parent, options)
     if (!result.canceled && result.filePaths[0] !== undefined) {
-      this.state.imageFolder = resolve(result.filePaths[0])
+      this.state.imageRoot = resolve(result.filePaths[0])
+      this.state.imageFolder = this.resolveImageFolder(this.state.imageRoot)
       this.state.imageIndex = 0
     }
+  }
+
+  private async cycleImageFolder(parent: BrowserWindow): Promise<void> {
+    const folders = this.listImageFolders(this.state.imageRoot)
+    if (folders.length === 0) {
+      await this.chooseImageFolder(parent)
+      return
+    }
+    if (folders.length === 1) {
+      this.nextImage()
+      return
+    }
+    const current = folders.findIndex((folder) => samePath(folder, this.state.imageFolder))
+    this.state.imageFolder = folders[(current + 1 + folders.length) % folders.length]!
+    this.state.imageIndex = 0
   }
 
   private listMedia(folder: string): PetMediaItem[] {
@@ -161,12 +182,25 @@ export class PetPresentationService {
     return readdirSync(folder, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort(naturalCompare)
   }
 
-  private resolveImageFolder(folder: string): string {
-    if (!isDirectory(folder)) folder = this.bundledImageRoot
-    if (this.listFiles(folder).length > 0) return folder
-    const folders = this.listDirectories(folder).filter((name) => this.listFiles(join(folder, name)).length > 0)
-    const preferred = folders.find((name) => name.localeCompare('扶她', 'zh-CN', { sensitivity: 'base' }) === 0)
-    return preferred === undefined ? (folders[0] === undefined ? folder : join(folder, folders[0])) : join(folder, preferred)
+  private listImageFolders(root: string): string[] {
+    if (!isDirectory(root)) return []
+    const folders = this.listDirectories(root)
+      .map((name) => join(root, name))
+      .filter((folder) => this.listFiles(folder).length > 0)
+    if (folders.length > 0) return folders
+    return this.listFiles(root).length > 0 ? [root] : []
+  }
+
+  private resolveImageFolder(root: string, preferredFolder?: string): string {
+    const folders = this.listImageFolders(root)
+    const preferred = folders.find((folder) => preferredFolder !== undefined && samePath(folder, preferredFolder))
+      ?? folders.find((folder) => this.imageFolderName(folder).localeCompare('扶她', 'zh-CN', { sensitivity: 'base' }) === 0)
+    return preferred ?? folders[0] ?? root
+  }
+
+  private imageFolderName(folder: string): string {
+    if (samePath(folder, this.bundledImageRoot)) return '扶她'
+    return basename(folder) || '自定义'
   }
 
   private readPngSourceFps(roleFolder: string): number {
@@ -187,6 +221,7 @@ export class PetPresentationService {
   private readState(): PersistedPresentation {
     const defaults: PersistedPresentation = {
       mode: 'png-sequence', paused: false,
+      imageRoot: process.env.AIMAID_IMAGE_TILES_ROOT?.trim() || this.bundledImageRoot,
       imageFolder: process.env.AIMAID_IMAGE_TILES_ROOT?.trim() || this.bundledImageRoot, imageIndex: 0, imageIntervalIndex: 1,
       pngRoot: process.env.AIMAID_PNG_SEQUENCE_ROOT?.trim() || this.bundledPngRoot, pngRole: 'xinxin', pngFps: 30,
       pngCarousel: false, live2dRole: 'changli'
@@ -194,7 +229,10 @@ export class PetPresentationService {
     try {
       if (!existsSync(this.statePath)) return defaults
       const parsed = JSON.parse(readFileSync(this.statePath, 'utf8')) as Partial<PersistedPresentation>
-      return { ...defaults, ...parsed, mode: isMode(parsed.mode) ? parsed.mode : defaults.mode }
+      const imageRoot = typeof parsed.imageRoot === 'string' && parsed.imageRoot.trim() !== ''
+        ? parsed.imageRoot
+        : this.inferLegacyImageRoot(parsed.imageFolder, defaults.imageRoot)
+      return { ...defaults, ...parsed, imageRoot, mode: isMode(parsed.mode) ? parsed.mode : defaults.mode }
     } catch (error) {
       this.log.warn('pet-presentation', 'Failed to read presentation state', { message: String(error) })
       return defaults
@@ -204,6 +242,13 @@ export class PetPresentationService {
   private persist(): void {
     try { writeFileSync(this.statePath, JSON.stringify(this.state, null, 2), 'utf8') }
     catch (error) { this.log.warn('pet-presentation', 'Failed to persist presentation state', { message: String(error) }) }
+  }
+
+  private inferLegacyImageRoot(imageFolder: string | undefined, fallbackRoot: string): string {
+    if (imageFolder === undefined || imageFolder.trim() === '') return fallbackRoot
+    const bundled = resolve(this.bundledImageRoot)
+    const selected = resolve(imageFolder)
+    return selected === bundled || selected.startsWith(`${bundled}\\`) ? bundled : selected
   }
 }
 
@@ -220,3 +265,4 @@ function nextValue<const T extends readonly number[]>(values: T, current: number
 function isMode(value: unknown): value is PetDisplayMode { return value === 'image' || value === 'png-sequence' || value === 'live2d' }
 function naturalCompare(a: string, b: string): number { return a.localeCompare(b, 'zh-CN', { numeric: true, sensitivity: 'base' }) }
 function isDirectory(path: string): boolean { return path !== '' && existsSync(path) && statSync(path).isDirectory() }
+function samePath(left: string, right: string): boolean { return resolve(left).localeCompare(resolve(right), undefined, { sensitivity: 'accent' }) === 0 }

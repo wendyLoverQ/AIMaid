@@ -9,6 +9,7 @@ export type PetPresentationAction =
   | 'next-image'
   | 'cycle-image-interval'
   | 'choose-image-folder'
+  | 'cycle-image-folder'
   | 'cycle-png-fps'
   | 'cycle-png-role'
   | 'toggle-png-carousel'
@@ -22,7 +23,9 @@ export interface PetMediaItem {
 export interface PetPresentationSnapshot {
   mode: PetDisplayMode
   paused: boolean
+  imageRoot: string
   imageFolder: string
+  imageFolderName: string
   imageIntervalSeconds: number
   currentImage: PetMediaItem | null
   pngRoot: string
@@ -43,7 +46,7 @@ export interface PetPresentationApi {
 
 export function isPetPresentationAction(value: unknown): value is PetPresentationAction {
   return typeof value === 'string' && [
-    'toggle-pause', 'cycle-mode', 'next-image', 'cycle-image-interval', 'choose-image-folder',
+    'toggle-pause', 'cycle-mode', 'next-image', 'cycle-image-interval', 'choose-image-folder', 'cycle-image-folder',
     'cycle-png-fps', 'cycle-png-role', 'toggle-png-carousel', 'switch-live2d-role'
   ].includes(value)
 }

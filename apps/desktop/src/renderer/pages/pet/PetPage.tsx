@@ -458,7 +458,7 @@ function PetContextMenu({ position, presentation, voiceMenu, execute, open, cycl
         ...(presentation.mode === 'image' ? [
             { id: 'next-image', label: '切换图片', icon: icon('image'), onSelect: () => execute('next-image') },
             { id: 'interval', label: `${presentation.imageIntervalSeconds} 秒`, icon: icon('clock'), onSelect: () => execute('cycle-image-interval') },
-            { id: 'folder', label: '轮播文件夹', icon: icon('folder'), onSelect: () => execute('choose-image-folder') }
+            { id: 'folder', label: presentation.imageFolderName, icon: icon('folder'), onSelect: () => execute('cycle-image-folder') }
         ] : []),
         ...(presentation.mode === 'png-sequence' ? [
             { id: 'fps', label: `${presentation.pngFps} FPS`, icon: icon('gauge'), onSelect: () => execute('cycle-png-fps') },
