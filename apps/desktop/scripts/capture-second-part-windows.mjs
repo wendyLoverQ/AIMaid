@@ -50,7 +50,7 @@ try {
   await initialClient.send('Page.enable')
   await initialClient.send('Runtime.enable')
   report.push(await capturePetState(initialClient, 'default'))
-  await evaluate(initialClient, `(() => { const text = '这是桌宠气泡的分页、长文本与安全边距验收内容。'; const payload = JSON.stringify({ text }); localStorage.setItem('aimaid.pet-bubble', payload); window.dispatchEvent(new StorageEvent('storage', { key: 'aimaid.pet-bubble', newValue: payload })); return true })()`)
+  await evaluate(initialClient, `(() => { const text = '这是桌宠气泡的长文本、自动消失与尾角位置验收内容。'; const payload = JSON.stringify({ text, kind: 'speech', nonce: crypto.randomUUID(), createdAt: Date.now() }); localStorage.setItem('aimaid.pet-bubble', payload); window.dispatchEvent(new StorageEvent('storage', { key: 'aimaid.pet-bubble', newValue: payload })); return true })()`)
   await delay(250)
   report.push(await capturePetState(initialClient, 'bubble'))
   await evaluate(initialClient, `(() => { const target = document.querySelector('[data-pet-interactive], canvas, img') ?? document.body; const rect = target.getBoundingClientRect(); target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: Math.max(24, Math.min(innerWidth - 260, rect.left + rect.width / 2)), clientY: Math.max(24, Math.min(innerHeight - 300, rect.top + rect.height / 2)) })); return true })()`)

@@ -55,7 +55,7 @@ try {
   await evaluate(client, `window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1', key: '1' }))`)
   await evaluate(client, `window.dispatchEvent(new StorageEvent('storage', {
     key: 'aimaid.pet-bubble',
-    newValue: JSON.stringify({ text: '动作验证', actionTag: 'touch_body' })
+    newValue: JSON.stringify({ text: '动作验证', kind: 'speech', nonce: crypto.randomUUID(), createdAt: Date.now(), actionTag: 'touch_body' })
   }))`)
   await delay(500)
   client.close()

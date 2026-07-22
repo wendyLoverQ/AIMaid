@@ -4,20 +4,14 @@ let activeAudio: HTMLAudioElement | null = null
 let audioSubscription: (() => void) | null = null
 
 export async function synthesizeAndPlay(text: string, voiceId?: string): Promise<string> {
-  reportBubbleHold(true)
-  try {
-    const response = await bridge.core.invoke({
-      type: 'tts.speak',
-      payload: { text, ...(voiceId === undefined || voiceId.trim() === '' ? {} : { voiceId }) }
-    }, 120_000)
-    if (!response.success || typeof response.payload !== 'string' || response.payload.trim() === '')
-      throw new Error(response.error?.message ?? '语音合成失败。')
-    await playLocalAudio(response.payload)
-    return response.payload
-  } catch (error) {
-    reportBubbleHold(false)
-    throw error
-  }
+  const response = await bridge.core.invoke({
+    type: 'tts.speak',
+    payload: { text, ...(voiceId === undefined || voiceId.trim() === '' ? {} : { voiceId }) }
+  }, 120_000)
+  if (!response.success || typeof response.payload !== 'string' || response.payload.trim() === '')
+    throw new Error(response.error?.message ?? '语音合成失败。')
+  await playLocalAudio(response.payload)
+  return response.payload
 }
 
 export async function playLocalAudio(filePath: string): Promise<void> {

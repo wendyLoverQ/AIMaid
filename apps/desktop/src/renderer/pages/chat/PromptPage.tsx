@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ChatCommandLauncherDto } from '../../../shared/business';
 import { loadCharacters } from '../../features/characters/character-api';
 import { bridge } from '../../shared/bridge';
+import { publishPetBubble } from '../../shared/pet-bubble-channel';
 import { attachAudioMetadata, synthesizeAndPlay } from './tts-playback';
 import { runAgentConversation } from './agent-conversation';
 export interface PromptSubmission {
@@ -32,26 +33,26 @@ export function PromptPage(): React.JSX.Element {
             return;
         await bridge.window.hide();
         if (ttsPreviewOnly) {
-            publishPetBubble('正在试听语音.....^_^');
+            publishPetBubble('正在试听语音.....^_^', 'processing');
             try {
                 const voiceId = await currentVoiceId();
                 await synthesizeAndPlay(prompt, voiceId);
-                publishPetBubble(prompt);
+                publishPetBubble(prompt, 'speech', 'speak');
             }
             catch (reason) {
-                publishPetBubble(reason instanceof Error ? reason.message : String(reason));
+                publishPetBubble(reason instanceof Error ? reason.message : String(reason), 'error', 'error');
             }
             return;
         }
         try {
             if (prompt.startsWith('-')) {
-                publishPetBubble(await runChatCommand(prompt));
+                publishPetBubble(await runChatCommand(prompt), 'feedback');
                 return;
             }
             const reminder = parseReminder(prompt);
             if (reminder.handled) {
                 if (reminder.value === null) {
-                    publishPetBubble('我没听清提醒时间。可以说：10分钟后提醒我喝水，或 明天 23:30 提醒我休息。');
+                    publishPetBubble('我没听清提醒时间。可以说：10分钟后提醒我喝水，或 明天 23:30 提醒我休息。', 'feedback');
                     return;
                 }
                 const response = await bridge.core.invoke({ type: 'reminder.save', payload: {
@@ -60,10 +61,10 @@ export function PromptPage(): React.JSX.Element {
                     } });
                 if (!response.success)
                     throw new Error(response.error?.message ?? '提醒创建失败。');
-                publishPetBubble(`已创建提醒：${reminder.value.title}\n时间：${formatMinute(reminder.value.dueAt)}`);
+                publishPetBubble(`已创建提醒：${reminder.value.title}\n时间：${formatMinute(reminder.value.dueAt)}`, 'feedback');
                 return;
             }
-            publishPetBubble('女仆正在跑腿通知.....^_^', 'think');
+            publishPetBubble('女仆正在跑腿通知.....^_^', 'processing', 'think');
             const character = await currentCharacter();
             const payload = await runAgentConversation(prompt, {
                 ...(character === undefined ? {} : { characterId: character.roleId }),
@@ -71,7 +72,7 @@ export function PromptPage(): React.JSX.Element {
                 source: 'normal_chat'
             });
             const content = payload.content.trim() || 'Agent 返回了空回复。';
-            publishPetBubble(content, actionTagForVoiceStyle(payload.voiceStyle));
+            publishPetBubble(content, 'speech', actionTagForVoiceStyle(payload.voiceStyle));
             if (payload.messageId > 0 && await realtimeTtsEnabled()) {
                 const voiceId = character?.preferredVoiceId || undefined;
                 const audioPath = await synthesizeAndPlay(content, voiceId);
@@ -79,7 +80,7 @@ export function PromptPage(): React.JSX.Element {
             }
         }
         catch (reason) {
-            publishPetBubble(reason instanceof Error ? reason.message : String(reason), 'error');
+            publishPetBubble(reason instanceof Error ? reason.message : String(reason), 'error', 'error');
         }
     }
     return <MainRegion onMouseDown={(event) => {
@@ -186,9 +187,6 @@ function atTime(now: Date, hour: number, minute: number): Date {
 function formatMinute(value: Date): string {
     const pad = (number: number): string => String(number).padStart(2, '0');
     return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())} ${pad(value.getHours())}:${pad(value.getMinutes())}`;
-}
-function publishPetBubble(text: string, actionTag?: string): void {
-    localStorage.setItem('aimaid.pet-bubble', JSON.stringify({ text, actionTag, nonce: crypto.randomUUID() }));
 }
 function actionTagForVoiceStyle(voiceStyle: string): string {
     const normalized = voiceStyle.trim().toLowerCase();

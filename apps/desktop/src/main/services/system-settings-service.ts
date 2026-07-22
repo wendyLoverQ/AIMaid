@@ -147,7 +147,7 @@ export class SystemSettingsService {
   }
 
   private async reload(): Promise<void> {
-    const keys = ['start_with_windows', ...HOTKEY_ACTIONS.map((item) => item.settingKey)]
+    const keys = ['start_with_windows', 'comic_bubble_style', ...HOTKEY_ACTIONS.map((item) => item.settingKey)]
     const payload = await this.invokeCore({ type: 'settings.get', payload: { keys } }) as CoreSettingsPayload
     this.values = new Map((payload.settings ?? []).map((item) => [item.key, item.value]))
   }
@@ -201,5 +201,5 @@ function bubbleStyleCss(style: string): string {
     close: 'background:#ffe9ef;border-color:#d66382;color:#67263a;box-shadow:0 12px 34px rgba(214,99,130,.28)'
   }
   const value = declarations[style]
-  return value === undefined ? '' : `.pet-bubble{${value}}`
+  return value === undefined ? '' : `.ui-pet-bubble{${value}}`
 }

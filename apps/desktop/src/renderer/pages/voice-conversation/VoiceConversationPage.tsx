@@ -3,6 +3,7 @@ import type { ChatMessageDto, CharacterDto, VoiceConversationDto } from '../../.
 import { Avatar, Badge, Button, ConfirmDialog, EmptyState, Inline, Input, LayoutSlot, ListBox, ListBoxItem, Page, PageContent, SearchBox, Select, Stack, Surface, Switch, Text, Textarea, WindowTitleBar, useToast } from '../../components/ui'
 import { loadCharacters, setCurrentCharacter } from '../../features/characters/character-api'
 import { bridge } from '../../shared/bridge'
+import { publishPetBubble } from '../../shared/pet-bubble-channel'
 import { attachAudioMetadata, stopAudioPlayback, synthesizeAndPlay } from '../chat/tts-playback'
 import { runAgentConversation } from '../chat/agent-conversation'
 
@@ -58,21 +59,22 @@ export function VoiceConversationPage(): React.JSX.Element {
   }
   const send = async (): Promise<void> => {
     const content = text.trim(); if (content === '' || roleId === '' || sending) return
-    setText(''); setSending(true)
+    setText(''); setSending(true); publishPetBubble('正在生成回复…', 'processing', 'think')
     try {
       const conversation = conversations.find((item) => item.conversationId === conversationId) ?? await createConversation(content)
       const optimistic: ChatMessageDto = { id: -Date.now(), conversationId: conversation.conversationId, role: 'user', content, characterId: roleId, modelName: '', source: 'voice-conversation', metadataJson: '{}', createdAt: new Date().toISOString() }
       setMessages((current) => [...current, optimistic])
       const payload = await runAgentConversation(content, { conversationId: conversation.conversationId, characterId: roleId, source: 'voice_conversation_center' })
       const reply = payload.content.trim()
+      if (reply !== '') publishPetBubble(reply, 'speech', actionTagForVoiceStyle(payload.voiceStyle))
       await bridge.core.invoke({ type: 'voice_conversation.save', payload: { conversation: { ...conversation, preview: reply, updatedAt: new Date().toISOString() } } })
       await loadMessages(conversation.conversationId); await loadConversations(roleId, query)
       const role = roles.find((item) => item.roleId === roleId)
       if (speech && reply !== '' && role?.preferredVoiceId !== undefined) { const path = await synthesizeAndPlay(reply, role.preferredVoiceId); if (payload.messageId > 0) await attachAudioMetadata(payload.messageId, [path], { voiceId: role.preferredVoiceId, source: 'voice_conversation_center' }) }
-    } catch (reason) { toast.show(reason instanceof Error ? reason.message : String(reason), 'error') } finally { setSending(false) }
+    } catch (reason) { const message = reason instanceof Error ? reason.message : String(reason); publishPetBubble(message, 'error', 'error'); toast.show(message, 'error') } finally { setSending(false) }
   }
   const transcribe = async (audio: Blob): Promise<void> => {
-    setTranscribing(true)
+    setTranscribing(true); publishPetBubble('正在识别语音…', 'processing', 'think')
     try {
       const dataUrl = await blobToDataUrl(audio)
       const imported = await bridge.speech.importAudioData(dataUrl)
@@ -88,27 +90,28 @@ export function VoiceConversationPage(): React.JSX.Element {
       const recognized = response.payload.trim()
       if (recognized === '') throw new Error('语音识别没有返回文字。')
       setText((current) => current.trim() === '' ? recognized : `${current.trimEnd()} ${recognized}`)
+      publishPetBubble(`我听到：${recognized}`, 'feedback', 'listen')
       toast.show('语音已转成文字，请确认后发送。', 'success')
     } finally { setTranscribing(false) }
   }
   const startRecording = async (): Promise<void> => {
     if (roleId === '' || recording || transcribing) return
-    if (navigator.mediaDevices?.getUserMedia === undefined || typeof MediaRecorder === 'undefined') { toast.show('当前系统不支持麦克风录音。', 'error'); return }
+    if (navigator.mediaDevices?.getUserMedia === undefined || typeof MediaRecorder === 'undefined') { publishPetBubble('当前系统不支持麦克风录音。', 'error', 'error'); toast.show('当前系统不支持麦克风录音。', 'error'); return }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false })
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm'
       const next = new MediaRecorder(stream, { mimeType }); chunks.current = []; discardRecording.current = false; recordingStream.current = stream; recorder.current = next
       next.ondataavailable = (event) => { if (event.data.size > 0) chunks.current.push(event.data) }
-      next.onerror = () => toast.show('麦克风录音失败，请检查系统权限。', 'error')
+      next.onerror = () => { publishPetBubble('麦克风录音失败，请检查系统权限。', 'error', 'error'); toast.show('麦克风录音失败，请检查系统权限。', 'error') }
       next.onstop = () => {
         stream.getTracks().forEach((track) => track.stop()); recordingStream.current = undefined; recorder.current = undefined; setRecording(false)
         if (discardRecording.current) { chunks.current = []; return }
         const audio = new Blob(chunks.current, { type: next.mimeType }); chunks.current = []
-        if (audio.size === 0) { toast.show('没有录到声音，请重试。', 'error'); return }
-        void transcribe(audio).catch((reason: unknown) => toast.show(reason instanceof Error ? reason.message : String(reason), 'error'))
+        if (audio.size === 0) { publishPetBubble('没有录到声音，请重试。', 'error', 'error'); toast.show('没有录到声音，请重试。', 'error'); return }
+        void transcribe(audio).catch((reason: unknown) => { const message = reason instanceof Error ? reason.message : String(reason); publishPetBubble(message, 'error', 'error'); toast.show(message, 'error') })
       }
-      next.start(500); setRecording(true)
-    } catch (reason) { recordingStream.current?.getTracks().forEach((track) => track.stop()); toast.show(reason instanceof Error ? reason.message : '无法访问麦克风，请检查系统权限。', 'error') }
+      next.start(500); setRecording(true); publishPetBubble('正在听主人说话…', 'status', 'listen')
+    } catch (reason) { const message = reason instanceof Error ? reason.message : '无法访问麦克风，请检查系统权限。'; recordingStream.current?.getTracks().forEach((track) => track.stop()); publishPetBubble(message, 'error', 'error'); toast.show(message, 'error') }
   }
   const stopRecording = (discard = false): void => {
     discardRecording.current = discard
@@ -149,4 +152,12 @@ function blobToDataUrl(blob: Blob): Promise<string> {
     reader.onerror = () => reject(reader.error ?? new Error('录音编码失败。'))
     reader.readAsDataURL(blob)
   })
+}
+
+function actionTagForVoiceStyle(voiceStyle: string): string {
+  const normalized = voiceStyle.trim().toLowerCase()
+  if (normalized === 'lively') return 'happy'
+  if (normalized === 'close') return 'shy'
+  if (normalized === 'soft') return 'smile'
+  return 'speak'
 }

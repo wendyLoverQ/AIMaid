@@ -139,8 +139,9 @@ describe('phase 4 PetWindow integration', () => {
     expect(bubble).not.toContain('上一页')
     expect(bubble).not.toContain('下一页')
     expect(bubble).not.toContain('Navigation')
-    expect(bubble).toContain('Math.min(30000, 3500 + Array.from(text).length * 80)')
-    expect(bubble).toContain('scheduleHide(6000)')
+    expect(bubble).toContain('Math.min(20_000, 3_500 + Array.from(text).length * 70)')
+    expect(bubble).toContain('MAX_VISIBLE_MS = 60_000')
+    expect(bubble).toContain('AFTER_SPEECH_VISIBLE_MS = 5_000')
   })
 
   it('claims a music URL before async setup can start duplicate playback', () => {
