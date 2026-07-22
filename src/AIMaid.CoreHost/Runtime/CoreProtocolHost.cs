@@ -261,7 +261,7 @@ public sealed class CoreProtocolHost(
                 case "asr.transcribe":
                     await HandleValueResultAsync(request, await speech.HandleAsync(new TranscribeAudioCommand(
                         ReadRequiredString(request.Payload, "audioPath"),
-                        ReadRequiredString(request.Payload, "characterId"),
+                        ReadOptionalString(request.Payload, "characterId"),
                         ReadOptionalString(request.Payload, "sessionId"),
                         ReadOptionalString(request.Payload, "language") ?? "zh",
                         ReadOptionalString(request.Payload, "requestId")), source.Token), source.Token);

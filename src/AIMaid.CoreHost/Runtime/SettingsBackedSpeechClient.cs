@@ -73,7 +73,7 @@ public sealed class SettingsBackedSpeechClient : ITtsClient, IAsrClient, IDispos
 
     public async Task<string> TranscribeAsync(
         string audioPath,
-        string characterId,
+        string? characterId,
         string? sessionId,
         string language,
         string requestId,

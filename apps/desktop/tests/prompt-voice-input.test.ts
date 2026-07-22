@@ -12,6 +12,8 @@ describe('chat prompt voice input', () => {
     expect(prompt).toContain("bridge.speech.importAudioData")
     expect(prompt).toContain("type: 'asr.transcribe'")
     expect(prompt).toContain('await submit(false, false, recognized)')
+    expect(prompt).toContain('async function transcribe(audio: Blob)')
+    expect(prompt).toContain('void transcribe(audio)')
     expect(canRequest('chat', 'speech.audio.importData')).toBe(true)
   })
 

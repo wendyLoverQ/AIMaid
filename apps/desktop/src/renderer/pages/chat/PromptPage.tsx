@@ -37,7 +37,7 @@ export function PromptPage(): React.JSX.Element {
             window.removeEventListener('focus', focus);
         };
     }, []);
-    async function transcribe(audio: Blob, characterId: string): Promise<void> {
+    async function transcribe(audio: Blob): Promise<void> {
         setTranscribing(true);
         publishPetBubble('正在识别语音…', 'processing', 'think');
         try {
@@ -46,7 +46,6 @@ export function PromptPage(): React.JSX.Element {
                 throw new Error(imported.error?.message ?? '录音保存失败。');
             const response = await bridge.core.invoke({ type: 'asr.transcribe', payload: {
                     audioPath: imported.payload.path,
-                    characterId,
                     language: 'zh',
                     requestId: `aimaid_${crypto.randomUUID().replaceAll('-', '')}`
                 } }, 120000);
@@ -73,9 +72,6 @@ export function PromptPage(): React.JSX.Element {
             return;
         }
         try {
-            const character = await currentCharacter();
-            if (character === undefined)
-                throw new Error('请先选择一个聊天角色。');
             const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false });
             const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
             const next = new MediaRecorder(stream, { mimeType });
@@ -103,7 +99,7 @@ export function PromptPage(): React.JSX.Element {
                     publishPetBubble('没有录到声音，请重试。', 'error', 'error');
                     return;
                 }
-                void transcribe(audio, character.roleId);
+                void transcribe(audio);
             };
             next.start(500);
             setRecording(true);

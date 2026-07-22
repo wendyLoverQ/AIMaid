@@ -240,7 +240,7 @@ public sealed class SpeechHttpClient : ITtsClient, IAsrClient
 
     public async Task<string> TranscribeAsync(
         string audioPath,
-        string characterId,
+        string? characterId,
         string? sessionId,
         string language,
         string requestId,
@@ -251,7 +251,7 @@ public sealed class SpeechHttpClient : ITtsClient, IAsrClient
         using var audio = new StreamContent(stream);
         audio.Headers.ContentType = new MediaTypeHeaderValue(AudioMediaType(audioPath));
         content.Add(audio, "audio", Path.GetFileName(audioPath));
-        content.Add(new StringContent(characterId), "characterId");
+        if (!string.IsNullOrWhiteSpace(characterId)) content.Add(new StringContent(characterId), "characterId");
         if (!string.IsNullOrWhiteSpace(sessionId)) content.Add(new StringContent(sessionId), "sessionId");
         content.Add(new StringContent(language), "language");
         content.Add(new StringContent(requestId), "requestId");

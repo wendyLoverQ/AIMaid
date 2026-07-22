@@ -39,6 +39,10 @@ describe('Core protocol parser', () => {
     })).toBe(false)
   })
 
+  it('accepts audio-only ASR requests without a character', () => {
+    expect(isCoreRequest({ type: 'asr.transcribe', payload: { audioPath: 'recording.webm', language: 'zh' } })).toBe(true)
+  })
+
   it.each([
     ['invalid JSON', '{'],
     ['missing fields', JSON.stringify({ protocolVersion: '1.0', kind: 'response' })],

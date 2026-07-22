@@ -38,7 +38,7 @@ export type CoreRequest =
   | { type: 'chat.send'; payload: { content: string; conversationId?: string; characterId?: string; modelName?: string } }
   | { type: 'chat.update_metadata'; payload: { messageId: number; metadataJson: string } }
   | { type: 'tts.speak'; payload: { text: string; voiceId?: string; style?: string } }
-  | { type: 'asr.transcribe'; payload: { audioPath: string; characterId: string; sessionId?: string; language?: string; requestId?: string } }
+  | { type: 'asr.transcribe'; payload: { audioPath: string; characterId?: string; sessionId?: string; language?: string; requestId?: string } }
   | { type: 'voice_conversation.list'; payload: { roleId?: string; search?: string } }
   | { type: 'voice_conversation.save'; payload: { conversation: VoiceConversationDto } }
   | { type: 'voice_conversation.delete'; payload: { conversationId: string } }
@@ -252,7 +252,7 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
         (value.payload.style === undefined || typeof value.payload.style === 'string')
     case 'asr.transcribe':
       return isNonEmptyString(value.payload.audioPath) && value.payload.audioPath.length <= 32_768 &&
-        isNonEmptyString(value.payload.characterId) && value.payload.characterId.length <= 96 &&
+        (value.payload.characterId === undefined || isNonEmptyString(value.payload.characterId) && value.payload.characterId.length <= 96) &&
         (value.payload.sessionId === undefined || isNonEmptyString(value.payload.sessionId)) &&
         (value.payload.language === undefined || isNonEmptyString(value.payload.language)) &&
         (value.payload.requestId === undefined || isNonEmptyString(value.payload.requestId))

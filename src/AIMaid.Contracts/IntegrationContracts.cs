@@ -11,7 +11,7 @@ public sealed record SpeakTextCommand(string Text, string? VoiceId = null, strin
 
 public sealed record TranscribeAudioCommand(
     string AudioPath,
-    string CharacterId,
+    string? CharacterId = null,
     string? SessionId = null,
     string Language = "zh",
     string? RequestId = null) : ICommand<OperationResult<string>>;

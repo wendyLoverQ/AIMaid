@@ -86,7 +86,7 @@ public interface IAsrClient
 {
     Task<string> TranscribeAsync(
         string audioPath,
-        string characterId,
+        string? characterId,
         string? sessionId,
         string language,
         string requestId,
