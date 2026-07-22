@@ -93,7 +93,7 @@ export const WINDOW_REGISTRY: Readonly<Record<WindowKind, WindowDefinition>> = {
   'tray-menu': {
     id: 'tray-menu', route: 'tray-menu', closeBehavior: 'hide',
     options: {
-      width: 240, height: 424, transparent: true, backgroundColor: '#00000000', frame: false,
+      width: 240, height: 480, transparent: true, backgroundColor: '#00000000', frame: false,
       resizable: false, skipTaskbar: true, alwaysOnTop: true, maximizable: false, fullscreenable: false,
       show: false, focusable: true
     }

@@ -7,12 +7,15 @@ const root = resolve(import.meta.dirname, '..')
 describe('tray music controls', () => {
   it('shows the current song and exposes pause, resume, and stop without seeking', () => {
     const tray = readFileSync(resolve(root, 'src/renderer/pages/system/TrayMenuPage.tsx'), 'utf8')
+    const player = readFileSync(resolve(root, 'src/renderer/components/media/TrayMusicPlayer.tsx'), 'utf8')
     expect(tray).toContain("type: 'music.current'")
     expect(tray).toContain("type: action === 'toggle-pause' ? 'music.toggle_pause' : 'music.stop'")
-    expect(tray).toContain("music.isPaused ? '继续播放' : '暂停'")
-    expect(tray).toContain('正在播放')
-    expect(tray).toContain('停止')
-    expect(tray).not.toMatch(/seek|快进/u)
+    expect(tray).toContain('<TrayMusicPlayer')
+    expect(player).toContain("label={paused ? '继续播放' : '暂停'}")
+    expect(player).toContain('<UiIcon name={paused ? \'play\' : \'pause\'} />')
+    expect(player).toContain('label="停止"')
+    expect(player).toContain('<UiIcon name="stop" />')
+    expect(`${tray}\n${player}`).not.toMatch(/seek|快进/u)
   })
 
   it('keeps actual audio pause and resume inside the pet renderer', () => {

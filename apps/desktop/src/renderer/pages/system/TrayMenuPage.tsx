@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Button, Container, Divider, Range, Text, TrayMenuSurface } from '../../components/ui'
+import { Button, Container, Divider, Range, Text, TrayMenuSurface, TrayMusicPlayer } from '../../components/ui'
 import type { IpcEventEnvelope } from '../../../shared/ipc'
 import { bridge } from '../../shared/bridge'
 
@@ -82,12 +82,10 @@ export function TrayMenuPage(): React.JSX.Element {
   return <TrayMenuSurface onKeyDown={(event) => { if (event.key === 'Escape') void bridge.window.close() }} tabIndex={-1}>
     <Button onClick={() => run('show')}>显示</Button>
     <Divider />
-    <Text size="xs" tone="muted">{hasMusic ? '正在播放' : '当前未播放音乐'}</Text>
-    {hasMusic ? <>
-      <Text size="sm">{music.title}{music.singer === '' ? '' : ` · ${music.singer}`}</Text>
-      <Button variant="secondary" onClick={() => void controlMusic('toggle-pause')}>{music.isPaused ? '继续播放' : '暂停'}</Button>
-      <Button variant="secondary" onClick={() => void controlMusic('stop')}>停止</Button>
-    </> : null}
+    {hasMusic
+      ? <TrayMusicPlayer title={music.title} singer={music.singer} paused={music.isPaused}
+          onTogglePause={() => void controlMusic('toggle-pause')} onStop={() => void controlMusic('stop')} />
+      : <Text size="xs" tone="muted">当前未播放音乐</Text>}
     <Divider />
     <Button variant={audio.muted ? 'primary' : 'secondary'} onClick={() => void save({ ...audio, muted: !audio.muted })}>
       {audio.muted ? '声音：已静音' : '声音：正常'}

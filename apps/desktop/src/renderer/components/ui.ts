@@ -69,6 +69,7 @@ export {
 export { AudioPlayer, VideoPlayer } from './media/MediaPlayer'
 export { AudioRecordRow } from './media/AudioRecordRow'
 export { ExternalWebview } from './media/ExternalWebview'
+export { TrayMusicPlayer } from './media/TrayMusicPlayer'
 export { Tabs } from './navigation/Tabs'
 export { Pagination } from './navigation/Pagination'
 export { Tree } from './navigation/Tree'

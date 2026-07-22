@@ -92,8 +92,8 @@ try {
   const trayScreenshotPath = resolve(outputDirectory, 'tray-music-controls.png')
   await writeFile(trayScreenshotPath, Buffer.from(trayScreenshot.data, 'base64'))
 
-  await evaluate(trayClient, `Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.trim() === '暂停')?.click()`)
-  await waitFor(() => evaluate(trayClient, `document.body.innerText.includes('继续播放')`))
+  await evaluate(trayClient, `document.querySelector('button[aria-label="暂停"]')?.click()`)
+  await waitFor(() => evaluate(trayClient, `document.querySelector('button[aria-label="继续播放"]') !== null`))
   await waitFor(() => evaluate(client, `(() => {
     const canvas = document.querySelector('.ui-pet-audio-contour');
     const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
@@ -101,8 +101,8 @@ try {
     return true;
   })()`))
 
-  await evaluate(trayClient, `Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.trim() === '继续播放')?.click()`)
-  await waitFor(() => evaluate(trayClient, `Array.from(document.querySelectorAll('button')).some((button) => button.textContent?.trim() === '暂停')`))
+  await evaluate(trayClient, `document.querySelector('button[aria-label="继续播放"]')?.click()`)
+  await waitFor(() => evaluate(trayClient, `document.querySelector('button[aria-label="暂停"]') !== null`))
   await waitFor(() => evaluate(client, `(() => {
     const canvas = document.querySelector('.ui-pet-audio-contour');
     const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
@@ -110,7 +110,7 @@ try {
     return false;
   })()`))
 
-  await evaluate(trayClient, `Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.trim() === '停止')?.click()`)
+  await evaluate(trayClient, `document.querySelector('button[aria-label="停止"]')?.click()`)
   await waitFor(() => evaluate(trayClient, `document.body.innerText.includes('当前未播放音乐')`))
 
   const proof = {
