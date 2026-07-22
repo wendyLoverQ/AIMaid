@@ -26,8 +26,10 @@ const BUBBLE_ALPHA_GAP = 5;
 const BUBBLE_TAIL_HEIGHT = 21;
 const BUBBLE_ANCHOR_REFRESH_MS = 120;
 const BUBBLE_FOLLOW_TIME_MS = 150;
-const BUBBLE_TAIL_LEFT = 64;
+const BUBBLE_WIDTH = 420;
 const BUBBLE_PANEL_EDGE_GAP = 16;
+const BUBBLE_TAIL_MIN_LEFT = 32;
+const BUBBLE_TAIL_MAX_LEFT = BUBBLE_WIDTH - 32;
 export default function PetPage(): React.JSX.Element {
     const [presentation, setPresentation] = useState<PetPresentationSnapshot | null>(null);
     const [menu, setMenu] = useState<{
@@ -165,8 +167,10 @@ export default function PetPage(): React.JSX.Element {
         let lastFrameAt = Number.NaN;
         let targetBottom: number | null = null;
         let targetLeft: number | null = null;
+        let targetTailLeft: number | null = null;
         let currentBottom: number | null = null;
         let currentLeft: number | null = null;
+        let currentTailLeft: number | null = null;
         const updateBubbleAnchor = (now: number): void => {
             if (now - lastUpdatedAt >= BUBBLE_ANCHOR_REFRESH_MS) {
                 lastUpdatedAt = now;
@@ -183,30 +187,34 @@ export default function PetPage(): React.JSX.Element {
                         const alphaTopPoint = contour.points.reduce((highest, point) => point.y < highest.y ? point : highest);
                         const alphaTop = sourceBounds.top + alphaTopPoint.y * sourceBounds.height;
                         const alphaTopX = sourceBounds.left + alphaTopPoint.x * sourceBounds.width;
-                        const bubbleBounds = bubbleSurface.getBoundingClientRect();
+                        const alphaRelativeX = alphaTopX - panelBounds.left;
+                        const halfWidth = BUBBLE_WIDTH / 2;
+                        const minCenter = halfWidth + BUBBLE_PANEL_EDGE_GAP;
+                        const maxCenter = panelBounds.width - halfWidth - BUBBLE_PANEL_EDGE_GAP;
+                        const bubbleCenter = Math.min(Math.max(alphaRelativeX, minCenter), maxCenter);
+                        const rawTailLeft = alphaRelativeX - bubbleCenter + halfWidth;
                         targetBottom = panelBounds.bottom - alphaTop + BUBBLE_ALPHA_GAP + BUBBLE_TAIL_HEIGHT;
-                        targetLeft = Math.min(
-                            Math.max(
-                                alphaTopX - panelBounds.left - BUBBLE_TAIL_LEFT + bubbleBounds.width / 2,
-                                bubbleBounds.width / 2 + BUBBLE_PANEL_EDGE_GAP
-                            ),
-                            panelBounds.width - bubbleBounds.width / 2 - BUBBLE_PANEL_EDGE_GAP
-                        );
+                        targetLeft = bubbleCenter;
+                        targetTailLeft = Math.min(Math.max(rawTailLeft, BUBBLE_TAIL_MIN_LEFT), BUBBLE_TAIL_MAX_LEFT);
                         currentBottom ??= targetBottom;
                         currentLeft ??= targetLeft;
+                        currentTailLeft ??= targetTailLeft;
                         bubbleSurface.dataset.alphaAnchored = '';
                     }
                 }
             }
             const bubbleSurface = panelRef.current?.querySelector<HTMLElement>('.ui-pet-bubble') ?? null;
             if (bubbleSurface !== null && targetBottom !== null && targetLeft !== null &&
-                currentBottom !== null && currentLeft !== null) {
+                targetTailLeft !== null && currentBottom !== null && currentLeft !== null &&
+                currentTailLeft !== null) {
                 const elapsed = Number.isNaN(lastFrameAt) ? 16 : Math.min(50, now - lastFrameAt);
                 const follow = 1 - Math.exp(-elapsed / BUBBLE_FOLLOW_TIME_MS);
                 currentBottom += (targetBottom - currentBottom) * follow;
                 currentLeft += (targetLeft - currentLeft) * follow;
+                currentTailLeft += (targetTailLeft - currentTailLeft) * follow;
                 bubbleSurface.style.setProperty('--pet-bubble-bottom', `${currentBottom.toFixed(2)}px`);
                 bubbleSurface.style.setProperty('--pet-bubble-left', `${currentLeft.toFixed(2)}px`);
+                bubbleSurface.style.setProperty('--pet-bubble-tail-left', `${currentTailLeft.toFixed(2)}px`);
             }
             lastFrameAt = now;
             animationId = requestAnimationFrame(updateBubbleAnchor);

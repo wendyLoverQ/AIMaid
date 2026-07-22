@@ -1096,7 +1096,7 @@ body.prompt-surface .ui-main-region { width: 100vw; height: 100vh; padding: 0; p
 body.prompt-surface .ui-main-region > .ui-section { width: min(380px, calc(100vw - var(--space-8))); padding: var(--space-6) var(--space-7); border: var(--border-default); border-radius: var(--radius-lg); background: var(--color-bg-surface); box-shadow: var(--shadow-md); }
 .ui-pet-bubble { position: absolute; z-index: var(--z-sticky); bottom: var(--pet-bubble-bottom, 100%); left: var(--pet-bubble-left, 50%); width: min(420px, calc(100% - var(--space-8))); min-height: 72px; padding: var(--space-6) var(--space-7); visibility: hidden; color: var(--color-text-primary); background: var(--color-bg-elevated); border: var(--focus-ring-width) solid var(--color-text-primary); border-radius: var(--radius-xl); box-shadow: var(--shadow-md); backdrop-filter: blur(8px); transform: translateX(-50%); cursor: pointer; pointer-events: auto; animation: ui-pet-bubble-in var(--duration-overlay-in) var(--ease-standard) both; }
 .ui-pet-bubble[data-alpha-anchored] { visibility: visible; }
-.ui-pet-bubble::before, .ui-pet-bubble::after { position: absolute; left: 64px; transform: translateX(-50%); clip-path: polygon(0 0, 100% 0, 46% 100%); content: ''; }
+.ui-pet-bubble::before, .ui-pet-bubble::after { position: absolute; left: var(--pet-bubble-tail-left, 64px); transform: translateX(-50%); clip-path: polygon(0 0, 100% 0, 46% 100%); content: ''; }
 .ui-pet-bubble::before { bottom: -21px; width: 34px; height: 23px; background: var(--color-text-primary); }
 .ui-pet-bubble::after { bottom: -16px; width: 28px; height: 19px; background: inherit; }
 .ui-pet-bubble .ui-paragraph { position: relative; z-index: 1; overflow: visible; color: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
