@@ -8,6 +8,8 @@ import type { AgentConfirmationRequest } from './business'
 
 export type Unsubscribe = () => void
 
+export type VoiceInputCommand = { type: 'stop' }
+
 export interface AIMaidApi {
   readonly appVersion: string
   readonly windowKind: WindowKind
@@ -70,6 +72,12 @@ export interface AIMaidApi {
   }
   readonly speech?: {
     importAudioData: (dataUrl: string) => Promise<IpcResponseEnvelope<{ path: string }>>
+  }
+  readonly voiceInput?: {
+    complete?: (text: string) => Promise<IpcResponseEnvelope<{ delivered: boolean }>>
+    consume?: () => Promise<IpcResponseEnvelope<{ id: string | null; text: string | null }>>
+    acknowledge?: (id: string) => Promise<IpcResponseEnvelope<{ acknowledged: boolean }>>
+    onCommand?: (listener: (command: VoiceInputCommand) => void) => Unsubscribe
   }
   readonly tray?: {
     action: (action: 'show' | 'reset-position' | 'hide' | 'quit') => Promise<IpcResponseEnvelope>

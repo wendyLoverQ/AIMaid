@@ -39,4 +39,12 @@ describe('window registry and capabilities', () => {
     expect(canRequest('settings', 'window.minimize')).toBe(true)
     expect(canRequest('pet', 'window.toggleMaximize')).toBe(false)
   })
+
+  it('isolates the voice input recorder from unrelated desktop capabilities', () => {
+    expect(canRequest('voice-input', 'speech.audio.importData')).toBe(true)
+    expect(canRequest('voice-input', 'voice-input.complete')).toBe(true)
+    expect(canRequest('voice-input', 'system.settings.get')).toBe(false)
+    expect(canRequest('chat', 'voice-input.consume')).toBe(true)
+    expect(WINDOW_REGISTRY['voice-input'].options).toMatchObject({ width: 148, height: 148, transparent: true, frame: false })
+  })
 })

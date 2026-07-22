@@ -109,6 +109,16 @@ export const bridge = Object.freeze({
     importAudioData: (dataUrl: string): Promise<IpcResponseEnvelope<{ path: string }>> =>
       requireCapability(window.aimaid.speech?.importAudioData, 'speech.audio.importData')(dataUrl)
   }),
+  voiceInput: Object.freeze({
+    complete: (text: string): Promise<IpcResponseEnvelope<{ delivered: boolean }>> =>
+      requireCapability(window.aimaid.voiceInput?.complete, 'voice-input.complete')(text),
+    consume: (): Promise<IpcResponseEnvelope<{ id: string | null; text: string | null }>> =>
+      requireCapability(window.aimaid.voiceInput?.consume, 'voice-input.consume')(),
+    acknowledge: (id: string): Promise<IpcResponseEnvelope<{ acknowledged: boolean }>> =>
+      requireCapability(window.aimaid.voiceInput?.acknowledge, 'voice-input.acknowledge')(id),
+    onCommand: (listener: (command: { type: 'stop' }) => void): (() => void) =>
+      requireCapability(window.aimaid.voiceInput?.onCommand, 'voice-input.onCommand')(listener)
+  }),
   tray: Object.freeze({
     action: (action: 'show' | 'reset-position' | 'hide' | 'quit'): Promise<IpcResponseEnvelope> =>
       requireCapability(window.aimaid.tray?.action, 'tray.action')(action),

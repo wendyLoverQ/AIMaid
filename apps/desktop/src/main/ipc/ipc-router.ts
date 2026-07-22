@@ -49,6 +49,7 @@ export class IpcRouter {
   private readonly requestOwners = new Map<string, number>()
   private readonly highFrequencyLogStats = new Map<string, HighFrequencyLogStats>()
   private restartPromise: Promise<void> | undefined
+  private pendingVoiceInput: { id: string; text: string } | undefined
   private installed = false
 
   constructor(
@@ -292,6 +293,32 @@ export class IpcRouter {
       }
       case 'speech.audio.importData':
         return this.speechAudio.importData(readString(request.payload, 'dataUrl', 36_000_000))
+      case 'voice-input.complete': {
+        const text = readString(request.payload, 'text', 20_000).trim()
+        if (text === '') throw new TypeError('Voice input text is empty')
+        this.pendingVoiceInput = { id: request.requestId, text }
+        this.windows.hide('voice-input', { requestId: request.requestId, sourceWindow: sourceKind, trigger: request.type })
+        await this.windows.openAndWait('chat', sourceKind, {
+          requestId: request.requestId,
+          sourceWindow: sourceKind,
+          trigger: request.type
+        })
+        setImmediate(() => this.windows.close('voice-input', {
+          requestId: request.requestId,
+          sourceWindow: sourceKind,
+          trigger: 'voice-input.delivered'
+        }))
+        return { delivered: true }
+      }
+      case 'voice-input.consume': {
+        return this.pendingVoiceInput ?? { id: null, text: null }
+      }
+      case 'voice-input.acknowledge': {
+        const id = readString(request.payload, 'id', 100)
+        const acknowledged = this.pendingVoiceInput?.id === id
+        if (acknowledged) this.pendingVoiceInput = undefined
+        return { acknowledged }
+      }
       case 'tray.action': {
         const action = readTrayAction(request.payload)
         this.windows.hide('tray-menu')

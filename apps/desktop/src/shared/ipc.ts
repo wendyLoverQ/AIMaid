@@ -4,7 +4,8 @@ export const IPC_CHANNELS = {
   invoke: 'aimaid:invoke',
   send: 'aimaid:send',
   event: 'aimaid:event',
-  petLifecycle: 'aimaid:pet-lifecycle'
+  petLifecycle: 'aimaid:pet-lifecycle',
+  voiceInput: 'aimaid:voice-input'
 } as const
 
 export const IPC_REQUEST_TYPES = [
@@ -26,6 +27,9 @@ export const IPC_REQUEST_TYPES = [
   'notebook.attachment.importData',
   'notebook.attachment.action',
   'speech.audio.importData',
+  'voice-input.complete',
+  'voice-input.consume',
+  'voice-input.acknowledge',
   'tray.action',
   'tray.resize',
   'douyin.session.save',

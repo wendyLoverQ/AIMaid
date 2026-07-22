@@ -15,20 +15,33 @@ export function PromptPage(): React.JSX.Element {
     const input = useRef<HTMLTextAreaElement>(null);
     const [text, setText] = useState('');
     useEffect(() => {
+        let disposed = false;
         document.body.classList.add('prompt-surface');
         const focus = (): void => {
             setText('');
             requestAnimationFrame(() => input.current?.focus());
+            void bridge.voiceInput.consume().then(async (response) => {
+                const payload = response.payload;
+                if (disposed || !response.success || payload === null || payload.id === null || payload.text === null)
+                    return;
+                setText(payload.text);
+                const acknowledged = await bridge.voiceInput.acknowledge(payload.id);
+                if (!acknowledged.success || !acknowledged.payload?.acknowledged)
+                    throw new Error(acknowledged.error?.message ?? '语音输入状态确认失败。');
+                if (!disposed)
+                    void submit(false, false, payload.text);
+            }).catch((reason: unknown) => publishPetBubble(reason instanceof Error ? reason.message : String(reason), 'error', 'error'));
         };
         window.addEventListener('focus', focus);
         focus();
         return () => {
+            disposed = true;
             document.body.classList.remove('prompt-surface');
             window.removeEventListener('focus', focus);
         };
     }, []);
-    async function submit(continueConversation: boolean, ttsPreviewOnly: boolean): Promise<void> {
-        const prompt = text.trim();
+    async function submit(continueConversation: boolean, ttsPreviewOnly: boolean, promptText = text): Promise<void> {
+        const prompt = promptText.trim();
         if (prompt === '')
             return;
         await bridge.window.hide();

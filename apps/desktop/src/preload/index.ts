@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AIMaidApi, Unsubscribe } from '../shared/api'
+import type { AIMaidApi, Unsubscribe, VoiceInputCommand } from '../shared/api'
 import { WINDOW_CAPABILITIES, canRequest } from '../shared/capabilities'
 import { coreRequestTimeoutMs, isCoreEventType } from '../shared/core'
 import type { CoreEventType, CoreRequest, CoreStatus } from '../shared/core'
@@ -148,6 +148,31 @@ const notebookApi: AIMaidApi['notebook'] = canRequest(windowKind, 'notebook.atta
 const speechApi: AIMaidApi['speech'] = canRequest(windowKind, 'speech.audio.importData')
   ? Object.freeze({ importAudioData: (dataUrl: string) => invoke<{ path: string }>('speech.audio.importData', { dataUrl }, 30_000) })
   : undefined
+const voiceInputApi: AIMaidApi['voiceInput'] = windowKind === 'voice-input' || canRequest(windowKind, 'voice-input.consume')
+  ? Object.freeze({
+      ...(canRequest(windowKind, 'voice-input.complete')
+        ? { complete: (text: string) => invoke<{ delivered: boolean }>('voice-input.complete', { text }, 30_000) }
+        : {}),
+      ...(canRequest(windowKind, 'voice-input.consume')
+        ? {
+            consume: () => invoke<{ id: string | null; text: string | null }>('voice-input.consume', {}),
+            acknowledge: (id: string) => invoke<{ acknowledged: boolean }>('voice-input.acknowledge', { id })
+          }
+        : {}),
+      ...(windowKind === 'voice-input'
+        ? { onCommand: (listener: (command: VoiceInputCommand) => void): Unsubscribe => {
+            const handler = (_event: Electron.IpcRendererEvent, command: VoiceInputCommand): void => listener(command)
+            ipcRenderer.on(IPC_CHANNELS.voiceInput, handler)
+            const unsubscribe = (): void => {
+              ipcRenderer.off(IPC_CHANNELS.voiceInput, handler)
+              subscriptions.delete(unsubscribe)
+            }
+            subscriptions.add(unsubscribe)
+            return unsubscribe
+          } }
+        : {})
+    })
+  : undefined
 
 const trayApi: AIMaidApi['tray'] = canRequest(windowKind, 'tray.action')
   ? Object.freeze({
@@ -208,6 +233,7 @@ const api: AIMaidApi = {
   ...(mediaApi === undefined ? {} : { media: mediaApi }),
   ...(notebookApi === undefined ? {} : { notebook: notebookApi }),
   ...(speechApi === undefined ? {} : { speech: speechApi }),
+  ...(voiceInputApi === undefined ? {} : { voiceInput: voiceInputApi }),
   ...(trayApi === undefined ? {} : { tray: trayApi }),
   ...(douyinApi === undefined ? {} : { douyin: douyinApi }),
   ...(agentConfirmationApi === undefined ? {} : { agentConfirmation: agentConfirmationApi }),
