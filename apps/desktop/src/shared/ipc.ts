@@ -43,6 +43,7 @@ export const IPC_REQUEST_TYPES = [
   'pet.dragMove',
   'pet.dragEnd',
   'pet.updateWindow',
+  'pet.captureCoordinates',
   'pet.reportMetrics',
   'pet.runtime.get',
   'pet.presentation.get',

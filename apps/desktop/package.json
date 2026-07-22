@@ -12,6 +12,8 @@
     "dev": "electron-vite dev",
     "core:build": "dotnet build ../../src/AIMaid.CoreHost/AIMaid.CoreHost.csproj -c Debug",
     "core:publish": "node scripts/publish-core.mjs",
+    "prepet:coordinates": "npm run core:build && npm run typecheck && electron-vite build",
+    "pet:coordinates": "node scripts/capture-pet-coordinates.mjs",
     "ui:gate": "node scripts/check-ui-boundary.mjs",
     "typecheck": "npm run ui:gate && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "lint": "eslint . --max-warnings=0",

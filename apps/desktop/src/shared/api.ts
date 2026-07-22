@@ -1,6 +1,6 @@
 import type { CoreEventType, CoreRequest, CoreStatus } from './core'
 import type { IpcEventEnvelope, IpcResponseEnvelope } from './ipc'
-import type { PetAssetManifest, PetLifecycleEvent, PetPerformanceMetrics, PetRuntimeSnapshot, PetWindowUpdate } from './pet'
+import type { PetAssetManifest, PetCoordinateSnapshot, PetLifecycleEvent, PetPerformanceMetrics, PetRectangle, PetRuntimeSnapshot, PetWindowUpdate } from './pet'
 import type { PetPresentationApi } from './presentation'
 import type { WindowKind } from './windows'
 import type { HotkeyAction, PlatformSettingsSnapshot } from './system-settings'
@@ -46,6 +46,7 @@ export interface AIMaidApi {
     dragMove: () => Promise<IpcResponseEnvelope>
     dragEnd: () => Promise<IpcResponseEnvelope>
     updateWindow: (update: PetWindowUpdate) => Promise<IpcResponseEnvelope>
+    captureCoordinates: (bounds: PetRectangle) => Promise<IpcResponseEnvelope<PetCoordinateSnapshot>>
     reportMetrics: (metrics: PetPerformanceMetrics) => Promise<IpcResponseEnvelope>
     runtimeStatus: () => Promise<IpcResponseEnvelope<PetRuntimeSnapshot>>
     onLifecycle: (listener: (event: PetLifecycleEvent) => void) => Unsubscribe

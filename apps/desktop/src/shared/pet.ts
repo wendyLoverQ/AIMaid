@@ -46,6 +46,38 @@ export interface PetWindowUpdate {
   anchor: 'top-left' | 'center'
 }
 
+export interface PetRectangle {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface PetDisplaySnapshot {
+  id: number
+  label: string
+  scaleFactor: number
+  rotation: number
+  bounds: PetRectangle
+  workArea: PetRectangle
+}
+
+export interface PetCoordinateSegment {
+  displayId: number
+  scaleFactor: number
+  dipBounds: PetRectangle
+  physicalBounds: PetRectangle
+}
+
+export interface PetCoordinateSnapshot {
+  measuredAt: number
+  windowDipBounds: PetRectangle
+  itemDipBounds: PetRectangle
+  itemPhysicalBounds: PetRectangle | null
+  segments: PetCoordinateSegment[]
+  displays: PetDisplaySnapshot[]
+}
+
 export interface PetLifecycleEvent {
   type: PetLifecycleSignal
   scaleFactor: number
