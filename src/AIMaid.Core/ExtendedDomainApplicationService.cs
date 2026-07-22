@@ -455,6 +455,7 @@ public sealed class AgentApplicationService :
 {
     private const string CapabilityDomain = "agent_capability";
     private const string ToolCallDomain = "agent_tool_call";
+    private static long nextToolCallId = DateTimeOffset.UtcNow.Ticks;
     private readonly IDomainDocumentStore store;
     private readonly IReadOnlyDictionary<string, IAgentCapabilityExecutor> executors;
     private readonly IEventPublisher events;
@@ -510,7 +511,7 @@ public sealed class AgentApplicationService :
         if (!executors.TryGetValue(capability.ExecutorType, out var executor))
             return OperationResult<AgentToolCallDto>.Failure("agent.executor_missing", $"未注册执行器：{capability.ExecutorType}");
 
-        var callId = $"tool_{Guid.NewGuid():N}";
+        var callId = $"legacy_tool_{Interlocked.Increment(ref nextToolCallId)}";
         var created = DateTimeOffset.Now;
         AgentExecutionResult execution;
         try { execution = await executor.ExecuteAsync(capability, command.ArgsJson, cancellationToken); }
