@@ -13,16 +13,22 @@ public sealed record ApplicationPaths(
     public const string CacheRootEnvironmentVariable = "AIMAID_CACHE_ROOT";
     public const string LogRootEnvironmentVariable = "AIMAID_LOG_ROOT";
 
-    public static ApplicationPaths FromEnvironment(string applicationName = "AIMaid")
+    public static ApplicationPaths FromEnvironment()
     {
-        var roamingRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), applicationName);
-        var localRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), applicationName);
         return Create(
-            Environment.GetEnvironmentVariable(ResourceRootEnvironmentVariable) ?? Path.Combine(AppContext.BaseDirectory, "resources"),
-            Environment.GetEnvironmentVariable(DataRootEnvironmentVariable) ?? Path.Combine(roamingRoot, "data"),
-            Environment.GetEnvironmentVariable(ConfigRootEnvironmentVariable) ?? Path.Combine(roamingRoot, "config"),
-            Environment.GetEnvironmentVariable(CacheRootEnvironmentVariable) ?? Path.Combine(localRoot, "cache"),
-            Environment.GetEnvironmentVariable(LogRootEnvironmentVariable) ?? Path.Combine(localRoot, "logs"));
+            RequireEnv(ResourceRootEnvironmentVariable),
+            RequireEnv(DataRootEnvironmentVariable),
+            RequireEnv(ConfigRootEnvironmentVariable),
+            RequireEnv(CacheRootEnvironmentVariable),
+            RequireEnv(LogRootEnvironmentVariable));
+    }
+
+    private static string RequireEnv(string name)
+    {
+        var value = Environment.GetEnvironmentVariable(name)?.Trim();
+        if (string.IsNullOrWhiteSpace(value))
+            throw new InvalidOperationException($"环境变量 {name} 未设置，CoreHost 必须由桌面主进程启动。");
+        return value;
     }
 
     public static ApplicationPaths Create(string resourceRoot, string dataRoot, string configRoot, string cacheRoot, string logRoot)
