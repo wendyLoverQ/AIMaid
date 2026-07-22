@@ -1,6 +1,7 @@
 import { net, protocol } from 'electron'
 import { existsSync, mkdirSync, readdirSync, realpathSync } from 'node:fs'
-import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { readFile, readdir } from 'node:fs/promises'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { createHash } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 import type { PetAssetManifest } from '../../shared/pet'
@@ -16,11 +17,37 @@ const ALLOWED_EXTENSIONS = new Set([
   '.wav', '.mp3', '.m4a', '.aac', '.ogg', '.opus', '.flac'
 ])
 
+type Live2DFileDefinition = { Name?: string; File: string }
+type Live2DModelJson = {
+  FileReferences?: {
+    Expressions?: Live2DFileDefinition[]
+    Motions?: Record<string, Live2DFileDefinition[]>
+    [key: string]: unknown
+  }
+  AIMaidHotkeys?: Live2DHotkeyDefinition[]
+  [key: string]: unknown
+}
+
+export type Live2DHotkeyDefinition = {
+  name: string
+  action: 'ToggleExpression' | 'TriggerAnimation' | 'RemoveAllExpressions'
+  file: string
+  triggers: string[]
+}
+
+export type EnrichedLive2DModel = {
+  data: Buffer
+  motionOutfitParameterIds: Map<string, Set<string>>
+  expressionCount: number
+  motionGroups: Record<string, number>
+}
+
 export class PetAssetService {
   private readonly root: string
   private readonly uiRoot: string
   private readonly notebookAttachmentRoot: string
   private readonly externalFiles = new Map<string, string>()
+  private readonly motionOutfitParameterIds = new Map<string, Set<string>>()
   private registered = false
 
   constructor(resourceRoot: string, uiResourceRoot: string, notebookAttachmentRoot: string, private readonly log: Logger) {
@@ -123,8 +150,214 @@ export class PetAssetService {
     if (relativePath.startsWith(`..${sep}`) || relativePath === '..' || isAbsolute(relativePath)) {
       return new Response('Forbidden', { status: 403 })
     }
+    if (root === this.root && real.toLowerCase().endsWith('.model3.json')) {
+      const enriched = await enrichLive2DModel(real)
+      for (const [motionPath, parameterIds] of enriched.motionOutfitParameterIds) {
+        this.motionOutfitParameterIds.set(motionPath, parameterIds)
+      }
+      this.log.info('pet-assets', 'Enriched Live2D model settings', {
+        modelPath: real,
+        expressions: enriched.expressionCount,
+        motionGroups: enriched.motionGroups
+      })
+      return jsonBufferResponse(enriched.data)
+    }
+    if (root === this.root && real.toLowerCase().endsWith('.motion3.json')) {
+      const protectedParameterIds = this.motionOutfitParameterIds.get(normalizeLocalFileKey(real))
+      const transformed = await readMotionWithoutOutfitCurves(real, protectedParameterIds)
+      if (transformed.removedCurveCount > 0) {
+        this.log.info('pet-assets', 'Removed outfit-changing curves from click motion', {
+          motionPath: real,
+          removed: transformed.removedCurveCount
+        })
+      }
+      return jsonBufferResponse(transformed.data)
+    }
     return withCors(await net.fetch(pathToFileURL(real).toString()))
   }
+}
+
+/**
+ * VTube Studio exports often leave expression and motion files beside the
+ * model without registering them in model3.json. Expose those resources to
+ * Cubism at request time without modifying the bundled source assets.
+ */
+export async function enrichLive2DModel(modelPath: string): Promise<EnrichedLive2DModel> {
+  const raw = await readFile(modelPath, 'utf8')
+  const model = JSON.parse(raw) as Live2DModelJson
+  const modelDir = dirname(modelPath)
+  const files = await listFilesRecursively(modelDir)
+  const references = model.FileReferences ?? (model.FileReferences = {})
+
+  const expressions = references.Expressions ?? (references.Expressions = [])
+  const knownExpressionFiles = new Set(expressions.map((item) => normalizeAssetPath(item.File).toLowerCase()))
+  const usedExpressionNames = new Set(expressions.map((item) => item.Name).filter((name): name is string => typeof name === 'string'))
+  for (const file of files.filter((item) => item.toLowerCase().endsWith('.exp3.json'))) {
+    const relativePath = normalizeAssetPath(relative(modelDir, file))
+    if (knownExpressionFiles.has(relativePath.toLowerCase())) continue
+    const baseName = basename(file).replace(/\.exp3\.json$/iu, '')
+    let name = baseName
+    let suffix = 2
+    while (usedExpressionNames.has(name)) name = `${baseName}_${suffix++}`
+    expressions.push({ Name: name, File: relativePath })
+    knownExpressionFiles.add(relativePath.toLowerCase())
+    usedExpressionNames.add(name)
+  }
+
+  const motions = references.Motions ?? (references.Motions = {})
+  const knownMotionFiles = new Set(
+    Object.values(motions).flat().map((item) => normalizeAssetPath(item.File).toLowerCase())
+  )
+  for (const file of files.filter((item) => item.toLowerCase().endsWith('.motion3.json'))) {
+    const relativePath = normalizeAssetPath(relative(modelDir, file))
+    if (knownMotionFiles.has(relativePath.toLowerCase())) continue
+    const group = classifyMotionGroup(basename(file))
+    ;(motions[group] ?? (motions[group] = [])).push({ File: relativePath })
+    knownMotionFiles.add(relativePath.toLowerCase())
+  }
+
+  const protectedParameterIds = await collectOutfitParameterIds(modelDir, expressions)
+  const motionOutfitParameterIds = new Map<string, Set<string>>()
+  for (const definition of Object.values(motions).flat()) {
+    const motionPath = resolveContainedModelFile(modelDir, definition.File)
+    motionOutfitParameterIds.set(normalizeLocalFileKey(motionPath), protectedParameterIds)
+  }
+
+  model.AIMaidHotkeys = await readVTubeHotkeys(files)
+
+  return {
+    data: Buffer.from(JSON.stringify(model), 'utf8'),
+    motionOutfitParameterIds,
+    expressionCount: expressions.length,
+    motionGroups: Object.fromEntries(Object.entries(motions).map(([name, items]) => [name, items.length]))
+  }
+}
+
+async function readVTubeHotkeys(files: string[]): Promise<Live2DHotkeyDefinition[]> {
+  const vtubePath = files
+    .filter((file) => file.toLowerCase().endsWith('.vtube.json'))
+    .sort(naturalCompare)[0]
+  if (vtubePath === undefined) return []
+
+  const vtube = JSON.parse(await readFile(vtubePath, 'utf8')) as {
+    Hotkeys?: Array<{
+      Name?: unknown
+      Action?: unknown
+      File?: unknown
+      IsActive?: unknown
+      Triggers?: { Trigger1?: unknown; Trigger2?: unknown; Trigger3?: unknown }
+    }>
+  }
+  const supportedActions = new Set<Live2DHotkeyDefinition['action']>([
+    'ToggleExpression', 'TriggerAnimation', 'RemoveAllExpressions'
+  ])
+  return (vtube.Hotkeys ?? []).flatMap((hotkey): Live2DHotkeyDefinition[] => {
+    if (hotkey.IsActive === false || typeof hotkey.Action !== 'string' ||
+        !supportedActions.has(hotkey.Action as Live2DHotkeyDefinition['action'])) return []
+    const triggers = [hotkey.Triggers?.Trigger1, hotkey.Triggers?.Trigger2, hotkey.Triggers?.Trigger3]
+      .filter((trigger): trigger is string => typeof trigger === 'string' && trigger !== '')
+    if (triggers.length === 0) return []
+    return [{
+      name: typeof hotkey.Name === 'string' ? hotkey.Name : '',
+      action: hotkey.Action as Live2DHotkeyDefinition['action'],
+      file: typeof hotkey.File === 'string' ? normalizeAssetPath(hotkey.File) : '',
+      triggers
+    }]
+  })
+}
+
+export async function readMotionWithoutOutfitCurves(
+  motionPath: string,
+  protectedParameterIds: Set<string> | undefined
+): Promise<{ data: Buffer; removedCurveCount: number }> {
+  const raw = await readFile(motionPath, 'utf8')
+  if (protectedParameterIds === undefined || protectedParameterIds.size === 0) {
+    return { data: Buffer.from(raw, 'utf8'), removedCurveCount: 0 }
+  }
+  const motion = JSON.parse(raw) as {
+    Curves?: Array<{ Target?: unknown; Id?: unknown }>
+    Meta?: { CurveCount?: number }
+  }
+  if (!Array.isArray(motion.Curves)) return { data: Buffer.from(raw, 'utf8'), removedCurveCount: 0 }
+
+  const before = motion.Curves.length
+  motion.Curves = motion.Curves.filter((curve) => !(
+    curve.Target === 'Parameter' &&
+    typeof curve.Id === 'string' &&
+    protectedParameterIds.has(curve.Id)
+  ))
+  const removedCurveCount = before - motion.Curves.length
+  if (removedCurveCount > 0 && motion.Meta && typeof motion.Meta.CurveCount === 'number') {
+    motion.Meta.CurveCount = motion.Curves.length
+  }
+  return { data: Buffer.from(JSON.stringify(motion), 'utf8'), removedCurveCount }
+}
+
+async function collectOutfitParameterIds(
+  modelDir: string,
+  expressions: Live2DFileDefinition[]
+): Promise<Set<string>> {
+  const ids = new Set<string>()
+  await Promise.all(expressions.map(async (definition) => {
+    if (!isOutfitExpressionName(`${definition.Name ?? ''} ${definition.File}`)) return
+    const expressionPath = resolveContainedModelFile(modelDir, definition.File)
+    const expression = JSON.parse(await readFile(expressionPath, 'utf8')) as {
+      Parameters?: Array<{ Id?: unknown }>
+    }
+    for (const parameter of expression.Parameters ?? []) {
+      if (typeof parameter.Id === 'string') ids.add(parameter.Id)
+    }
+  }))
+  return ids
+}
+
+async function listFilesRecursively(root: string): Promise<string[]> {
+  const result: string[] = []
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    const fullPath = join(root, entry.name)
+    if (entry.isDirectory()) result.push(...await listFilesRecursively(fullPath))
+    else if (entry.isFile()) result.push(fullPath)
+  }
+  return result
+}
+
+function resolveContainedModelFile(modelDir: string, assetPath: string): string {
+  const resolved = resolve(modelDir, assetPath)
+  const relativePath = relative(modelDir, resolved)
+  if (relativePath.startsWith(`..${sep}`) || relativePath === '..' || isAbsolute(relativePath)) {
+    throw new Error(`Live2D model reference is outside its model directory: ${assetPath}`)
+  }
+  return resolved
+}
+
+function classifyMotionGroup(fileName: string): 'Idle' | 'TapHead' | 'TapLeg' | 'TapBody' {
+  const name = fileName.toLowerCase()
+  if (/(idle|daiji|待机)/iu.test(name)) return 'Idle'
+  if (/(blink|eye|face|head|zhaiyan|meiyan|眨眼|美颜|头|脸)/iu.test(name)) return 'TapHead'
+  if (/(leg|foot|shoe|tixie|腿|脚|鞋)/iu.test(name)) return 'TapLeg'
+  return 'TapBody'
+}
+
+function isOutfitExpressionName(label: string): boolean {
+  return /(outfit|costume|wardrobe|full.?set|skin|dress|clothes|clothing|hair|hairstyle|bang|fringe|ponytail|duanfa|panfa|changfa|glasses|eyeglass|yanjing|horn|hat|headwear|earring|jiao|microphone|\bmic\b|handheld|prop|huatong|paizi|shanzi|stocking|sock|shoe|boot|heisi|hexie|\bxie\b|cape|vest|coat|jacket|shirt|skirt|pijian|majia|整套|套装|套裝|衣装|衣裝|服装|服裝|换装|換裝|头发|頭髮|髮型|发型|刘海|劉海|马尾|馬尾|眼镜|眼鏡|帽|角|头饰|頭飾|耳饰|耳飾|麦克风|麥克風|话筒|話筒|扇子|牌子|手持|丝袜|絲襪|袜|襪|鞋|靴|披肩|披风|披風|马甲|馬甲|外套|上衣|裙|衣服)/iu.test(label)
+}
+
+function normalizeAssetPath(value: string): string {
+  return value.replaceAll('\\', '/')
+}
+
+function normalizeLocalFileKey(filePath: string): string {
+  return resolve(filePath).replaceAll('\\', '/').toLowerCase()
+}
+
+function jsonBufferResponse(data: Buffer): Response {
+  const body = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer
+  return new Response(body, {
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Access-Control-Allow-Origin': '*'
+    }
+  })
 }
 
 function naturalCompare(a: string, b: string): number {

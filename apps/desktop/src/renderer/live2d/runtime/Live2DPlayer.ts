@@ -1,7 +1,10 @@
-import { Application, Container, Point, Ticker } from 'pixi.js';
+import { Application, Container, Matrix, Point, RenderTexture, Ticker } from 'pixi.js';
 import '@pixi/unsafe-eval';
 import type { Live2DModel as Live2DModelType } from 'pixi-live2d-display-lipsyncpatch/cubism4';
 import { assertModelJson } from './modelLoader';
+import { createCubismMaskBufferPlan } from '../../../shared/live2d-mask-buffer';
+import { buildOuterAlphaContour } from '../../../shared/alpha-contour';
+import type { AlphaContour } from '../../../shared/alpha-contour';
 import { PET_BASE_WINDOW_HEIGHT, PET_BASE_WINDOW_WIDTH, PET_ITEM_PADDING } from '../../../shared/pet-geometry';
 
 let Live2DModel: typeof Live2DModelType | null = null;
@@ -20,6 +23,13 @@ type OutfitOption = {
   name: string;
   region: OutfitRegion;
   parameters: OutfitParameter[];
+};
+
+type ModelHotkey = {
+  name: string;
+  action: 'ToggleExpression' | 'TriggerAnimation' | 'RemoveAllExpressions';
+  file: string;
+  triggers: string[];
 };
 
 type LoadedLive2DModel = Container & {
@@ -58,10 +68,14 @@ export class Live2DPlayer {
   private motionGroupCounts = new Map<string, number>();
   private motionGroupFiles = new Map<string, string[]>();
   private expressionNames: string[] = [];
+  private expressionFileNames = new Map<string, string>();
+  private modelHotkeys: ModelHotkey[] = [];
+  private activeHotkeyExpression: string | null = null;
   private partDisplayNames = new Map<string, string>();
   private outfitOptions: OutfitOption[] = [];
   private outfitSelections = new Map<string, number>();
   private outfitControlledParameterIds = new Set<string>();
+  private contourRenderTexture: RenderTexture | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.app = null as unknown as Application;
@@ -220,6 +234,17 @@ export class Live2DPlayer {
         .map((definition: { Name?: unknown }) => definition?.Name)
         .filter((name: unknown): name is string => typeof name === 'string' && name.length > 0)
       : [];
+    this.expressionFileNames = new Map(
+      (Array.isArray(modelJson.FileReferences?.Expressions) ? modelJson.FileReferences.Expressions : [])
+        .flatMap((definition: { Name?: unknown; File?: unknown }) =>
+          typeof definition.Name === 'string' && typeof definition.File === 'string'
+            ? [[normalizeModelAssetPath(definition.File), definition.Name] as const]
+            : [])
+    );
+    this.modelHotkeys = Array.isArray(modelJson.AIMaidHotkeys)
+      ? modelJson.AIMaidHotkeys.filter(isModelHotkey)
+      : [];
+    this.activeHotkeyExpression = null;
     this.partDisplayNames = await this.loadPartDisplayNames(modelJson, modelUrl);
     this.outfitOptions = await this.loadOutfitOptions(modelJson, modelUrl);
     this.outfitControlledParameterIds = new Set(
@@ -318,6 +343,51 @@ export class Live2DPlayer {
     return true;
   }
 
+  async handleModelHotkey(event: KeyboardEvent): Promise<boolean> {
+    if (!this.model || event.repeat) return false;
+    const hotkey = this.modelHotkeys.find((candidate) => matchesModelHotkey(candidate.triggers, event));
+    if (!hotkey) return false;
+
+    console.info('[Hotkey] Live2D model shortcut requested ' + JSON.stringify({
+      name: hotkey.name,
+      action: hotkey.action,
+      file: hotkey.file,
+      triggers: hotkey.triggers
+    }));
+
+    if (hotkey.action === 'RemoveAllExpressions') {
+      this.resetExpression();
+    } else if (hotkey.action === 'ToggleExpression') {
+      const expressionName = this.expressionFileNames.get(normalizeModelAssetPath(hotkey.file));
+      if (!expressionName) throw new Error(`Live2D hotkey expression is not registered: ${hotkey.file}`);
+      if (this.activeHotkeyExpression === expressionName) {
+        this.resetExpression();
+      } else {
+        this.model.expression(expressionName);
+        this.activeHotkeyExpression = expressionName;
+      }
+    } else {
+      const normalizedFile = normalizeModelAssetPath(hotkey.file);
+      const motion = [...this.motionGroupFiles].flatMap(([group, files]) =>
+        files.map((file, index) => ({ group, index, file: normalizeModelAssetPath(file) })))
+        .find((candidate) => candidate.file === normalizedFile);
+      if (!motion) throw new Error(`Live2D hotkey motion is not registered: ${hotkey.file}`);
+      await this.model.motion(motion.group, motion.index);
+    }
+
+    console.info('[Hotkey] Live2D model shortcut completed ' + JSON.stringify({
+      name: hotkey.name,
+      action: hotkey.action,
+      file: hotkey.file,
+      triggers: hotkey.triggers
+    }));
+    return true;
+  }
+
+  hasModelHotkey(event: KeyboardEvent): boolean {
+    return !event.repeat && this.modelHotkeys.some((candidate) => matchesModelHotkey(candidate.triggers, event));
+  }
+
   cycleOutfit(bodyPart: BodyPart): { name: string; region: string } | null {
     if (!this.live2dModel || this.outfitOptions.length === 0) return null;
 
@@ -407,6 +477,7 @@ export class Live2DPlayer {
     if (typeof expressionManager?.resetExpression === 'function') {
       expressionManager.resetExpression();
     }
+    this.activeHotkeyExpression = null;
   }
 
   setUserScale(scale: number): number {
@@ -441,6 +512,8 @@ export class Live2DPlayer {
   }
 
   dispose(): void {
+    this.contourRenderTexture?.destroy(true);
+    this.contourRenderTexture = null;
     if (this.model) {
       this.app.stage.removeChild(this.model);
       this.model.destroy({ children: true });
@@ -582,47 +655,22 @@ export class Live2DPlayer {
       return;
     }
 
-    const drawableCount = coreModel.getDrawableCount?.() ?? 0;
-    if (drawableCount <= 0) {
-      return;
-    }
-
-    let totalClips = 0;
-    const clipIdSets: Set<string> = new Set();
-    for (let i = 0; i < drawableCount; i++) {
-      const maskCount = coreModel.getDrawableMaskCounts?.(i) ?? 0;
-      if (maskCount > 0) {
-        const masks = coreModel.getDrawableMasks?.(i);
-        if (masks) {
-          const key = Array.from(masks).slice(0, maskCount).sort().join(',');
-          clipIdSets.add(key);
-        }
-        totalClips++;
-      }
-    }
-
-    const clipGroupCount = clipIdSets.size || totalClips;
+    const plan = createCubismMaskBufferPlan(coreModel);
     const currentCount = renderer.getRenderTextureCount?.() ?? 1;
-    const defaultMax = 36;
-    const perExtra = 32;
-    let neededCount = 1;
-    if (clipGroupCount > defaultMax) {
-      neededCount = Math.ceil((clipGroupCount - defaultMax) / perExtra) + 1;
-    }
 
     console.info('[Live2D] Mask stats: ' + JSON.stringify({
-      drawableCount,
-      totalMaskedDrawables: totalClips,
-      uniqueClipGroups: clipIdSets.size,
+      drawableCount: coreModel.getDrawableCount?.() ?? 0,
+      totalMaskedDrawables: plan.maskedDrawableCount,
+      uniqueClipGroups: plan.uniqueClipGroupCount,
       currentRenderTextureCount: currentCount,
-      neededRenderTextureCount: neededCount
+      neededRenderTextureCount: plan.requiredRenderTextureCount
     }));
 
-    if (neededCount > currentCount && typeof renderer.initialize === 'function') {
-      console.info('[Live2D] Re-initializing renderer with maskBufferCount = ' + neededCount);
+    if (plan.requiredRenderTextureCount > currentCount && typeof renderer.initialize === 'function') {
+      console.info('[Live2D] Re-initializing renderer with maskBufferCount = ' + plan.requiredRenderTextureCount);
       try {
         const oldTextures = renderer._textures;
-        renderer.initialize(coreModel, neededCount);
+        renderer.initialize(coreModel, plan.requiredRenderTextureCount);
         if (oldTextures) {
           for (let i = 0; i < oldTextures.length; i++) {
             if (oldTextures[i]) {
@@ -780,6 +828,25 @@ export class Live2DPlayer {
     this.app.renderer.resize(this.canvasWidth, this.canvasHeight);
 
     this.pixiInitialized = true;
+  }
+
+  captureAlphaContour(sampleWidth = 192): AlphaContour | null {
+    if (!this.model || !this.pixiInitialized || this.canvas.clientWidth <= 0 || this.canvas.clientHeight <= 0) return null;
+    const sampleHeight = Math.max(1, Math.round(sampleWidth * this.canvas.clientHeight / this.canvas.clientWidth));
+    if (this.contourRenderTexture === null) {
+      this.contourRenderTexture = RenderTexture.create({ width: sampleWidth, height: sampleHeight, resolution: 1 });
+    } else if (this.contourRenderTexture.width !== sampleWidth || this.contourRenderTexture.height !== sampleHeight) {
+      this.contourRenderTexture.resize(sampleWidth, sampleHeight, true);
+    }
+    const transform = new Matrix();
+    transform.scale(sampleWidth / this.canvas.clientWidth, sampleHeight / this.canvas.clientHeight);
+    this.app.renderer.render(this.app.stage, {
+      renderTexture: this.contourRenderTexture,
+      clear: true,
+      transform
+    });
+    const pixels = this.app.renderer.extract.pixels(this.contourRenderTexture);
+    return buildOuterAlphaContour(new Uint8ClampedArray(pixels), sampleWidth, sampleHeight);
   }
 
   private readViewportSize(): { width: number; height: number } {
@@ -982,4 +1049,38 @@ function classifyOutfitExpression(label: string): OutfitRegion | null {
   if (/(stocking|sock|shoe|boot|heisi|hexie|\bxie\b|丝袜|絲襪|袜|襪|鞋|靴)/i.test(label)) return 'leg';
   if (/(cape|vest|coat|jacket|shirt|skirt|pijian|majia|披肩|披风|披風|马甲|馬甲|外套|上衣|裙|衣服)/i.test(label)) return 'body';
   return null;
+}
+
+function isModelHotkey(value: unknown): value is ModelHotkey {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Partial<ModelHotkey>;
+  return typeof candidate.name === 'string' &&
+    (candidate.action === 'ToggleExpression' || candidate.action === 'TriggerAnimation' || candidate.action === 'RemoveAllExpressions') &&
+    typeof candidate.file === 'string' &&
+    Array.isArray(candidate.triggers) &&
+    candidate.triggers.length > 0 &&
+    candidate.triggers.every((trigger) => typeof trigger === 'string');
+}
+
+function normalizeModelAssetPath(value: string): string {
+  return value.replaceAll('\\', '/').toLowerCase();
+}
+
+function matchesModelHotkey(triggers: string[], event: KeyboardEvent): boolean {
+  const modifiers = new Set(triggers.filter((trigger) => /^(Left|Right)?(Control|Shift|Alt)$/iu.test(trigger)));
+  const requiresControl = [...modifiers].some((trigger) => /control/iu.test(trigger));
+  const requiresShift = [...modifiers].some((trigger) => /shift/iu.test(trigger));
+  const requiresAlt = [...modifiers].some((trigger) => /alt/iu.test(trigger));
+  if (event.ctrlKey !== requiresControl || event.shiftKey !== requiresShift || event.altKey !== requiresAlt || event.metaKey) return false;
+
+  const primaryTriggers = triggers.filter((trigger) => !modifiers.has(trigger));
+  return primaryTriggers.length === 1 && keyboardEventMatchesTrigger(event, primaryTriggers[0]!);
+}
+
+function keyboardEventMatchesTrigger(event: KeyboardEvent, trigger: string): boolean {
+  if (/^N[0-9]$/u.test(trigger)) return event.code === `Digit${trigger.slice(1)}`;
+  if (/^Numpad[0-9]$/iu.test(trigger)) return event.code.toLowerCase() === trigger.toLowerCase();
+  if (/^F(?:[1-9]|1[0-9]|2[0-4])$/iu.test(trigger)) return event.code.toLowerCase() === trigger.toLowerCase();
+  if (/^[A-Z]$/iu.test(trigger)) return event.code.toLowerCase() === `key${trigger}`.toLowerCase();
+  return false;
 }

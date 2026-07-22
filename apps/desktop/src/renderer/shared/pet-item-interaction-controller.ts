@@ -6,6 +6,7 @@ const MIN_SCALE = 0.25
 const WHEEL_ZOOM_IN = 1.08
 const WHEEL_ZOOM_OUT = 0.92
 const SAVE_DELAY_MS = 160
+const CLICK_MOVE_TOLERANCE = 6
 
 interface PersistedItemState {
   offsetX: number
@@ -23,6 +24,7 @@ export interface PetItemInteractionOptions {
   updateWindow: (update: PetWindowUpdate) => void
   reportVisualBounds: (bounds: PetVisualBounds) => void
   onScale: (scale: number) => void
+  onClick: (event: MouseEvent) => void
 }
 
 export class PetItemInteractionController {
@@ -34,6 +36,7 @@ export class PetItemInteractionController {
   private dragStartOffsetX = 0
   private dragStartOffsetY = 0
   private dragging = false
+  private movedDuringDrag = false
   private locked = false
   private lastPointerX = Number.NaN
   private lastPointerY = Number.NaN
@@ -97,6 +100,9 @@ export class PetItemInteractionController {
     this.lastPointerX = event.clientX
     this.lastPointerY = event.clientY
     if (this.dragging) {
+      const distance = Math.hypot(event.clientX - this.dragStartX, event.clientY - this.dragStartY)
+      if (!this.movedDuringDrag && distance < CLICK_MOVE_TOLERANCE) return
+      this.movedDuringDrag = true
       this.offsetX = this.dragStartOffsetX + event.clientX - this.dragStartX
       this.offsetY = this.dragStartOffsetY + event.clientY - this.dragStartY
       this.applyItemTransform()
@@ -116,6 +122,7 @@ export class PetItemInteractionController {
     if (isInteractiveControl(event.target) || !this.options.hitTest(event.clientX, event.clientY)) return
     event.preventDefault()
     this.dragging = true
+    this.movedDuringDrag = false
     this.dragStartX = event.clientX
     this.dragStartY = event.clientY
     this.dragStartOffsetX = this.offsetX
@@ -123,7 +130,10 @@ export class PetItemInteractionController {
     this.setIgnoring(false)
   }
 
-  private readonly onMouseUp = (): void => this.finishDrag()
+  private readonly onMouseUp = (event: MouseEvent): void => {
+    if (this.dragging && !this.movedDuringDrag) this.options.onClick(event)
+    this.finishDrag()
+  }
   private readonly onMouseLeave = (): void => {
     if (!this.dragging) this.setIgnoring(true)
   }
@@ -143,10 +153,11 @@ export class PetItemInteractionController {
   }
 
   private finishDrag(): void {
-    if (this.dragging) {
+    if (this.dragging && this.movedDuringDrag) {
       this.queueSave()
     }
     this.dragging = false
+    this.movedDuringDrag = false
     this.refreshHitTest()
   }
 

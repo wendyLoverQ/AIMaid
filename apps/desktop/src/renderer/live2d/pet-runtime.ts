@@ -1,4 +1,5 @@
 import type { PetLifecycleEvent, PetPerformanceMetrics, PetRuntimeState } from '../../shared/pet'
+import type { AlphaContour } from '../../shared/alpha-contour'
 import { bridge } from '../shared/bridge'
 import { PerformanceMonitor } from './performance-monitor'
 import { Live2DPlayer } from './runtime/Live2DPlayer'
@@ -90,9 +91,24 @@ export class PetRuntime {
     return this.state === 'ready' && this.player.containsClientPoint(clientX, clientY)
   }
 
+  captureAlphaContour(): AlphaContour | null {
+    return this.state === 'ready' ? this.player.captureAlphaContour() : null
+  }
+
   setScale(scale: number): void {
     this.desiredScale = scale
     this.player.setUserScale(scale)
+  }
+
+  async handlePointerClick(clientX: number, clientY: number, ctrlKey: boolean, altKey: boolean): Promise<void> {
+    if (this.state !== 'ready') return
+    if (altKey) {
+      this.player.resetOutfit()
+      return
+    }
+    const bodyPart = this.player.resolveAutoHitArea(clientX, clientY) ?? 'other'
+    if (ctrlKey) this.player.cycleOutfit(bodyPart)
+    else await this.player.playClickMotion(bodyPart)
   }
 
   dispose(): void {
@@ -108,6 +124,7 @@ export class PetRuntime {
     this.listen(window, 'resize', this.onResize)
     this.listen(this.canvas, 'webglcontextlost', this.onContextLost)
     this.listen(this.canvas, 'webglcontextrestored', this.onContextRestored)
+    this.listen(window, 'keydown', this.onKeyDown)
     this.cleanups.push(bridge.pet.onLifecycle(this.onLifecycle))
     const resizeObserver = new ResizeObserver(() => this.onResize())
     resizeObserver.observe(this.canvas.parentElement ?? this.canvas)
@@ -150,6 +167,14 @@ export class PetRuntime {
     this.player.resume()
     this.monitor.start(() => this.readMetricsBase())
     this.setState('ready')
+  }
+
+  private readonly onKeyDown = (event: Event): void => {
+    if (!(event instanceof KeyboardEvent) || !this.player.hasModelHotkey(event)) return
+    event.preventDefault()
+    void this.player.handleModelHotkey(event).catch((error: unknown) => {
+      console.error('[Hotkey] Live2D model shortcut failed', error)
+    })
   }
 
   private readonly onLifecycle = (event: PetLifecycleEvent): void => {
