@@ -15,7 +15,7 @@ body.prompt-surface .ui-main-region > .ui-section[data-variant="prompt"] .ui-tex
 body.prompt-surface .ui-main-region > .ui-section[data-variant="prompt"] > .ui-inline {
   width: 100%;
   flex-wrap: nowrap;
-  gap: var(--space-1);
+  gap: var(--space-2);
 }
 
 body.prompt-surface .ui-main-region > .ui-section[data-variant="prompt"] > .ui-inline > .ui-field {
@@ -28,7 +28,6 @@ body.prompt-surface .prompt-voice-button.ui-icon-button {
   width: 1.5rem;
   min-width: 1.5rem;
   height: 1.5rem;
-  margin-inline-end: var(--space-1);
   border-radius: var(--radius-sm);
 }
 
