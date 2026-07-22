@@ -112,11 +112,22 @@ describe('phase 4 PetWindow integration', () => {
   })
 
   it('claims a music URL before async setup can start duplicate playback', () => {
-    const music = readFileSync(resolve(import.meta.dirname, '../src/renderer/pages/music/MusicVisualizerPage.tsx'), 'utf8')
-    const claim = music.indexOf('playbackUrl.current = state.url')
-    const loadSettings = music.indexOf('masterAudio.current = await loadMasterAudio()', claim)
+    const music = readFileSync(resolve(import.meta.dirname, '../src/renderer/pages/pet/pet-music-playback.ts'), 'utf8')
+    const claim = music.indexOf('playbackUrl = state.url')
+    const loadSettings = music.indexOf('masterAudio = await loadMasterAudio()', claim)
     expect(claim).toBeGreaterThan(0)
     expect(loadSettings).toBeGreaterThan(claim)
+  })
+
+  it('renders music as a scale-bound alpha contour inside every pet renderer', () => {
+    const page = readFileSync(resolve(import.meta.dirname, '../src/renderer/pages/pet/PetPage.tsx'), 'utf8')
+    const contour = readFileSync(resolve(import.meta.dirname, '../src/renderer/pages/pet/PetAudioContour.tsx'), 'utf8')
+    const router = readFileSync(resolve(import.meta.dirname, '../src/main/ipc/event-router.ts'), 'utf8')
+    expect(page.match(/<PetAudioContour /gu)?.length).toBe(3)
+    expect(page).toContain('readContour={readContour}')
+    expect(contour).toContain('captureAlphaContour(source, maskCanvas)')
+    expect(contour).toContain('const displacement = baseGap + smoothed[index]! * waveRange')
+    expect(router).not.toContain("this.windows.open('music-visualizer')")
   })
 
   it('allows command-triggered music to autoplay without a renderer click', () => {

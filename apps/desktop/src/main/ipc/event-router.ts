@@ -68,8 +68,6 @@ export class EventRouter {
   }
 
   private broadcast(event: IpcEventEnvelope): void {
-    if (event.type === 'music.playback.requested') this.windows.open('music-visualizer')
-    else if (event.type === 'music.playback.stopped') this.windows.hide('music-visualizer')
     for (const [contentsId, entry] of this.windowsByContents) {
       if (entry.contents.isDestroyed()) {
         this.windowsByContents.delete(contentsId)

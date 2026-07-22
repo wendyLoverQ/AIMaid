@@ -98,14 +98,6 @@ export const WINDOW_REGISTRY: Readonly<Record<WindowKind, WindowDefinition>> = {
       show: false, focusable: true
     }
   },
-  'music-visualizer': {
-    id: 'music-visualizer', route: 'music-visualizer', closeBehavior: 'hide',
-    options: {
-      width: 560, height: 760, transparent: true, backgroundColor: '#00000000', frame: false,
-      resizable: false, skipTaskbar: true, alwaysOnTop: false, maximizable: false, fullscreenable: false,
-      show: false, focusable: false
-    }
-  },
   'douyin-login': moduleWindow('douyin-login', 1180, 820, 920, 680),
   'ui-showcase': moduleWindow('ui-showcase', 1180, 820, 900, 640)
 }

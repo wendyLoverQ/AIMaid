@@ -22,7 +22,6 @@ import { VaultPage } from './pages/vault/VaultPage'
 import { bridge } from './shared/bridge'
 import { AgentConfirmPage } from './pages/system/AgentConfirmPage'
 import { TrayMenuPage } from './pages/system/TrayMenuPage'
-import { MusicVisualizerPage } from './pages/music/MusicVisualizerPage'
 import { DouyinLoginPage } from './pages/remote-video/DouyinLoginPage'
 import { UiShowcasePage } from './pages/system/UiShowcasePage'
 
@@ -86,8 +85,6 @@ export function App(): React.JSX.Element {
       return <AgentConfirmPage />
     case 'tray-menu':
       return <TrayMenuPage />
-    case 'music-visualizer':
-      return <MusicVisualizerPage />
     case 'douyin-login':
       return <DouyinLoginPage />
     case 'ui-showcase':

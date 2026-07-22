@@ -21,8 +21,7 @@ const windows = [
   { kind: 'vault', layout: 'product', width: 1220, height: 760, minWidth: 980, minHeight: 620 },
   { kind: 'scripts', layout: 'product', width: 980, height: 680, minWidth: 820, minHeight: 560 },
   { kind: 'agent-confirm', layout: 'product', width: 480, height: 420 },
-  { kind: 'tray-menu', layout: 'tray', width: 240, height: 308 },
-  { kind: 'music-visualizer', layout: 'canvas', width: 560, height: 760 }
+  { kind: 'tray-menu', layout: 'tray', width: 240, height: 308 }
 ]
 
 await mkdir(outputDirectory, { recursive: true })
@@ -167,9 +166,7 @@ async function captureState(client, definition, size) {
         fieldCount: document.querySelectorAll('input, textarea, select').length
       };
     })()`)
-    const shot = await client.send('Page.captureScreenshot', definition.kind === 'music-visualizer'
-      ? { format: 'png', fromSurface: true, clip: { x: 0, y: 0, width: definition.width, height: definition.height, scale: 1 } }
-      : { format: 'png', fromSurface: true })
+    const shot = await client.send('Page.captureScreenshot', { format: 'png', fromSurface: true })
     await writeFile(resolve(outputDirectory, `${definition.kind}-${size}.png`), Buffer.from(shot.data, 'base64'))
     return { kind: definition.kind, layout: definition.layout, size, expected: size === 'minimum' ? { width: definition.minWidth, height: definition.minHeight } : { width: definition.width, height: definition.height }, ...metrics }
 }

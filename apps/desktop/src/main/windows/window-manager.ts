@@ -61,7 +61,6 @@ export class WindowManager {
 
     this.positionWindow(kind, window, ownerKind, context)
     this.windows.set(kind, window)
-    if (kind === 'music-visualizer') this.attachMusicVisualizer(window)
     if (kind !== 'pet') {
       let shown = false
       const showLoadedWindow = (): void => {
@@ -226,19 +225,8 @@ export class WindowManager {
     window.once('closed', end)
   }
 
-  private attachMusicVisualizer(window: BrowserWindow): void {
-    const pet = this.get('pet')
-    if (pet !== undefined) {
-      const sync = (): void => { if (!window.isDestroyed() && !pet.isDestroyed()) window.setBounds(pet.getBounds(), false) }
-      sync()
-      pet.on('move', sync)
-      pet.on('resize', sync)
-      window.once('closed', () => { pet.off('move', sync); pet.off('resize', sync) })
-    }
-  }
-
   private positionWindow(kind: WindowKind, window: BrowserWindow, ownerKind?: WindowKind, context: WindowActionContext = {}): void {
-    if (kind === 'pet' || kind === 'tray-menu' || kind === 'music-visualizer') return
+    if (kind === 'pet' || kind === 'tray-menu') return
     const owner = ownerKind === undefined ? undefined : this.get(ownerKind)
     if (ownerKind === 'pet' && owner !== undefined) {
       const petWindowBounds = owner.getBounds()

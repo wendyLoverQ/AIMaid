@@ -13,6 +13,8 @@ import {
     PET_CANVAS_WIDTH
 } from '../../../shared/pet-geometry';
 import { PetBubble } from './PetBubble';
+import { PetAudioContour } from './PetAudioContour';
+import { startPetMusicPlayback } from './pet-music-playback';
 import { playLocalAudioPaths, synthesizeAndPlay } from '../chat/tts-playback';
 type PetHitTest = (clientX: number, clientY: number) => boolean;
 type PetPointerClick = (event: MouseEvent) => void;
@@ -32,6 +34,7 @@ export default function PetPage(): React.JSX.Element {
     const hitTestRef = useRef<PetHitTest>(() => false);
     const pointerClickRef = useRef<PetPointerClick>(() => undefined);
     const interactionRef = useRef<PetItemInteractionController | null>(null);
+    useEffect(() => startPetMusicPlayback(), []);
     const registerHitTest = useCallback((hitTest: PetHitTest | null): void => {
         hitTestRef.current = hitTest ?? (() => false);
         interactionRef.current?.refreshHitTest();
@@ -290,7 +293,10 @@ function ImageMode({ presentation, scale, onAdvance, onFirstFrame, registerHitTe
     const canvasHeight = Math.max(1, Math.round(PET_CANVAS_HEIGHT * backingScale));
     return presentation.currentImage === null
         ? <Container>未找到图片。右键选择图片文件夹。</Container>
-        : <TransparentCanvas ref={canvasRef} width={canvasWidth} height={canvasHeight} aria-label={presentation.currentImage.name}/>;
+        : <>
+          <TransparentCanvas ref={canvasRef} width={canvasWidth} height={canvasHeight} aria-label={presentation.currentImage.name}/>
+          <PetAudioContour sourceCanvasRef={canvasRef}/>
+        </>;
 }
 function PngSequenceMode({ presentation, scale, onFirstFrame, registerHitTest }: {
     presentation: PetPresentationSnapshot;
@@ -372,7 +378,10 @@ function PngSequenceMode({ presentation, scale, onFirstFrame, registerHitTest }:
     const canvasHeight = Math.max(1, Math.round(PET_CANVAS_HEIGHT * backingScale));
     return presentation.pngFrames.length === 0
         ? <Container>未找到 PNG 序列素材。</Container>
-        : <TransparentCanvas ref={canvasRef} width={canvasWidth} height={canvasHeight} aria-label={presentation.pngRole}/>;
+        : <>
+          <TransparentCanvas ref={canvasRef} width={canvasWidth} height={canvasHeight} aria-label={presentation.pngRole}/>
+          <PetAudioContour sourceCanvasRef={canvasRef}/>
+        </>;
 }
 function useDrawCanvasImage(
     ref: React.RefObject<HTMLCanvasElement | null>,
@@ -480,6 +489,7 @@ function Live2DMode({ role, scale, externalError, message, registerHitTest, regi
 }): React.JSX.Element {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const runtimeRef = useRef<PetRuntime | null>(null);
+    const readContour = useCallback(() => runtimeRef.current?.captureAlphaContour() ?? null, []);
     const [error, setError] = useState<string | null>(null);
     const [bubble, setBubble] = useState('');
     useEffect(() => {
@@ -525,6 +535,7 @@ function Live2DMode({ role, scale, externalError, message, registerHitTest, regi
     const text = externalError ?? error ?? (message || bubble);
     return <>
     <TransparentCanvas ref={canvasRef} aria-label="Live2D 桌宠模型"/>
+    <PetAudioContour sourceCanvasRef={canvasRef} readContour={readContour} geometry="full"/>
     <PetBubble text={text} visible={text.length > 0}/>
   </>;
 }
