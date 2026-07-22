@@ -18,6 +18,13 @@ public interface IChatStore
     Task<long> AppendAsync(ChatMessageDto message, CancellationToken cancellationToken = default);
     Task UpdateMetadataAsync(long messageId, string metadataJson, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ChatMessageDto>> LoadRecentAsync(string conversationId, int limit, CancellationToken cancellationToken = default);
+    Task DeleteConversationAsync(string conversationId, CancellationToken cancellationToken = default);
+    Task DeleteByCharacterAsync(string characterId, CancellationToken cancellationToken = default);
+}
+
+public interface IChatSearchStore
+{
+    Task<IReadOnlyList<ChatMessageDto>> SearchUserMessagesAsync(string keyword, int limit, CancellationToken cancellationToken = default);
 }
 
 public interface ISettingsStore
@@ -32,6 +39,7 @@ public interface ICharacterStore
     Task<CharacterDto?> GetAsync(string roleId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CharacterDto>> ListAsync(bool enabledOnly, CancellationToken cancellationToken = default);
     Task UpsertAsync(CharacterDto character, CancellationToken cancellationToken = default);
+    Task DeleteAsync(string roleId, CancellationToken cancellationToken = default);
 }
 
 public interface IBackgroundTaskStore
@@ -46,7 +54,13 @@ public sealed record AiChatRequest(
     string Content,
     string CharacterId,
     string ModelName,
-    IReadOnlyList<ChatMessageDto> History);
+    IReadOnlyList<ChatMessageDto> History,
+    string SourceKey = "",
+    IReadOnlyDictionary<string, string>? TemplateValues = null,
+    bool RequireJsonResponse = false,
+    double? Temperature = null,
+    int? MaxTokens = null,
+    bool StreamResponse = true);
 
 public interface IAiProviderClient
 {
@@ -70,7 +84,13 @@ public interface ITtsClient
 
 public interface IAsrClient
 {
-    Task<string> TranscribeAsync(string audioPath, CancellationToken cancellationToken = default);
+    Task<string> TranscribeAsync(
+        string audioPath,
+        string characterId,
+        string? sessionId,
+        string language,
+        string requestId,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IFileManager
@@ -84,10 +104,16 @@ public interface IExternalMediaController
     Task<int> LaunchAsync(string mediaPathOrUrl, string? subtitlePath, CancellationToken cancellationToken = default);
 }
 
+public interface IVaultArchivePlatform
+{
+    Task CreateEncrypted7zAsync(string jsonContent, string outputPath, string password, CancellationToken cancellationToken = default);
+}
+
 public interface IDomainDocumentStore
 {
     Task<string?> GetAsync(string domain, string id, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<string>> ListAsync(string domain, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<string>> ListIdsAsync(string domain, CancellationToken cancellationToken = default);
     Task UpsertAsync(string domain, string id, string json, DateTimeOffset updatedAt, CancellationToken cancellationToken = default);
     Task DeleteAsync(string domain, string id, CancellationToken cancellationToken = default);
 }
@@ -108,4 +134,16 @@ public interface ISecretProtector
 public interface IRemoteMediaResolver
 {
     Task<string> ResolveAsync(string url, RemoteSiteDto? site, CancellationToken cancellationToken = default);
+}
+
+public sealed record RemoteToolExecutionResult(int ExitCode, string StandardOutput, string StandardError);
+public sealed record RemoteMediaLaunchRequest(
+    string Source, string? AudioSource = null, string? Title = null,
+    string? UserAgent = null, string? Referer = null);
+public interface IRemoteVideoPlatform
+{
+    Task<RemoteToolExecutionResult> RunToolAsync(
+        string executablePath, IReadOnlyList<string> arguments,
+        Action<string>? standardErrorLine = null, CancellationToken cancellationToken = default);
+    Task<int> LaunchMediaAsync(string executablePath, RemoteMediaLaunchRequest request, CancellationToken cancellationToken = default);
 }

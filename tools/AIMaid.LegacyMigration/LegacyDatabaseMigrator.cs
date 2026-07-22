@@ -13,7 +13,6 @@ public sealed class LegacyDatabaseMigrator
     private static readonly IReadOnlyDictionary<string, string> DroppedTables = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
         ["AiConversations"] = "旧版 Provider 单行会话，已被 ChatMessages/LlmChatMessages 取代。",
-        ["ChatCommandLaunchers"] = "9 条记录均未被 AgentCapabilities 引用，能力配置已成为唯一入口。",
         ["DbColumnComments"] = "旧 SQLite 自描述元数据，不属于用户业务数据。",
         ["DesktopContextSnapshots"] = "短期桌面遥测与隐私数据，迁移后由实时 ActivityProbe 重新采集。",
         ["RemoteDownloadTasks"] = "全部为 Completed/Failed/Cancelled 的瞬时任务状态，不可恢复执行。",
@@ -75,6 +74,7 @@ public sealed class LegacyDatabaseMigrator
                     {
                         "AppSettings" => await MigrateSettingsAsync(source, sourceTransaction, target, targetTransaction, protector, sourceRows, cancellationToken),
                         "ChatMessages" => await MigrateChatAsync(source, sourceTransaction, target, targetTransaction, sourceRows, cancellationToken),
+                        "ChatCommandLaunchers" => await MigrateChatCommandLaunchersAsync(source, sourceTransaction, target, targetTransaction, sourceRows, cancellationToken),
                         "VoiceRoleCards" => await MigrateCharactersAsync(source, sourceTransaction, target, targetTransaction, sourceRows, cancellationToken),
                         "AgentCapabilities" => await MigrateAgentCapabilitiesAsync(source, sourceTransaction, target, targetTransaction, sourceRows, warnings, cancellationToken),
                         "AgentToolCalls" => await MigrateAgentToolCallsAsync(source, sourceTransaction, target, targetTransaction, sourceRows, cancellationToken),
@@ -167,10 +167,39 @@ public sealed class LegacyDatabaseMigrator
         return new("ChatMessages", sourceRows, "migrated", "ChatMessages", count, ["Id"], "保留当前主聊天链路；自增主键在新库重建。");
     }
 
+    private static async Task<TableMigrationResult> MigrateChatCommandLaunchersAsync(
+        SqliteConnection source, SqliteTransaction sourceTx, SqliteConnection target, SqliteTransaction targetTx,
+        long sourceRows, CancellationToken cancellationToken)
+    {
+        await using var command = SourceCommand(source, sourceTx, "SELECT * FROM ChatCommandLaunchers ORDER BY Id");
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        long count = 0;
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var id = $"legacy_launcher_{Integer64(reader, "Id")}";
+            var updatedAt = ReadDate(reader, "UpdatedAt");
+            var launcher = new JsonObject
+            {
+                ["LauncherId"] = id,
+                ["CommandText"] = Text(reader, "CommandText"),
+                ["DisplayName"] = Text(reader, "DisplayName"),
+                ["ExePath"] = Text(reader, "ExePath"),
+                ["Arguments"] = Text(reader, "Arguments"),
+                ["WorkingDirectory"] = Text(reader, "WorkingDirectory"),
+                ["Enabled"] = Boolean(reader, "Enabled"),
+                ["UpdatedAt"] = updatedAt.ToString("O", CultureInfo.InvariantCulture)
+            };
+            await InsertDocumentAsync(target, targetTx, "chat_command_launcher", id, launcher.ToJsonString(), updatedAt, cancellationToken);
+            count++;
+        }
+        return new("ChatCommandLaunchers", sourceRows, "migrated", "CoreDocuments/chat_command_launcher", count,
+            ["Id"], "保留用户配置的聊天快捷指令及其启动目标。");
+    }
+
     private static async Task<TableMigrationResult> MigrateCharactersAsync(SqliteConnection source, SqliteTransaction sourceTx,
         SqliteConnection target, SqliteTransaction targetTx, long sourceRows, CancellationToken cancellationToken)
     {
-        await using var command = SourceCommand(source, sourceTx, "SELECT * FROM VoiceRoleCards ORDER BY RoleId");
+        await using var command = SourceCommand(source, sourceTx, "SELECT c.*, COALESCE(r.AvatarPath,'') AS MigratedAvatarPath FROM VoiceRoleCards c LEFT JOIN VoiceRoles r ON r.RoleId=c.RoleId ORDER BY c.RoleId");
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         long count = 0;
         while (await reader.ReadAsync(cancellationToken))
@@ -179,9 +208,9 @@ public sealed class LegacyDatabaseMigrator
                 INSERT INTO VoiceRoleCards(RoleId,Name,VoiceName,RoleTitle,CardPath,SourceCardJson,TemplateCardJson,CardSummary,
                   CardSchemaVersion,TemplateCardSourceHash,TemplateCardGenerationStatus,TemplateCardGenerationMessage,
                   TemplateCardGeneratedAt,TemplateCardLastAttemptAt,TemplateCardIterationCount,PreferredVoiceId,
-                  ValidationStatus,ValidationMessage,LastValidatedAt,IsEnabled,UpdatedAt)
+                  ValidationStatus,ValidationMessage,LastValidatedAt,AvatarPath,IsEnabled,UpdatedAt)
                 VALUES($role,$name,$voice,$title,$path,$source,$template,$summary,$schema,$hash,$generationStatus,
-                  $generationMessage,$generated,$attempt,$iterations,$preferred,$validation,$validationMessage,$validated,$enabled,$updated)
+                  $generationMessage,$generated,$attempt,$iterations,$preferred,$validation,$validationMessage,$validated,$avatar,$enabled,$updated)
                 """, cancellationToken,
                 ("$role",Text(reader,"RoleId")),("$name",Text(reader,"Name")),("$voice",Text(reader,"VoiceName")),
                 ("$title",Text(reader,"RoleTitle")),("$path",Text(reader,"CardPath")),("$source",Text(reader,"SourceCardJson")),
@@ -191,11 +220,21 @@ public sealed class LegacyDatabaseMigrator
                 ("$attempt",DbDate(reader,"TemplateCardLastAttemptAt")),("$iterations",Integer(reader,"TemplateCardIterationCount")),
                 ("$preferred",Text(reader,"PreferredVoiceId")),("$validation",Text(reader,"ValidationStatus")),
                 ("$validationMessage",Text(reader,"ValidationMessage")),("$validated",DbDate(reader,"LastValidatedAt")),
+                ("$avatar",NormalizeLegacyAvatarPath(Text(reader,"RoleId"),Text(reader,"MigratedAvatarPath"))),
                 ("$enabled",Boolean(reader,"IsEnabled") ? 1 : 0),("$updated",DateText(reader,"UpdatedAt")));
             count++;
         }
         return new("VoiceRoleCards", sourceRows, "migrated", "VoiceRoleCards", count,
             ["Id","CreatedAt"], "补回模板生成状态、迭代次数、校验消息等先前遗漏的核心字段。");
+    }
+
+    private static string NormalizeLegacyAvatarPath(string roleId, string avatarPath)
+    {
+        var normalized = avatarPath.Replace('\\', '/').Trim();
+        return roleId.Equals("sixian", StringComparison.OrdinalIgnoreCase) &&
+               normalized.Equals("Assets/characters/sixian_1.jpg", StringComparison.OrdinalIgnoreCase)
+            ? "Assets/characters/sixian.jpg"
+            : avatarPath;
     }
 
     private static async Task<TableMigrationResult> MigrateAgentCapabilitiesAsync(SqliteConnection source, SqliteTransaction sourceTx,
@@ -283,6 +322,8 @@ public sealed class LegacyDatabaseMigrator
         long sourceRows, List<string> warnings, CancellationToken cancellationToken)
     {
         var decryptor=options.SkipVaultSecrets?null:new LegacyVaultDecryptor(options.LegacyVaultKey!);
+        if (!options.SkipVaultSecrets && !string.IsNullOrWhiteSpace(options.LegacyVaultKey))
+            await InsertDocumentAsync(target, targetTx, "protected_setting", "vault_export_password", protector.Protect(options.LegacyVaultKey), DateTimeOffset.Now, cancellationToken);
         await using var command=SourceCommand(source,sourceTx,"SELECT * FROM VaultItems ORDER BY Id"); await using var reader=await command.ExecuteReaderAsync(cancellationToken); long count=0;
         while(await reader.ReadAsync(cancellationToken))
         {
@@ -380,7 +421,7 @@ public sealed class LegacyDatabaseMigrator
 
     private static void ValidateTableCoverage(IReadOnlySet<string> tables)
     {
-        var special=new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "AppSettings","ChatMessages","VoiceRoleCards","AgentCapabilities","AgentToolCalls","DisturbanceSettings","Reminders","NotebookNotes","VaultItems","VaultItemHistories","CryptoMarketEvents","VideoItems","RemoteSiteConfigs" };
+        var special=new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "AppSettings","ChatMessages","ChatCommandLaunchers","VoiceRoleCards","AgentCapabilities","AgentToolCalls","DisturbanceSettings","Reminders","NotebookNotes","VaultItems","VaultItemHistories","CryptoMarketEvents","VideoItems","RemoteSiteConfigs" };
         var covered=new HashSet<string>(DroppedTables.Keys,StringComparer.OrdinalIgnoreCase); covered.UnionWith(DocumentPolicies.Keys); covered.UnionWith(special);
         var unknown=tables.Where(x=>!covered.Contains(x)).Order().ToArray();
         if(unknown.Length>0) throw new InvalidDataException($"旧库出现未审计表，迁移已停止：{string.Join(", ",unknown)}");
@@ -413,7 +454,7 @@ public sealed class LegacyDatabaseMigrator
     private static Task InsertDocumentAsync(SqliteConnection connection, SqliteTransaction? transaction, string domain, string id, string json, DateTimeOffset updatedAt, CancellationToken cancellationToken)=>ExecuteAsync(connection,transaction,"""INSERT INTO CoreDocuments(Domain,DocumentId,Json,UpdatedAt) VALUES($domain,$id,$json,$updated) ON CONFLICT(Domain,DocumentId) DO UPDATE SET Json=excluded.Json,UpdatedAt=excluded.UpdatedAt""",cancellationToken,("$domain",domain),("$id",id),("$json",json),("$updated",updatedAt.ToString("O",CultureInfo.InvariantCulture)));
 
     private static string RowJson(SqliteDataReader reader,IReadOnlySet<string> dropped,IReadOnlySet<string> booleans)
-    { var node=new JsonObject(); for(var i=0;i<reader.FieldCount;i++){ var name=reader.GetName(i); if(dropped.Contains(name)) continue; if(reader.IsDBNull(i)){node[name]=null;continue;} if(booleans.Contains(name)){node[name]=Convert.ToInt64(reader.GetValue(i),CultureInfo.InvariantCulture)!=0;continue;} var value=reader.GetValue(i); node[name]=value switch { long l=>JsonValue.Create(l),double d=>JsonValue.Create(d),float f=>JsonValue.Create(f),int n=>JsonValue.Create(n),decimal m=>JsonValue.Create(m),_=>JsonValue.Create(Convert.ToString(value,CultureInfo.InvariantCulture))}; } return node.ToJsonString(); }
+    { var node=new JsonObject(); for(var i=0;i<reader.FieldCount;i++){ var name=reader.GetName(i); if(dropped.Contains(name)) continue; if(reader.IsDBNull(i)){node[name]=null;continue;} if(booleans.Contains(name)){node[name]=Convert.ToInt64(reader.GetValue(i),CultureInfo.InvariantCulture)!=0;continue;} if(name.EndsWith("At",StringComparison.OrdinalIgnoreCase)){node[name]=DateText(reader,name);continue;} var value=reader.GetValue(i); node[name]=value switch { long l=>JsonValue.Create(l),double d=>JsonValue.Create(d),float f=>JsonValue.Create(f),int n=>JsonValue.Create(n),decimal m=>JsonValue.Create(m),_=>JsonValue.Create(Convert.ToString(value,CultureInfo.InvariantCulture))}; } return node.ToJsonString(); }
     private static async Task<string[]> ReadAttachmentIdsAsync(SqliteConnection source,SqliteTransaction transaction,string noteId,CancellationToken cancellationToken) { var result=new List<string>(); await using var command=SourceCommand(source,transaction,"SELECT Id FROM NotebookAttachments WHERE NoteId=$id AND IsDeleted=0 ORDER BY CreatedAt"); command.Parameters.AddWithValue("$id",noteId); await using var reader=await command.ExecuteReaderAsync(cancellationToken); while(await reader.ReadAsync(cancellationToken)) result.Add(reader.GetString(0)); return result.ToArray(); }
 
     private static string Text(SqliteDataReader reader,string name)=>reader[name] is DBNull?string.Empty:Convert.ToString(reader[name],CultureInfo.InvariantCulture)??string.Empty;

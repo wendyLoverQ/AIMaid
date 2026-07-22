@@ -16,9 +16,20 @@ public sealed record SaveAgentCapabilityCommand(AgentCapabilityDto Capability) :
 public sealed record ExecuteAgentCapabilityCommand(string ConversationId, string CapabilityName, string ArgsJson, string? ApprovalToken = null)
     : ICommand<OperationResult<AgentToolCallDto>>;
 
+public sealed record AgentDecisionDto(
+    string ConversationId, string Type, string Message, string VoiceStyle,
+    string Capability, string ArgsJson, string Reason, string TimeText, string Content,
+    string Repeat, long MessageId = 0);
+
+public sealed record DecideAgentInputCommand(
+    string Content, string? ConversationId = null, string? CharacterId = null,
+    bool SaveUserMessage = true, string ToolResultJson = "（首次调用，无上一步工具结果）",
+    int ToolStep = 1, int MaxSteps = 4, string Source = "normal_chat", bool ContinueConversation = false)
+    : ICommand<OperationResult<AgentDecisionDto>>;
+
 public sealed record AgentApprovalRequestedEvent(
     string EventId, DateTimeOffset OccurredAt, string ApprovalToken, string CapabilityName,
-    string DisplayName, string RiskLevel, string ArgsJson) : IBusinessEvent;
+    string DisplayName, string RiskLevel, string ArgsJson, string Description = "", string ExecutorType = "") : IBusinessEvent;
 public sealed record AgentToolCallCompletedEvent(
     string EventId, DateTimeOffset OccurredAt, AgentToolCallDto ToolCall) : IBusinessEvent;
 
@@ -42,10 +53,14 @@ public sealed record ReminderDto(
     string ReminderId, string Title, string Message, DateTimeOffset DueAt, string Repeat,
     bool Enabled, bool AllowTts, DateTimeOffset? LastTriggeredAt, DateTimeOffset? NextDueAt,
     DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
-public sealed record SaveReminderCommand(ReminderDto Reminder) : ICommand<OperationResult>;
+public sealed record SaveReminderCommand(
+    string? ReminderId, string Title, string Message, DateTimeOffset DueAt,
+    string Repeat, bool Enabled, bool AllowTts) : ICommand<OperationResult<ReminderDto>>;
+public sealed record SetReminderEnabledCommand(string ReminderId, bool Enabled) : ICommand<OperationResult<ReminderDto>>;
+public sealed record SetReminderAllowTtsCommand(string ReminderId, bool AllowTts) : ICommand<OperationResult<ReminderDto>>;
 public sealed record DeleteReminderCommand(string ReminderId) : ICommand<OperationResult>;
 public sealed record ListRemindersQuery(bool EnabledOnly = false) : IQuery<IReadOnlyList<ReminderDto>>;
-public sealed record ProcessDueRemindersCommand(DateTimeOffset Now) : ICommand<OperationResult<IReadOnlyList<ReminderDto>>>;
+public sealed record ProcessDueRemindersCommand(DateTimeOffset Now, IReadOnlyList<string>? ReminderIds = null) : ICommand<OperationResult<IReadOnlyList<ReminderDto>>>;
 public sealed record ReminderDueEvent(string EventId, DateTimeOffset OccurredAt, ReminderDto Reminder) : IBusinessEvent;
 
 public sealed record NotebookNoteDto(
@@ -56,14 +71,64 @@ public sealed record SaveNotebookNoteCommand(NotebookNoteDto Note) : ICommand<Op
 public sealed record DeleteNotebookNoteCommand(string NoteId) : ICommand<OperationResult>;
 public sealed record ListNotebookNotesQuery(bool IncludeDeleted = false) : IQuery<IReadOnlyList<NotebookNoteDto>>;
 
+public sealed record VoiceConversationDto(
+    string ConversationId, string VoiceRoleId, string Title, string Preview,
+    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+public sealed record SaveVoiceConversationCommand(VoiceConversationDto Conversation) : ICommand<OperationResult>;
+public sealed record DeleteVoiceConversationCommand(string ConversationId) : ICommand<OperationResult>;
+public sealed record ListVoiceConversationsQuery(string? VoiceRoleId = null, string? Search = null) : IQuery<IReadOnlyList<VoiceConversationDto>>;
+
+public sealed record ChatCommandLauncherDto(
+    string LauncherId, string CommandText, string DisplayName, string ExePath,
+    string Arguments, string WorkingDirectory, bool Enabled, DateTimeOffset UpdatedAt);
+public sealed record SaveChatCommandLauncherCommand(ChatCommandLauncherDto Launcher) : ICommand<OperationResult<ChatCommandLauncherDto>>;
+public sealed record ListChatCommandLaunchersQuery : IQuery<IReadOnlyList<ChatCommandLauncherDto>>;
+public sealed record RunChatCommandLauncherCommand(string LauncherId) : ICommand<OperationResult<string>>;
+
+public sealed record TimerRecordDto(string RecordId, DateTimeOffset SavedAt, int DurationSeconds);
+public sealed record SaveTimerRecordCommand(TimerRecordDto Record) : ICommand<OperationResult>;
+public sealed record DeleteTimerRecordCommand(string RecordId) : ICommand<OperationResult>;
+public sealed record ListTimerRecordsQuery : IQuery<IReadOnlyList<TimerRecordDto>>;
+
+public sealed record CryptoProviderConfigurationDto(bool IsEnabled, string ServiceUrl, int TimeoutSeconds, string LastHealthStatus, long? LastHealthLatencyMs, DateTimeOffset? LastCheckedAt);
+
+public sealed record AppearanceConfigurationDto(
+    string ThemeId, string ContentBrightness, string FontFamily, double FontScale,
+    string CornerRadiusStyle, string Density, string HeaderStyle, bool AnimationsEnabled);
+public sealed record GetAppearanceConfigurationQuery : IQuery<AppearanceConfigurationDto>;
+public sealed record SaveAppearanceConfigurationCommand(AppearanceConfigurationDto Configuration) : ICommand<OperationResult>;
+
 public sealed record VaultItemDto(
     string ItemId, string ItemType, string Name, string Category, string Account, string Url,
     string Platform, string PublicMetadataJson, bool HasProtectedSecret,
     DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
-public sealed record SaveVaultItemCommand(VaultItemDto Item, string? PlainSecret) : ICommand<OperationResult>;
-public sealed record GetVaultItemQuery(string ItemId, bool IncludeSecret = false) : IQuery<OperationResult<(VaultItemDto Item, string? Secret)>>;
+public sealed record VaultItemDetailDto(VaultItemDto Item, string? Secret);
+public sealed record SaveVaultItemCommand(VaultItemDto Item, string? PlainSecret, string? ChangeRemark = null) : ICommand<OperationResult>;
+public sealed record GetVaultItemQuery(string ItemId) : IQuery<OperationResult<VaultItemDetailDto>>;
+public sealed record RevealVaultSecretQuery(string ItemId) : IQuery<OperationResult<VaultItemDetailDto>>;
 public sealed record ListVaultItemsQuery(string? ItemType = null) : IQuery<IReadOnlyList<VaultItemDto>>;
 public sealed record DeleteVaultItemCommand(string ItemId) : ICommand<OperationResult>;
+public sealed record VaultHistoryDto(
+    string HistoryId, string ItemId, string FieldName, string ChangeRemark, DateTimeOffset CreatedAt);
+public sealed record ListVaultHistoriesQuery(string ItemId) : IQuery<IReadOnlyList<VaultHistoryDto>>;
+public sealed record RestoreVaultHistoryCommand(string HistoryId) : ICommand<OperationResult>;
+
+public sealed record ModelConfigurationDto(
+    string ModelKey, string Type, string Endpoint, string Model, string ApiKey,
+    bool EnableWebSearch, bool Think);
+public sealed record ListModelConfigurationsQuery(bool IncludeSecrets = false) : IQuery<IReadOnlyList<ModelConfigurationDto>>;
+public sealed record SaveModelConfigurationsCommand(IReadOnlyList<ModelConfigurationDto> Configurations) : ICommand<OperationResult>;
+public sealed record AddModelConfigurationCommand(string ModelKey, string Type) : ICommand<OperationResult>;
+public sealed record LlmBusinessModelConfigDto(
+    string BusinessKey, string DisplayName, string Description, string Provider,
+    string ModelKey, bool IsEnabled, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+public sealed record ListLlmBusinessModelConfigsQuery : IQuery<IReadOnlyList<LlmBusinessModelConfigDto>>;
+public sealed record SaveLlmBusinessModelConfigsCommand(IReadOnlyList<LlmBusinessModelConfigDto> Configurations) : ICommand<OperationResult>;
+public sealed record LlmSourcePromptDto(
+    string SourceKey, string Purpose, string SystemPromptTemplate, string UserPromptTemplate,
+    string OutputSchemaJson, bool IsEnabled, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+public sealed record ListLlmSourcePromptsQuery : IQuery<IReadOnlyList<LlmSourcePromptDto>>;
+public sealed record SaveLlmSourcePromptCommand(LlmSourcePromptDto Prompt) : ICommand<OperationResult>;
 
 public sealed record MarketEventDto(
     string EventId, string EventType, string Source, string Network, string Symbol,
@@ -78,14 +143,83 @@ public sealed record VideoItemDto(
     DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, string? AlbumId = null,
     int DurationSeconds = 0, int LastPositionSeconds = 0, bool IsCompleted = false,
     long FileSize = 0, DateTimeOffset? LastPlayedAt = null, string Remark = "");
+public sealed record VideoAlbumDto(
+    string AlbumId, string Name, string Description, string CoverPath, int SortOrder,
+    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+public sealed record VideoLibrarySnapshotDto(
+    IReadOnlyList<VideoItemDto> Items, IReadOnlyList<VideoAlbumDto> Albums, IReadOnlyList<string> Tags);
+public sealed record VideoImportResultDto(int ImportedCount, IReadOnlyList<VideoItemDto> Items);
+public sealed record VideoDependencyStatusDto(
+    string PotPlayerBridgePath, bool PotPlayerBridgeAvailable,
+    string PotPlayerPath, bool PotPlayerAvailable,
+    string PlaylistPath, bool PlaylistAvailable,
+    string FfmpegPath, bool FfmpegAvailable,
+    string FfprobePath, bool FfprobeAvailable,
+    string YtDlpPath, bool YtDlpAvailable);
 public sealed record RemoteSiteDto(
     string SiteId, string SiteName, string DomainPattern, string AdapterKey,
-    string QualityPreference, bool IsEnabled, string SettingsJson, DateTimeOffset UpdatedAt);
+    string QualityPreference, bool IsEnabled, string SettingsJson, DateTimeOffset UpdatedAt, bool HasProtectedCookie = false);
+public sealed record RemoteSiteDetailDto(RemoteSiteDto Site);
 public sealed record SaveVideoItemCommand(VideoItemDto Video) : ICommand<OperationResult>;
-public sealed record ListVideosQuery(bool FavoritesOnly = false) : IQuery<IReadOnlyList<VideoItemDto>>;
-public sealed record SaveRemoteSiteCommand(RemoteSiteDto Site) : ICommand<OperationResult>;
+public sealed record ListVideosQuery(bool FavoritesOnly = false) : IQuery<VideoLibrarySnapshotDto>;
+public sealed record ImportVideoFileCommand(string FilePath, string? AlbumId = null) : ICommand<OperationResult<VideoItemDto>>;
+public sealed record ImportVideoFolderCommand(string FolderPath, bool Recursive, string? AlbumId = null) : ICommand<OperationResult<VideoImportResultDto>>;
+public sealed record RefreshVideoMetadataCommand(IReadOnlyList<string> VideoIds) : ICommand<OperationResult<VideoImportResultDto>>;
+public sealed record ToggleVideoFavoriteCommand(string VideoId) : ICommand<OperationResult>;
+public sealed record SetVideoDisplayNameCommand(string VideoId, string DisplayName) : ICommand<OperationResult>;
+public sealed record SetVideoRemarkCommand(string VideoId, string Remark) : ICommand<OperationResult>;
+public sealed record UpdateVideoProgressCommand(string VideoId, int PositionSeconds, int DurationSeconds) : ICommand<OperationResult>;
+public sealed record CreateVideoAlbumCommand(string Name, string Description = "") : ICommand<OperationResult<VideoAlbumDto>>;
+public sealed record RenameVideoAlbumCommand(string AlbumId, string Name) : ICommand<OperationResult>;
+public sealed record DeleteVideoAlbumCommand(string AlbumId) : ICommand<OperationResult>;
+public sealed record MoveVideosToAlbumCommand(IReadOnlyList<string> VideoIds, string? AlbumId) : ICommand<OperationResult>;
+public sealed record CreateVideoTagCommand(string Tag) : ICommand<OperationResult>;
+public sealed record RenameVideoTagCommand(string OldTag, string NewTag) : ICommand<OperationResult>;
+public sealed record DeleteVideoTagCommand(string Tag) : ICommand<OperationResult>;
+public sealed record SetVideoTagsCommand(IReadOnlyList<string> VideoIds, string Tags) : ICommand<OperationResult>;
+public sealed record RemoveVideoRecordsCommand(IReadOnlyList<string> VideoIds) : ICommand<OperationResult>;
+public sealed record DeleteVideoLocalFilesCommand(IReadOnlyList<string> VideoIds) : ICommand<OperationResult>;
+public sealed record PlayVideosCommand(IReadOnlyList<string> VideoIds, string StartVideoId) : ICommand<OperationResult<int>>;
+public sealed record GetVideoDependenciesQuery : IQuery<VideoDependencyStatusDto>;
+public sealed record SubtitleItemDto(string Name, string Path);
+public sealed record ListSubtitlesQuery : IQuery<IReadOnlyList<SubtitleItemDto>>;
+public sealed record ImportSubtitleCommand(string SourcePath) : ICommand<OperationResult<SubtitleItemDto>>;
+public sealed record ImportSubtitleFolderCommand(string FolderPath) : ICommand<OperationResult<int>>;
+public sealed record DeleteSubtitleCommand(string Path) : ICommand<OperationResult>;
+public sealed record SaveRemoteSiteCommand(RemoteSiteDto Site, string? PlainCookie = null) : ICommand<OperationResult>;
+public sealed record GetRemoteSiteQuery(string SiteId) : IQuery<OperationResult<RemoteSiteDetailDto>>;
+public sealed record DeleteRemoteSiteCommand(string SiteId) : ICommand<OperationResult>;
 public sealed record ListRemoteSitesQuery(bool EnabledOnly = true) : IQuery<IReadOnlyList<RemoteSiteDto>>;
 public sealed record ResolveRemoteMediaCommand(string Url, string? SiteId = null) : ICommand<OperationResult<string>>;
+
+public sealed record RemoteVideoFormatDto(
+    string FormatId, string Selector, string DisplayName, int? Width, int? Height,
+    double? Fps, bool HasVideo, bool HasAudio, long? FileSize);
+public sealed record RemoteVideoResolvedItemDto(
+    string ItemId, string OriginalUrl, string Title, string Author, string SiteName,
+    string VideoId, int DurationSeconds, string ThumbnailUrl, DateTimeOffset? PublishedAt,
+    bool IsLive, string DownloadStatus, IReadOnlyList<RemoteVideoFormatDto> Formats);
+public sealed record RemoteVideoResolveResultDto(
+    IReadOnlyList<RemoteVideoResolvedItemDto> Items, string DiagnosticSummary);
+public sealed record RemoteVideoDownloadDto(
+    string TaskId, string ItemId, string OriginalUrl, string Title, string Author,
+    string SiteName, string OutputPath, string Quality, string Status, double Progress,
+    string Speed, string Eta, string ErrorMessage, long FileSize, DateTimeOffset CreatedAt,
+    DateTimeOffset? StartedAt, DateTimeOffset? FinishedAt);
+public sealed record RemoteVideoPlayHistoryDto(
+    string HistoryId, string? ItemId, string OriginalUrl, string Title, string Author,
+    string SiteName, string Action, string CachePath, DateTimeOffset PlayedAt);
+public sealed record RemoteVideoSettingsDto(
+    string DownloadRoot, string CacheRoot, string FileNameTemplate,
+    string DefaultQualityPreference, bool DownloadThumbnail, bool DownloadInfoJson,
+    bool DownloadSubtitles, bool OverwriteExisting, bool AutoImportToVideoLibrary,
+    int MaxConcurrentDownloads, string YtDlpPath, string FfmpegPath,
+    string PotPlayerPath, DateTimeOffset UpdatedAt);
+public sealed record RemoteVideoDiagnosticsDto(
+    DateTimeOffset CheckedAt, string YtDlpPath, bool YtDlpExists,
+    string FfmpegPath, bool FfmpegExists, string PotPlayerPath, bool PotPlayerExists,
+    string DownloadRoot, bool DownloadRootWritable, int ActiveDownloads,
+    string LastOperation, string LastStatus, string LastMessage);
 
 public sealed record TtsAudioReadyEvent(
     string EventId, DateTimeOffset OccurredAt, string RequestId, string AudioPath,

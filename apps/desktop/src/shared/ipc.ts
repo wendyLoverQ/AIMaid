@@ -3,7 +3,8 @@ import type { CoreEventType } from './core'
 export const IPC_CHANNELS = {
   invoke: 'aimaid:invoke',
   send: 'aimaid:send',
-  event: 'aimaid:event'
+  event: 'aimaid:event',
+  petLifecycle: 'aimaid:pet-lifecycle'
 } as const
 
 export const IPC_REQUEST_TYPES = [
@@ -11,14 +12,48 @@ export const IPC_REQUEST_TYPES = [
   'window.show',
   'window.hide',
   'window.close',
+  'window.quit',
   'window.focus',
+  'window.minimize',
+  'window.toggleMaximize',
   'dialog.openFile',
+  'dialog.openDirectory',
+  'dialog.saveFile',
+  'shell.showItemInFolder',
+  'shell.openExternal',
+  'media.registerLocalFile',
+  'notebook.attachment.importFile',
+  'notebook.attachment.importData',
+  'notebook.attachment.action',
+  'speech.audio.importData',
+  'tray.action',
+  'douyin.session.save',
+  'douyin.session.inspect',
+  'douyin.session.clear',
+  'agent.confirmation.get',
+  'agent.confirmation.resolve',
   'core.invoke',
-  'core.status'
+  'core.status',
+  'core.restart',
+  'pet.ready',
+  'pet.getAssetManifest',
+  'pet.setIgnoreMouseEvents',
+  'pet.dragStart',
+  'pet.dragMove',
+  'pet.dragEnd',
+  'pet.updateWindow',
+  'pet.reportMetrics',
+  'pet.runtime.get',
+  'pet.presentation.get',
+  'pet.presentation.execute'
+  ,'system.settings.get'
+  ,'system.settings.setAutoStart'
+  ,'system.settings.setHotkey'
+  ,'system.settings.setBubbleStyle'
 ] as const
 
 export type IpcRequestType = (typeof IPC_REQUEST_TYPES)[number]
-export type IpcNotificationType = 'request.cancel'
+export type IpcNotificationType = 'request.cancel' | 'event.subscribe' | 'event.unsubscribe'
 
 export interface IpcError {
   code: string
@@ -77,7 +112,7 @@ export function isIpcNotificationEnvelope(value: unknown): value is IpcNotificat
   return (
     isRecord(value) &&
     typeof value.requestId === 'string' &&
-    value.type === 'request.cancel' &&
+    (value.type === 'request.cancel' || value.type === 'event.subscribe' || value.type === 'event.unsubscribe') &&
     typeof value.timestamp === 'number'
   )
 }

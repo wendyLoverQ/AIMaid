@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using AIMaid.Contracts.Characters;
 using AIMaid.Contracts.Chat;
 using AIMaid.Contracts.Settings;
@@ -8,7 +10,7 @@ using Microsoft.Data.Sqlite;
 
 namespace AIMaid.Infrastructure;
 
-public sealed class SqliteCoreStore : IChatStore, ISettingsStore, ICharacterStore, IBackgroundTaskStore, IDomainDocumentStore
+public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsStore, ICharacterStore, IBackgroundTaskStore, IDomainDocumentStore
 {
     private readonly string connectionString;
 
@@ -65,6 +67,7 @@ public sealed class SqliteCoreStore : IChatStore, ISettingsStore, ICharacterStor
                 ValidationStatus TEXT NOT NULL DEFAULT 'unknown',
                 ValidationMessage TEXT NOT NULL DEFAULT '',
                 LastValidatedAt TEXT NULL,
+                AvatarPath TEXT NOT NULL DEFAULT '',
                 IsEnabled INTEGER NOT NULL DEFAULT 1,
                 UpdatedAt TEXT NOT NULL
             );
@@ -91,6 +94,7 @@ public sealed class SqliteCoreStore : IChatStore, ISettingsStore, ICharacterStor
             """;
         await command.ExecuteNonQueryAsync(cancellationToken);
         await EnsureCharacterColumnsAsync(connection, cancellationToken);
+        await NormalizeLegacyDocumentDatesAsync(connection, cancellationToken);
     }
 
     async Task<long> IChatStore.AppendAsync(ChatMessageDto message, CancellationToken cancellationToken)
@@ -134,6 +138,46 @@ public sealed class SqliteCoreStore : IChatStore, ISettingsStore, ICharacterStor
             """;
         command.Parameters.AddWithValue("$conversationId", conversationId);
         command.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, 500));
+        var result = new List<ChatMessageDto>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result.Add(new ChatMessageDto(reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
+                reader.GetString(4), reader.GetString(5), reader.GetString(6), reader.GetString(7), Parse(reader.GetString(8))));
+        return result;
+    }
+
+    public async Task DeleteConversationAsync(string conversationId, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM ChatMessages WHERE ConversationId=$conversationId";
+        command.Parameters.AddWithValue("$conversationId", conversationId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task DeleteByCharacterAsync(string characterId, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM ChatMessages WHERE CharacterId=$characterId";
+        command.Parameters.AddWithValue("$characterId", characterId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ChatMessageDto>> SearchUserMessagesAsync(string keyword, int limit, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT Id, ConversationId, Role, Content, CharacterId, ModelName, Source, MetadataJson, CreatedAt
+            FROM ChatMessages
+            WHERE Role='user' AND Content LIKE $keyword ESCAPE '\\'
+              AND Source IN ('normal_chat','agent_chat','prompt_chat')
+            ORDER BY CreatedAt DESC, Id DESC LIMIT $limit;
+            """;
+        var escaped = keyword.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("%", "\\%", StringComparison.Ordinal).Replace("_", "\\_", StringComparison.Ordinal);
+        command.Parameters.AddWithValue("$keyword", $"%{escaped}%");
+        command.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, 20));
         var result = new List<ChatMessageDto>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
@@ -221,11 +265,11 @@ public sealed class SqliteCoreStore : IChatStore, ISettingsStore, ICharacterStor
             INSERT INTO VoiceRoleCards (RoleId, Name, VoiceName, RoleTitle, CardPath, SourceCardJson, TemplateCardJson,
               CardSummary, CardSchemaVersion, TemplateCardSourceHash, TemplateCardGenerationStatus, TemplateCardGenerationMessage,
               TemplateCardGeneratedAt, TemplateCardLastAttemptAt, TemplateCardIterationCount, PreferredVoiceId,
-              ValidationStatus, ValidationMessage, LastValidatedAt, IsEnabled, UpdatedAt)
+              ValidationStatus, ValidationMessage, LastValidatedAt, AvatarPath, IsEnabled, UpdatedAt)
             VALUES ($roleId,$name,$voiceName,$roleTitle,$cardPath,$sourceCardJson,$templateCardJson,
               $cardSummary,$cardSchemaVersion,$templateCardSourceHash,$templateCardGenerationStatus,$templateCardGenerationMessage,
               $templateCardGeneratedAt,$templateCardLastAttemptAt,$templateCardIterationCount,$preferredVoiceId,
-              $validationStatus,$validationMessage,$lastValidatedAt,$isEnabled,$updatedAt)
+              $validationStatus,$validationMessage,$lastValidatedAt,$avatarPath,$isEnabled,$updatedAt)
             ON CONFLICT(RoleId) DO UPDATE SET Name=excluded.Name, VoiceName=excluded.VoiceName, RoleTitle=excluded.RoleTitle,
               CardPath=excluded.CardPath, SourceCardJson=excluded.SourceCardJson, TemplateCardJson=excluded.TemplateCardJson,
               CardSummary=excluded.CardSummary, CardSchemaVersion=excluded.CardSchemaVersion,
@@ -236,7 +280,7 @@ public sealed class SqliteCoreStore : IChatStore, ISettingsStore, ICharacterStor
               TemplateCardLastAttemptAt=excluded.TemplateCardLastAttemptAt,
               TemplateCardIterationCount=excluded.TemplateCardIterationCount,
               PreferredVoiceId=excluded.PreferredVoiceId, ValidationStatus=excluded.ValidationStatus,
-              ValidationMessage=excluded.ValidationMessage, LastValidatedAt=excluded.LastValidatedAt,
+              ValidationMessage=excluded.ValidationMessage, LastValidatedAt=excluded.LastValidatedAt, AvatarPath=excluded.AvatarPath,
               IsEnabled=excluded.IsEnabled, UpdatedAt=excluded.UpdatedAt;
             """;
         command.Parameters.AddWithValue("$roleId", character.RoleId);
@@ -258,8 +302,18 @@ public sealed class SqliteCoreStore : IChatStore, ISettingsStore, ICharacterStor
         command.Parameters.AddWithValue("$validationStatus", character.ValidationStatus);
         command.Parameters.AddWithValue("$validationMessage", character.ValidationMessage);
         command.Parameters.AddWithValue("$lastValidatedAt", DbValue(character.LastValidatedAt));
+        command.Parameters.AddWithValue("$avatarPath", character.AvatarPath);
         command.Parameters.AddWithValue("$isEnabled", character.IsEnabled ? 1 : 0);
         command.Parameters.AddWithValue("$updatedAt", Format(character.UpdatedAt));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task DeleteAsync(string roleId, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM VoiceRoleCards WHERE RoleId=$roleId";
+        command.Parameters.AddWithValue("$roleId", roleId);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -330,6 +384,18 @@ public sealed class SqliteCoreStore : IChatStore, ISettingsStore, ICharacterStor
         return result;
     }
 
+    async Task<IReadOnlyList<string>> IDomainDocumentStore.ListIdsAsync(string domain, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT DocumentId FROM CoreDocuments WHERE Domain=$domain ORDER BY UpdatedAt DESC, DocumentId";
+        command.Parameters.AddWithValue("$domain", domain);
+        var result = new List<string>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken)) result.Add(reader.GetString(0));
+        return result;
+    }
+
     async Task IDomainDocumentStore.UpsertAsync(string domain, string id, string json, DateTimeOffset updatedAt, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(domain) || string.IsNullOrWhiteSpace(id))
@@ -369,13 +435,13 @@ public sealed class SqliteCoreStore : IChatStore, ISettingsStore, ICharacterStor
         SELECT RoleId,Name,VoiceName,RoleTitle,CardPath,SourceCardJson,TemplateCardJson,PreferredVoiceId,ValidationStatus,
           IsEnabled,UpdatedAt,CardSummary,CardSchemaVersion,TemplateCardSourceHash,TemplateCardGenerationStatus,
           TemplateCardGenerationMessage,TemplateCardGeneratedAt,TemplateCardLastAttemptAt,TemplateCardIterationCount,
-          ValidationMessage,LastValidatedAt FROM VoiceRoleCards
+          ValidationMessage,LastValidatedAt,AvatarPath FROM VoiceRoleCards
         """;
     private static CharacterDto ReadCharacter(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1), reader.GetString(2),
         reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetString(6), reader.GetString(7), reader.GetString(8),
         reader.GetInt64(9) != 0, Parse(reader.GetString(10)), reader.GetString(11), reader.GetString(12), reader.GetString(13),
         reader.GetString(14), reader.GetString(15), ParseNullable(reader, 16), ParseNullable(reader, 17), reader.GetInt32(18),
-        reader.GetString(19), ParseNullable(reader, 20));
+        reader.GetString(19), ParseNullable(reader, 20), reader.GetString(21));
     private static BackgroundTaskDto ReadTask(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1),
         (BackgroundTaskState)reader.GetInt32(2), reader.GetDouble(3), reader.GetString(4), reader.GetString(5), reader.GetString(6),
         Parse(reader.GetString(7)), Parse(reader.GetString(8)));
@@ -383,6 +449,76 @@ public sealed class SqliteCoreStore : IChatStore, ISettingsStore, ICharacterStor
     private static DateTimeOffset Parse(string value) => DateTimeOffset.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
     private static DateTimeOffset? ParseNullable(SqliteDataReader reader, int ordinal) => reader.IsDBNull(ordinal) ? null : Parse(reader.GetString(ordinal));
     private static object DbValue(DateTimeOffset? value) => value.HasValue ? Format(value.Value) : DBNull.Value;
+
+    private static async Task NormalizeLegacyDocumentDatesAsync(SqliteConnection connection, CancellationToken cancellationToken)
+    {
+        var repairs = new List<(string Domain, string DocumentId, string Json)>();
+        await using (var select = connection.CreateCommand())
+        {
+            select.CommandText = "SELECT Domain, DocumentId, Json FROM CoreDocuments";
+            await using var reader = await select.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var json = reader.GetString(2);
+                JsonNode? node;
+                try { node = JsonNode.Parse(json); }
+                catch (JsonException) { continue; }
+                if (node is null || !NormalizeDateProperties(node)) continue;
+                repairs.Add((reader.GetString(0), reader.GetString(1), node.ToJsonString()));
+            }
+        }
+        if (repairs.Count == 0) return;
+
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        foreach (var repair in repairs)
+        {
+            await using var update = connection.CreateCommand();
+            update.Transaction = (SqliteTransaction)transaction;
+            update.CommandText = "UPDATE CoreDocuments SET Json=$json WHERE Domain=$domain AND DocumentId=$id";
+            update.Parameters.AddWithValue("$json", repair.Json);
+            update.Parameters.AddWithValue("$domain", repair.Domain);
+            update.Parameters.AddWithValue("$id", repair.DocumentId);
+            await update.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    private static bool NormalizeDateProperties(JsonNode node)
+    {
+        var changed = false;
+        if (node is JsonObject jsonObject)
+        {
+            foreach (var property in jsonObject.ToArray())
+            {
+                if (property.Value is JsonValue value && property.Key.EndsWith("At", StringComparison.OrdinalIgnoreCase) &&
+                    value.TryGetValue<string>(out var text) && TryNormalizeLegacyDate(text, out var normalized) &&
+                    !string.Equals(text, normalized, StringComparison.Ordinal))
+                {
+                    jsonObject[property.Key] = normalized;
+                    changed = true;
+                }
+                else if (property.Value is not null)
+                {
+                    changed |= NormalizeDateProperties(property.Value);
+                }
+            }
+        }
+        else if (node is JsonArray jsonArray)
+        {
+            foreach (var item in jsonArray)
+                if (item is not null) changed |= NormalizeDateProperties(item);
+        }
+        return changed;
+    }
+
+    private static bool TryNormalizeLegacyDate(string value, out string normalized)
+    {
+        normalized = string.Empty;
+        if (!DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture,
+                DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.AssumeLocal, out var parsed)) return false;
+        normalized = Format(parsed);
+        return true;
+    }
 
     private static async Task EnsureCharacterColumnsAsync(SqliteConnection connection, CancellationToken cancellationToken)
     {
@@ -392,7 +528,7 @@ public sealed class SqliteCoreStore : IChatStore, ISettingsStore, ICharacterStor
             ["TemplateCardSourceHash"] = "TEXT NOT NULL DEFAULT ''", ["TemplateCardGenerationStatus"] = "TEXT NOT NULL DEFAULT ''",
             ["TemplateCardGenerationMessage"] = "TEXT NOT NULL DEFAULT ''", ["TemplateCardGeneratedAt"] = "TEXT NULL",
             ["TemplateCardLastAttemptAt"] = "TEXT NULL", ["TemplateCardIterationCount"] = "INTEGER NOT NULL DEFAULT 0",
-            ["ValidationMessage"] = "TEXT NOT NULL DEFAULT ''", ["LastValidatedAt"] = "TEXT NULL"
+            ["ValidationMessage"] = "TEXT NOT NULL DEFAULT ''", ["LastValidatedAt"] = "TEXT NULL", ["AvatarPath"] = "TEXT NOT NULL DEFAULT ''"
         };
         var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         await using (var info = connection.CreateCommand())

@@ -20,13 +20,31 @@ public sealed class AiProviderHttpClient : IAiProviderClient
     public async IAsyncEnumerable<string> StreamChatAsync(AiChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var messages = request.History.Select(x => new { role = x.Role, content = x.Content }).ToArray();
+        var payload = new Dictionary<string, object?>
+        {
+            ["model"] = string.IsNullOrWhiteSpace(request.ModelName) ? options.Model : request.ModelName,
+            ["messages"] = messages,
+            ["stream"] = request.StreamResponse
+        };
+        if (!string.IsNullOrWhiteSpace(options.ReasoningEffort))
+            payload["reasoning_effort"] = options.ReasoningEffort;
+        if (request.RequireJsonResponse)
+            payload["response_format"] = new { type = "json_object" };
+        if (request.Temperature is not null) payload["temperature"] = request.Temperature.Value;
+        if (request.MaxTokens is not null) payload["max_tokens"] = request.MaxTokens.Value;
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, options.Endpoint)
         {
-            Content = new StringContent(JsonSerializer.Serialize(new { model = string.IsNullOrWhiteSpace(request.ModelName) ? options.Model : request.ModelName, messages, stream = true }), Encoding.UTF8, "application/json")
+            Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
         };
         if (!string.IsNullOrWhiteSpace(options.ApiKey)) httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiKey);
         using var response = await httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
+        if (!request.StreamResponse)
+        {
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            if (TryReadChatCompletionMessage(document.RootElement, out var content)) yield return content;
+            yield break;
+        }
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream);
         while (await reader.ReadLineAsync(cancellationToken) is { } line)
@@ -39,6 +57,16 @@ public sealed class AiProviderHttpClient : IAiProviderClient
             if (TryReadChatCompletionDelta(root, out var delta) || TryReadResponsesDelta(root, out delta))
                 yield return delta;
         }
+    }
+
+    private static bool TryReadChatCompletionMessage(JsonElement root, out string value)
+    {
+        value = string.Empty;
+        if (!root.TryGetProperty("choices", out var choices) || choices.ValueKind != JsonValueKind.Array || choices.GetArrayLength() == 0) return false;
+        var first = choices[0];
+        if (!first.TryGetProperty("message", out var message) || !message.TryGetProperty("content", out var content)) return false;
+        value = content.GetString() ?? string.Empty;
+        return value.Length > 0;
     }
 
     private static bool TryReadChatCompletionDelta(JsonElement root, out string value)
@@ -94,33 +122,105 @@ public sealed class SpeechHttpClient : ITtsClient, IAsrClient
 
     public async Task<string> SynthesizeAsync(string text, string? voiceId, string style, CancellationToken cancellationToken = default)
     {
-        var payload = JsonSerializer.Serialize(new { text, voice_id = voiceId ?? string.Empty, style });
+        var payload = JsonSerializer.Serialize(new Dictionary<string, string>
+        {
+            ["text"] = text,
+            ["voice_id"] = voiceId ?? string.Empty,
+            ["style"] = style
+        });
+        return await SendSynthesisAsync(payload, cancellationToken);
+    }
+
+    public Task<string> SynthesizeWithPromptAsync(string text, string promptText, string promptWavPath, string style, CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(promptWavPath)) throw new FileNotFoundException("TTS 音色缺少 prompt.wav。", promptWavPath);
+        var payload = JsonSerializer.Serialize(new Dictionary<string, string>
+        {
+            ["text"] = text,
+            ["prompt_text"] = promptText,
+            ["prompt_wav_path"] = Path.GetFullPath(promptWavPath),
+            ["style"] = style
+        });
+        return SendSynthesisAsync(payload, cancellationToken);
+    }
+
+    private async Task<string> SendSynthesisAsync(string payload, CancellationToken cancellationToken)
+    {
         using var response = await httpClient.PostAsync(new Uri(options.BaseAddress, "/v1/tts"), new StringContent(payload, Encoding.UTF8, "application/json"), cancellationToken);
         response.EnsureSuccessStatusCode();
         var contentType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
         if (contentType.Contains("json", StringComparison.OrdinalIgnoreCase))
         {
             using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
-            if (document.RootElement.TryGetProperty("audioPath", out var path) && File.Exists(path.GetString())) return path.GetString()!;
-            throw new InvalidDataException("TTS JSON 响应缺少有效 audioPath。");
+            var root = document.RootElement;
+            foreach (var propertyName in new[] { "audio_path", "audioPath" })
+            {
+                if (root.TryGetProperty(propertyName, out var path) && path.ValueKind == JsonValueKind.String &&
+                    path.GetString() is { Length: > 0 } localPath && File.Exists(localPath)) return Path.GetFullPath(localPath);
+            }
+            if (root.TryGetProperty("audio_url", out var urlElement) && urlElement.ValueKind == JsonValueKind.String &&
+                urlElement.GetString() is { Length: > 0 } audioUrl)
+            {
+                var uri = Uri.TryCreate(audioUrl, UriKind.Absolute, out var absolute) ? absolute : new Uri(options.BaseAddress, audioUrl);
+                using var audioResponse = await httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                audioResponse.EnsureSuccessStatusCode();
+                var downloaded = CreateOutputPath();
+                await using var audioTarget = File.Create(downloaded);
+                await audioResponse.Content.CopyToAsync(audioTarget, cancellationToken);
+                return downloaded;
+            }
+            throw new InvalidDataException("TTS JSON 响应缺少有效 audio_path 或 audio_url。");
         }
-        var output = Path.Combine(Path.GetFullPath(options.OutputDirectory), $"tts_{DateTimeOffset.Now:yyyyMMdd_HHmmssfff}_{Guid.NewGuid():N}.wav");
+        var output = CreateOutputPath();
         await using var target = File.Create(output);
         await response.Content.CopyToAsync(target, cancellationToken);
         return output;
     }
 
-    public async Task<string> TranscribeAsync(string audioPath, CancellationToken cancellationToken = default)
+    private string CreateOutputPath() =>
+        Path.Combine(Path.GetFullPath(options.OutputDirectory), $"tts_{DateTimeOffset.Now:yyyyMMdd_HHmmssfff}_{Guid.NewGuid():N}.wav");
+
+    public async Task<string> TranscribeAsync(
+        string audioPath,
+        string characterId,
+        string? sessionId,
+        string language,
+        string requestId,
+        CancellationToken cancellationToken = default)
     {
         await using var stream = File.OpenRead(audioPath);
         using var content = new MultipartFormDataContent();
-        content.Add(new StreamContent(stream), "file", Path.GetFileName(audioPath));
-        using var response = await httpClient.PostAsync(new Uri(options.BaseAddress, "/v1/asr"), content, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
-        if (!document.RootElement.TryGetProperty("text", out var text)) throw new InvalidDataException("ASR 响应缺少 text。");
+        using var audio = new StreamContent(stream);
+        audio.Headers.ContentType = new MediaTypeHeaderValue(AudioMediaType(audioPath));
+        content.Add(audio, "audio", Path.GetFileName(audioPath));
+        content.Add(new StringContent(characterId), "characterId");
+        if (!string.IsNullOrWhiteSpace(sessionId)) content.Add(new StringContent(sessionId), "sessionId");
+        content.Add(new StringContent(language), "language");
+        content.Add(new StringContent(requestId), "requestId");
+        using var response = await httpClient.PostAsync(new Uri(options.BaseAddress, "/api/asr/transcriptions"), content, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        using var document = JsonDocument.Parse(body);
+        var root = document.RootElement;
+        if (!response.IsSuccessStatusCode || root.TryGetProperty("success", out var success) && success.ValueKind == JsonValueKind.False)
+        {
+            var message = root.TryGetProperty("error", out var error) && error.TryGetProperty("message", out var errorMessage)
+                ? errorMessage.GetString()
+                : null;
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(message) ? $"AIProvider 语音识别失败（HTTP {(int)response.StatusCode}）。" : message);
+        }
+        if (!root.TryGetProperty("data", out var data) || !data.TryGetProperty("text", out var text) || text.ValueKind != JsonValueKind.String)
+            throw new InvalidDataException("AIProvider ASR 响应缺少 data.text。");
         return text.GetString() ?? string.Empty;
     }
+
+    private static string AudioMediaType(string path) => Path.GetExtension(path).ToLowerInvariant() switch
+    {
+        ".wav" => "audio/wav",
+        ".mp3" => "audio/mpeg",
+        ".m4a" => "audio/mp4",
+        ".ogg" => "audio/ogg",
+        _ => "audio/webm"
+    };
 }
 
 public sealed class HttpDownloadClient : IDownloadClient

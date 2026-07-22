@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aimaid.local/contracts/message-envelope.schema.json",
+  "title": "AIMaid JSON Lines message envelope",
+  "oneOf": [
+    { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/response" },
+    { "$ref": "#/$defs/event" }
+  ],
+  "$defs": {
+    "base": {
+      "type": "object",
+      "required": ["protocolVersion", "id", "kind", "type", "timestamp", "payload"],
+      "properties": {
+        "protocolVersion": { "const": "1.0" },
+        "id": { "type": "string", "minLength": 8, "maxLength": 100 },
+        "kind": { "enum": ["request", "response", "event"] },
+        "type": { "type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_.]*$" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "payload": {}
+      }
+    },
+    "error": {
+      "type": "object",
+      "required": ["code", "message", "details"],
+      "properties": {
+        "code": { "type": "string" },
+        "message": { "type": "string" },
+        "details": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "request": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        { "properties": { "kind": { "const": "request" } }, "unevaluatedProperties": false }
+      ]
+    },
+    "response": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "required": ["success"],
+          "properties": {
+            "kind": { "const": "response" },
+            "success": { "type": "boolean" },
+            "error": { "oneOf": [{ "$ref": "#/$defs/error" }, { "type": "null" }] }
+          },
+          "unevaluatedProperties": false
+        }
+      ]
+    },
+    "event": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "required": ["correlationId", "sequence"],
+          "properties": {
+            "kind": { "const": "event" },
+            "correlationId": { "type": ["string", "null"] },
+            "sequence": { "type": "integer", "minimum": 0 }
+          },
+          "unevaluatedProperties": false
+        }
+      ]
+    }
+  }
+}

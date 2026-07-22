@@ -1,0 +1,15 @@
+{
+  "PROTOCOL_INVALID_JSON": "Input is not one complete JSON object.",
+  "PROTOCOL_INVALID_ENVELOPE": "Required envelope fields are missing or invalid.",
+  "PROTOCOL_VERSION_MISMATCH": "Desktop and Core protocol versions are incompatible.",
+  "PROTOCOL_UNKNOWN_TYPE": "The request type is not registered.",
+  "PROTOCOL_DUPLICATE_REQUEST": "The request id has already been used.",
+  "CORE_NOT_READY": "Handshake has not completed.",
+  "CORE_START_FAILED": "The Core process could not be started.",
+  "CORE_EXITED": "The Core process exited before the request completed.",
+  "REQUEST_TIMEOUT": "The request exceeded its configured timeout.",
+  "REQUEST_CANCELLED": "The request was cancelled.",
+  "INVALID_ARGUMENT": "The request payload is invalid.",
+  "CAPABILITY_UNSUPPORTED": "The Core does not advertise the requested capability.",
+  "INTERNAL_ERROR": "The Core failed without exposing sensitive details."
+}

@@ -9,14 +9,25 @@ describe('window registry and capabilities', () => {
     expect(new Set(Object.values(WINDOW_REGISTRY).map((definition) => definition.id)).size).toBe(WINDOW_KINDS.length)
   })
 
-  it('does not expose high privilege APIs to PetWindow', () => {
+  it('limits PetWindow to its required Core and presentation APIs', () => {
     expect(canRequest('pet', 'dialog.openFile')).toBe(false)
-    expect(canRequest('pet', 'core.invoke')).toBe(false)
-    expect(canRequest('pet', 'window.open')).toBe(false)
+    expect(canRequest('pet', 'core.invoke')).toBe(true)
+    expect(canRequest('pet', 'window.open')).toBe(true)
+    expect(canRequest('pet', 'window.quit')).toBe(true)
     expect(WINDOW_CAPABILITIES.pet.events).toBe(true)
   })
 
-  it('does not subscribe SettingsWindow to Core events', () => {
+  it('grants SettingsWindow its real Core and platform settings module only', () => {
     expect(WINDOW_CAPABILITIES.settings.events).toBe(false)
+    expect(canRequest('settings', 'core.invoke')).toBe(true)
+    expect(canRequest('settings', 'dialog.openFile')).toBe(false)
+    expect(canRequest('settings', 'system.settings.setHotkey')).toBe(true)
+  })
+
+  it('grants title-bar controls only to framed UI windows', () => {
+    expect(canRequest('main', 'window.minimize')).toBe(true)
+    expect(canRequest('chat', 'window.toggleMaximize')).toBe(true)
+    expect(canRequest('settings', 'window.minimize')).toBe(true)
+    expect(canRequest('pet', 'window.toggleMaximize')).toBe(false)
   })
 })

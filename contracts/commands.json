@@ -1,0 +1,11 @@
+{
+  "system.shutdown": { "payload": {} },
+  "system.cancel": { "payload": { "requestId": "string" } },
+  "system.stream": { "payload": { "steps": "integer:1..20", "delayMs": "integer:20..5000" } },
+  "reminder.save": { "payload": { "reminderId": "string|null", "title": "string", "message": "string", "dueAt": "ISO-8601", "repeat": "none|daily", "enabled": "boolean", "allowTts": "boolean" } },
+  "reminder.delete": { "payload": { "reminderId": "string" } },
+  "reminder.set_enabled": { "payload": { "reminderId": "string", "enabled": "boolean" } },
+  "reminder.set_allow_tts": { "payload": { "reminderId": "string", "allowTts": "boolean" } },
+  "reminder.process_due": { "payload": { "now": "ISO-8601" } },
+  "character.set_current": { "payload": { "roleId": "string" } }
+}

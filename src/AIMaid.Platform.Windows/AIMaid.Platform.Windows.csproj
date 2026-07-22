@@ -3,10 +3,11 @@
   <ItemGroup>
     <ProjectReference Include="..\AIMaid.Contracts\AIMaid.Contracts.csproj" />
     <ProjectReference Include="..\AIMaid.Core\AIMaid.Core.csproj" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
   </ItemGroup>
 
   <PropertyGroup>
-    <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>

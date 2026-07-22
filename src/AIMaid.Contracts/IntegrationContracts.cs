@@ -9,7 +9,12 @@ public sealed record StartDownloadCommand(string Url, string? TargetDirectory = 
 public sealed record SpeakTextCommand(string Text, string? VoiceId = null, string Style = "normal")
     : ICommand<OperationResult<string>>;
 
-public sealed record TranscribeAudioCommand(string AudioPath) : ICommand<OperationResult<string>>;
+public sealed record TranscribeAudioCommand(
+    string AudioPath,
+    string CharacterId,
+    string? SessionId = null,
+    string Language = "zh",
+    string? RequestId = null) : ICommand<OperationResult<string>>;
 
 public sealed record MoveFileCommand(string SourcePath, string DestinationPath, bool Overwrite = false)
     : ICommand<OperationResult>;

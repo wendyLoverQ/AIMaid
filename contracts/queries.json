@@ -1,0 +1,7 @@
+{
+  "system.handshake": { "payload": { "desktopVersion": "string", "platform": "string", "arch": "string" } },
+  "system.health": { "payload": {} },
+  "settings.get": { "payload": { "keys": "string[]?" } },
+  "reminder.list": { "payload": {} },
+  "character.list": { "payload": {} }
+}

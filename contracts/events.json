@@ -1,0 +1,10 @@
+{
+  "core.ready": { "terminal": false },
+  "system.protocol.error": { "correlationId": false, "sequence": true, "terminal": true },
+  "system.stream.progress": { "correlationId": true, "sequence": true, "terminal": false },
+  "system.stream.completed": { "correlationId": true, "sequence": true, "terminal": true },
+  "request.cancelled": { "correlationId": true, "sequence": true, "terminal": true },
+  "settings.changed": { "correlationId": false, "sequence": true, "terminal": false },
+  "reminder.due": { "correlationId": true, "sequence": true, "terminal": false },
+  "character.changed": { "correlationId": false, "sequence": true, "terminal": false }
+}

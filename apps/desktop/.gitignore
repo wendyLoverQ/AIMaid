@@ -3,4 +3,6 @@ out/
 release/
 coverage/
 *.log
+resources/core/*
+!resources/core/README.md
 *.tsbuildinfo

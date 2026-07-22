@@ -3,17 +3,29 @@
   "version": "0.1.0",
   "private": true,
   "description": "AIMaid Electron desktop shell",
+  "author": "AIMaid",
   "main": "./out/main/index.js",
   "type": "module",
   "scripts": {
+    "postinstall": "install-electron --no",
+    "predev": "npm run core:build",
     "dev": "electron-vite dev",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "core:build": "dotnet build ../../src/AIMaid.CoreHost/AIMaid.CoreHost.csproj -c Debug",
+    "core:publish": "node scripts/publish-core.mjs",
+    "ui:gate": "node scripts/check-ui-boundary.mjs",
+    "typecheck": "npm run ui:gate && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "lint": "eslint . --max-warnings=0",
+    "pretest": "npm run core:build",
     "test": "vitest run",
-    "build": "npm run typecheck && electron-vite build",
-    "pack": "npm run build && electron-builder --dir"
+    "build": "npm run typecheck && npm run core:publish && electron-vite build",
+    "pack": "npm run build && electron-builder --dir",
+    "pack:local": "node scripts/kill-packaged-app.mjs && npm run build && node scripts/merge-local-package.mjs"
   },
   "dependencies": {
+    "@pixi/sound": "^5.2.3",
+    "@pixi/unsafe-eval": "^7.4.3",
+    "pixi-live2d-display-lipsyncpatch": "^0.5.0-ls-8",
+    "pixi.js": "^7.4.3",
     "react": "19.2.7",
     "react-dom": "19.2.7"
   },
@@ -43,8 +55,32 @@
       "out/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "resources/core",
+        "to": "core",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/live2d",
+        "to": "live2d",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/ui",
+        "to": "ui",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
     "asar": true,
     "win": {
+      "icon": "resources/ui/maid_assistant_icon.ico",
       "target": "dir"
     }
   },

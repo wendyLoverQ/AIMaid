@@ -1,4 +1,10 @@
-export const WINDOW_KINDS = ['main', 'pet', 'chat', 'settings'] as const
+export const WINDOW_KINDS = [
+  'main', 'pet', 'chat', 'settings', 'status', 'appearance', 'bitcoin', 'timer', 'video',
+  'remote-video', 'reminders', 'notebook', 'vault', 'scripts', 'voice-conversation', 'characters',
+  'crypto-events', 'crypto-provider', 'crypto-chart', 'video-player', 'video-subtitles', 'remote-site-config',
+  'template-card', 'character-editor', 'agent-confirm', 'tray-menu', 'music-visualizer', 'douyin-login',
+  'ui-showcase'
+] as const
 
 export type WindowKind = (typeof WINDOW_KINDS)[number]
 

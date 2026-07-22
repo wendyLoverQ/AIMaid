@@ -1,0 +1,11 @@
+import { useMemo, useState } from 'react'
+export interface ComboboxOption { value: string; label: string; disabled?: boolean }
+export interface ComboboxProps { label: string; value?: string; options: readonly ComboboxOption[]; placeholder?: string; loading?: boolean; multiple?: boolean; onChange: (value: string) => void }
+export function Combobox({ label, value = '', options, placeholder, loading = false, onChange }: ComboboxProps): React.JSX.Element {
+  const [query, setQuery] = useState(''); const [open, setOpen] = useState(false); const [active, setActive] = useState(0)
+  const filtered = useMemo(() => options.filter((option) => option.label.toLowerCase().includes(query.toLowerCase())), [options, query])
+  const choose = (option: ComboboxOption): void => { if (option.disabled) return; onChange(option.value); setQuery(option.label); setOpen(false) }
+  return <div className="ui-combobox"><label><span className="ui-field__label">{label}</span><input className="ui-input" role="combobox" aria-expanded={open} aria-controls="combobox-options" aria-autocomplete="list" placeholder={placeholder} value={query || options.find((item) => item.value === value)?.label || ''} onFocus={() => setOpen(true)} onChange={(event) => { setQuery(event.target.value); setOpen(true); setActive(0) }} onKeyDown={(event) => { if (event.key === 'ArrowDown') { event.preventDefault(); setActive((index) => Math.min(index + 1, filtered.length - 1)) } else if (event.key === 'ArrowUp') { event.preventDefault(); setActive((index) => Math.max(0, index - 1)) } else if (event.key === 'Enter' && filtered[active] !== undefined) { event.preventDefault(); choose(filtered[active]) } else if (event.key === 'Escape') setOpen(false) }}/></label>
+    {open ? <div id="combobox-options" className="ui-combobox__options" role="listbox" aria-label={label}>{loading ? <span>正在加载…</span> : filtered.length === 0 ? <span>无匹配结果</span> : filtered.map((option, index) => <button key={option.value} type="button" role="option" aria-selected={option.value === value} data-active={index === active || undefined} disabled={option.disabled} onMouseDown={(event) => event.preventDefault()} onClick={() => choose(option)}>{option.label}</button>)}</div> : null}
+  </div>
+}

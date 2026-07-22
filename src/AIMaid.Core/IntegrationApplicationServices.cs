@@ -47,9 +47,23 @@ public sealed class SpeechApplicationService :
     }
 
     public async Task<OperationResult<string>> HandleAsync(TranscribeAudioCommand command, CancellationToken cancellationToken = default)
-        => !File.Exists(command.AudioPath)
-            ? OperationResult<string>.Failure("asr.file_missing", "音频文件不存在。")
-            : OperationResult<string>.Success(await asr.TranscribeAsync(command.AudioPath, cancellationToken));
+    {
+        if (!File.Exists(command.AudioPath))
+            return OperationResult<string>.Failure("asr.file_missing", "音频文件不存在。");
+        if (string.IsNullOrWhiteSpace(command.CharacterId))
+            return OperationResult<string>.Failure("asr.character_missing", "语音识别必须关联角色。");
+        var requestId = string.IsNullOrWhiteSpace(command.RequestId) ? $"aimaid_{Guid.NewGuid():N}" : command.RequestId.Trim();
+        var text = await asr.TranscribeAsync(
+            command.AudioPath,
+            command.CharacterId.Trim(),
+            string.IsNullOrWhiteSpace(command.SessionId) ? null : command.SessionId.Trim(),
+            string.IsNullOrWhiteSpace(command.Language) ? "zh" : command.Language.Trim(),
+            requestId,
+            cancellationToken);
+        return string.IsNullOrWhiteSpace(text)
+            ? OperationResult<string>.Failure("asr.empty_text", "语音识别没有返回文字。")
+            : OperationResult<string>.Success(text.Trim());
+    }
 }
 
 public sealed class FileApplicationService :

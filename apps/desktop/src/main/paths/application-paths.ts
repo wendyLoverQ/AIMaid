@@ -17,7 +17,7 @@ export function configureApplicationPaths(): ApplicationPaths {
     resourceRoot:
       absoluteOverride('AIMAID_RESOURCE_ROOT') ??
       (app.isPackaged ? join(process.resourcesPath, 'resources') : resolve(app.getAppPath(), 'resources')),
-    dataRoot: absoluteOverride('AIMAID_DATA_ROOT') ?? join(userRoot, 'data'),
+    dataRoot: absoluteOverride('AIMAID_DATA_ROOT') ?? defaultProjectDataRoot(),
     configRoot: absoluteOverride('AIMAID_CONFIG_ROOT') ?? join(userRoot, 'config'),
     cacheRoot: absoluteOverride('AIMAID_CACHE_ROOT') ?? join(userRoot, 'cache'),
     logRoot: absoluteOverride('AIMAID_LOG_ROOT') ?? join(userRoot, 'logs'),
@@ -35,6 +35,12 @@ export function configureApplicationPaths(): ApplicationPaths {
   process.env.AIMAID_CACHE_ROOT = paths.cacheRoot
   process.env.AIMAID_LOG_ROOT = paths.logRoot
   return paths
+}
+
+function defaultProjectDataRoot(): string {
+  return app.isPackaged
+    ? resolve(process.resourcesPath, '..', '..', '..', '..', '..', 'data')
+    : resolve(app.getAppPath(), '..', '..', 'data')
 }
 
 function absoluteOverride(name: string): string | undefined {

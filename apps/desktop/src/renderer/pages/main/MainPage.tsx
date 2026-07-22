@@ -1,89 +1,62 @@
-import { useEffect, useState } from 'react'
-import type { CoreStatus } from '../../../shared/core'
-import type { IpcEventEnvelope } from '../../../shared/ipc'
+import type { UiIconName } from '../../components/ui'
+import { Heading, LayoutSlot, Page, PageContent, Pressable, Strong, UiIcon, WindowTitleBar, useToast } from '../../components/ui'
 import type { WindowKind } from '../../../shared/windows'
-import { ActionButton } from '../../components/base/ActionButton'
-import { StatusPill } from '../../components/base/StatusPill'
-import { describeResponse } from '../../shared/format-error'
+import { bridge } from '../../shared/bridge'
+
+interface WorkbenchEntry {
+  title: string
+  target: WindowKind
+  icon: UiIconName
+}
+
+const GROUPS: ReadonlyArray<{ title: string; entries: readonly WorkbenchEntry[] }> = [
+  { title: '常用', entries: [
+    { title: '角色对话中心', target: 'voice-conversation', icon: 'message' },
+    { title: '提醒事项', target: 'reminders', icon: 'clock' },
+    { title: '记事本', target: 'notebook', icon: 'layers' }
+  ] },
+  { title: '媒体', entries: [
+    { title: '视频库', target: 'video', icon: 'image' },
+    { title: '远程视频中心', target: 'remote-video', icon: 'folder' }
+  ] },
+  { title: '工具', entries: [
+    { title: 'BTC', target: 'bitcoin', icon: 'activity' },
+    { title: '计时', target: 'timer', icon: 'gauge' },
+    { title: '密码库', target: 'vault', icon: 'settings' },
+    { title: '快捷脚本', target: 'scripts', icon: 'sparkles' }
+  ] }
+]
+const ENTRIES = GROUPS.flatMap(({ entries }) => entries)
 
 export function MainPage(): React.JSX.Element {
-  const [status, setStatus] = useState<CoreStatus | null>(null)
-  const [output, setOutput] = useState('等待测试…')
-  const [events, setEvents] = useState<IpcEventEnvelope[]>([])
-
-  useEffect(() => {
-    const unsubscribe = window.aimaid.core.subscribe?.((event) => {
-      setEvents((current) => [event, ...current].slice(0, 6))
-      if (event.type === 'core.status-changed') setStatus(event.payload as CoreStatus)
-    })
-    void refreshStatus()
-    return unsubscribe
-  }, [])
-
-  async function refreshStatus(): Promise<void> {
-    const response = await window.aimaid.core.status?.()
-    if (response?.success === true && response.payload !== null) setStatus(response.payload)
-    else if (response !== undefined) setOutput(describeResponse(response))
+  const { show } = useToast()
+  const open = async (target: WindowKind): Promise<void> => {
+    try {
+      const opened = await bridge.window.open(target)
+      if (!opened.success) {
+        show(opened.error?.message ?? '窗口打开失败，请稍后重试。', 'error')
+        return
+      }
+      const closed = await bridge.window.close()
+      if (!closed.success) show(closed.error?.message ?? '工作台关闭失败。', 'error')
+    } catch (reason) {
+      show(reason instanceof Error ? reason.message : '窗口打开失败，请稍后重试。', 'error')
+    }
   }
-
-  async function invokeEcho(): Promise<void> {
-    const response = await window.aimaid.core.invoke?.({ type: 'mock.echo', payload: { message: 'Renderer → Preload → Main → Mock Core' } })
-    if (response !== undefined) setOutput(describeResponse(response))
-  }
-
-  async function openWindow(target: WindowKind): Promise<void> {
-    const response = await window.aimaid.window.open?.(target)
-    if (response !== undefined) setOutput(describeResponse(response))
-  }
-
-  async function chooseFile(): Promise<void> {
-    const response = await window.aimaid.dialog?.openFile([{ name: '文本', extensions: ['txt', 'md'] }])
-    if (response !== undefined) setOutput(describeResponse(response))
-  }
-
-  return (
-    <main className="shell">
-      <header className="hero">
-        <div>
-          <p className="eyebrow">AIMaid Electron · Phase 1</p>
-          <h1>桌面端架构骨架</h1>
-          <p>当前页面只验证进程边界、窗口管理和 Mock Core 链路，不承载正式业务。</p>
-        </div>
-        <StatusPill status={status?.state ?? 'unknown'} />
-      </header>
-
-      <section className="panel">
-        <h2>多窗口注册表</h2>
-        <div className="actions">
-          <ActionButton onClick={() => void openWindow('pet')}>打开 PetWindow</ActionButton>
-          <ActionButton onClick={() => void openWindow('chat')}>打开 ChatWindow</ActionButton>
-          <ActionButton onClick={() => void openWindow('settings')}>打开 SettingsWindow</ActionButton>
-        </div>
-      </section>
-
-      <section className="grid">
-        <article className="panel">
-          <h2>安全桥验证</h2>
-          <div className="actions">
-            <ActionButton onClick={() => void invokeEcho()}>调用 Mock Core</ActionButton>
-            <ActionButton onClick={() => void refreshStatus()}>刷新状态</ActionButton>
-            <ActionButton onClick={() => void chooseFile()}>受限文件选择</ActionButton>
-          </div>
-          <pre>{output}</pre>
-        </article>
-        <article className="panel">
-          <h2>事件订阅</h2>
-          {events.length === 0 ? <p className="muted">暂无事件</p> : null}
-          <ol className="event-list">
-            {events.map((event) => (
-              <li key={event.requestId}>
-                <strong>{event.type}</strong>
-                <span>{new Date(event.timestamp).toLocaleTimeString()}</span>
-              </li>
-            ))}
-          </ol>
-        </article>
-      </section>
-    </main>
-  )
+  return <Page>
+    <WindowTitleBar title="工作台" />
+    <PageContent>
+      <LayoutSlot as="section" variant="workbench-sections" aria-label="全部功能">
+        <LayoutSlot as="header" variant="workbench-group__header">
+          <Heading level={2}>全部功能</Heading>
+        </LayoutSlot>
+        <LayoutSlot variant="workbench-grid">
+          {ENTRIES.map((entry) => <Pressable appearance="card" key={entry.target} onClick={() => void open(entry.target)}>
+            <LayoutSlot as="span" variant="workbench-card__icon"><UiIcon name={entry.icon} /></LayoutSlot>
+            <LayoutSlot as="span" variant="workbench-card__copy"><Strong>{entry.title}</Strong></LayoutSlot>
+          </Pressable>)}
+        </LayoutSlot>
+      </LayoutSlot>
+    </PageContent>
+  </Page>
 }
