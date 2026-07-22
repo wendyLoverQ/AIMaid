@@ -209,7 +209,9 @@ async function currentVoiceId(): Promise<string | undefined> {
 }
 async function currentCharacter() {
     const characters = await loadCharacters();
-    return characters.items.find((item) => item.roleId === characters.currentRoleId);
+    return characters.items.find((item) => item.roleId === characters.currentRoleId)
+        ?? characters.items.find((item) => item.isEnabled)
+        ?? characters.items[0];
 }
 async function realtimeTtsEnabled(): Promise<boolean> {
     const response = await bridge.core.invoke({ type: 'settings.get', payload: { keys: ['realtime_tts_enabled'] } });

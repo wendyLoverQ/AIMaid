@@ -15,7 +15,14 @@ describe('chat prompt voice input', () => {
     expect(prompt).toContain('async function transcribe(audio: Blob)')
     expect(prompt).toContain('void transcribe(audio)')
     expect(prompt).toContain('variant="promptVoice"')
+    expect(prompt).not.toMatch(/type: 'asr\.transcribe'[\s\S]*?characterId[\s\S]*?\}, 120000/)
     expect(canRequest('chat', 'speech.audio.importData')).toBe(true)
+  })
+
+  it('silently resolves an available role only when the transcribed text is sent', () => {
+    expect(prompt).toContain('const character = await currentCharacter()')
+    expect(prompt).toContain('characters.items.find((item) => item.isEnabled)')
+    expect(prompt).toContain('{ characterId: character.roleId }')
   })
 
   it('does not register a separate voice-input shortcut', () => {

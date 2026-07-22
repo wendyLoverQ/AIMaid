@@ -18,6 +18,11 @@ body.prompt-surface .ui-main-region > .ui-section[data-variant="prompt"] > .ui-i
   gap: var(--space-1);
 }
 
+body.prompt-surface .ui-main-region > .ui-section[data-variant="prompt"] > .ui-inline > .ui-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 body.prompt-surface .prompt-voice-button.ui-icon-button {
   width: 1.5rem;
   min-width: 1.5rem;
