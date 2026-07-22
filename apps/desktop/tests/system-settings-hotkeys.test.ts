@@ -23,9 +23,9 @@ describe('system settings direction hotkeys', () => {
 
   it('executes all Ctrl+arrow presentation actions and refreshes the pet renderer', async () => {
     let mode = 'image'
-    const execute = vi.fn((action: string) => {
+    const executeAction = vi.fn((action: string) => {
       if (action === 'cycle-mode') mode = 'png-sequence'
-      return Promise.resolve({ mode })
+      return Promise.resolve()
     })
     const executeHotkey = vi.fn((action: string) => {
       if (action === 'cycle-mode-reverse') mode = 'image'
@@ -35,7 +35,7 @@ describe('system settings direction hotkeys', () => {
     const service = new SystemSettingsService(
       { get: () => ({}), open: vi.fn() } as never,
       { notifyPresentationChanged } as never,
-      { currentMode: () => mode, execute, executeHotkey } as never,
+      { currentMode: () => mode, executeAction, executeHotkey } as never,
       { invoke: vi.fn((_id: string, request: { type: string }) => Promise.resolve(request.type === 'settings.get' ? { settings: [] } : {})) } as never,
       { warn: vi.fn() } as never
     )
@@ -53,8 +53,8 @@ describe('system settings direction hotkeys', () => {
       ))
     }
 
-    expect(execute).toHaveBeenNthCalledWith(1, 'cycle-mode', {})
-    expect(execute).toHaveBeenNthCalledWith(2, 'next-image', {})
+    expect(executeAction).toHaveBeenNthCalledWith(1, 'cycle-mode', {})
+    expect(executeAction).toHaveBeenNthCalledWith(2, 'next-image', {})
     expect(executeHotkey).toHaveBeenNthCalledWith(1, 'cycle-mode-reverse')
     expect(executeHotkey).toHaveBeenNthCalledWith(2, 'play-previous')
   })

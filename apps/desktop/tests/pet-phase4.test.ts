@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { isSafePetAssetPath, resolveExternalMediaPath } from '../src/main/services/pet-asset-service'
 import { PetAssetService } from '../src/main/services/pet-asset-service'
 import { PetPresentationService } from '../src/main/services/pet-presentation-service'
@@ -129,6 +129,74 @@ describe('phase 4 PetWindow integration', () => {
       expect(before.imageFolderName).toBe('扶她')
       expect(after.imageFolderName).toBe('妹妹')
       expect(after.currentImage?.name).toBe('01.png')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('indexes only the selected PNG sequence and reuses it until the directory changes', () => {
+    const root = mkdtempSync(resolve(tmpdir(), 'aimaid-png-index-'))
+    try {
+      const resources = resolve(root, 'live2d')
+      const ui = resolve(root, 'ui')
+      const notebook = resolve(root, 'notebook')
+      const images = resolve(root, 'images')
+      const png = resolve(root, 'png')
+      mkdirSync(resources, { recursive: true })
+      mkdirSync(ui, { recursive: true })
+      mkdirSync(notebook, { recursive: true })
+      mkdirSync(images, { recursive: true })
+      mkdirSync(resolve(png, 'xinxin'), { recursive: true })
+      mkdirSync(resolve(png, 'unused-role'), { recursive: true })
+      writeFileSync(resolve(png, 'xinxin', '01.png'), 'one')
+      writeFileSync(resolve(png, 'xinxin', '02.png'), 'two')
+      writeFileSync(resolve(png, 'unused-role', '01.png'), 'unused')
+      const log = { info: () => undefined, warn: () => undefined } as never
+      const assets = new PetAssetService(resources, ui, notebook, log)
+      const registerExternalFile = vi.spyOn(assets, 'registerExternalFile')
+      const presentation = new PetPresentationService(resolve(root, 'presentation.json'), assets, log, images, png)
+
+      const first = presentation.snapshot()
+      const second = presentation.snapshot()
+      const registeredPaths = registerExternalFile.mock.calls.map(([path]) => path)
+
+      expect(first.pngFrames).toHaveLength(2)
+      expect(second.pngFrames).toEqual(first.pngFrames)
+      expect(registeredPaths.filter((path) => path.includes('xinxin'))).toHaveLength(2)
+      expect(registeredPaths.some((path) => path.includes('unused-role'))).toBe(false)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('does not index PNG frames while ordinary image mode is active', async () => {
+    const root = mkdtempSync(resolve(tmpdir(), 'aimaid-image-mode-'))
+    try {
+      const resources = resolve(root, 'live2d')
+      const ui = resolve(root, 'ui')
+      const notebook = resolve(root, 'notebook')
+      const images = resolve(root, 'images')
+      const png = resolve(root, 'png')
+      mkdirSync(resources, { recursive: true })
+      mkdirSync(ui, { recursive: true })
+      mkdirSync(notebook, { recursive: true })
+      mkdirSync(images, { recursive: true })
+      mkdirSync(resolve(png, 'xinxin'), { recursive: true })
+      writeFileSync(resolve(images, '01.png'), 'image')
+      writeFileSync(resolve(png, 'xinxin', '01.png'), 'frame')
+      const log = { info: () => undefined, warn: () => undefined } as never
+      const assets = new PetAssetService(resources, ui, notebook, log)
+      const registerExternalFile = vi.spyOn(assets, 'registerExternalFile')
+      const presentation = new PetPresentationService(resolve(root, 'presentation.json'), assets, log, images, png)
+      await presentation.executeAction('cycle-mode', null as never)
+      await presentation.executeAction('cycle-mode', null as never)
+
+      const snapshot = presentation.snapshot()
+      const registeredPaths = registerExternalFile.mock.calls.map(([path]) => path)
+
+      expect(snapshot.mode).toBe('image')
+      expect(snapshot.pngFrames).toEqual([])
+      expect(registeredPaths.some((path) => path.includes(`${resolve(png)}\\`))).toBe(false)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

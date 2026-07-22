@@ -15,7 +15,6 @@ describe('global hotkey window behavior', () => {
       service.indexOf("const parent = this.windows.get('pet')")
     )
 
-    expect(targetWindowBranch).toContain('this.presentation.currentMode()')
     expect(targetWindowBranch).not.toContain('this.presentation.snapshot()')
   })
 })

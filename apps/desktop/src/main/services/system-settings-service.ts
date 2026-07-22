@@ -137,11 +137,11 @@ export class SystemSettingsService {
     }
     const parent = this.windows.get('pet')
     if (parent === undefined) return
-    if (action === 'cycle-display-mode') await this.presentation.execute('cycle-mode', parent)
+    if (action === 'cycle-display-mode') await this.presentation.executeAction('cycle-mode', parent)
     else if (action === 'cycle-display-mode-reverse') this.presentation.executeHotkey('cycle-mode-reverse')
     else if (action === 'play-next') {
       const mode = this.presentation.currentMode()
-      await this.presentation.execute(mode === 'image' ? 'next-image' : mode === 'png-sequence' ? 'cycle-png-role' : 'switch-live2d-role', parent)
+      await this.presentation.executeAction(mode === 'image' ? 'next-image' : mode === 'png-sequence' ? 'cycle-png-role' : 'switch-live2d-role', parent)
     } else if (action === 'play-previous') this.presentation.executeHotkey('play-previous')
     this.petWindows.notifyPresentationChanged()
   }

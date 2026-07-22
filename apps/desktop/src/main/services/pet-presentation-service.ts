@@ -27,6 +27,7 @@ const PNG_FPS_VALUES = [30, 40, 50, 60, 70, 80] as const
 export class PetPresentationService {
   private state: PersistedPresentation
   private snapshotLogged = false
+  private readonly mediaCache = new Map<string, { modifiedAtMs: number; items: PetMediaItem[] }>()
 
   constructor(
     private readonly statePath: string,
@@ -50,7 +51,7 @@ export class PetPresentationService {
     const roles = this.listDirectories(this.state.pngRoot)
     if (!roles.includes(this.state.pngRole)) this.state.pngRole = roles[0] ?? ''
     const roleFolder = this.state.pngRole === '' ? '' : join(this.state.pngRoot, this.state.pngRole)
-    const frames = this.listMedia(roleFolder)
+    const frames = this.state.mode === 'png-sequence' ? this.listMedia(roleFolder) : []
     const live2dRoles = this.assets.listLive2dRoles()
     if (!live2dRoles.includes(this.state.live2dRole)) this.state.live2dRole = live2dRoles[0] ?? ''
     const imageIndex = images.length === 0 ? 0 : Math.min(Math.max(0, this.state.imageIndex), images.length - 1)
@@ -86,6 +87,11 @@ export class PetPresentationService {
   }
 
   async execute(action: PetPresentationAction, parent: BrowserWindow): Promise<PetPresentationSnapshot> {
+    await this.executeAction(action, parent)
+    return this.snapshot()
+  }
+
+  async executeAction(action: PetPresentationAction, parent: BrowserWindow): Promise<void> {
     switch (action) {
       case 'toggle-pause': this.state.paused = !this.state.paused; break
       case 'cycle-mode': this.state.mode = nextMode(this.state.mode); break
@@ -99,10 +105,9 @@ export class PetPresentationService {
       case 'switch-live2d-role': this.cycleLive2dRole(); break
     }
     this.persist()
-    return this.snapshot()
   }
 
-  executeHotkey(action: 'cycle-mode-reverse' | 'play-previous'): PetPresentationSnapshot {
+  executeHotkey(action: 'cycle-mode-reverse' | 'play-previous'): void {
     if (action === 'cycle-mode-reverse') {
       this.state.mode = previousMode(this.state.mode)
     } else if (this.state.mode === 'image') {
@@ -118,7 +123,6 @@ export class PetPresentationService {
       this.state.live2dRole = roles.length === 0 ? '' : roles[(index - 1 + roles.length) % roles.length] ?? ''
     }
     this.persist()
-    return this.snapshot()
   }
 
   private nextImage(): void {
@@ -170,7 +174,13 @@ export class PetPresentationService {
   }
 
   private listMedia(folder: string): PetMediaItem[] {
-    return this.listFiles(folder).map((path) => ({ name: basename(path), url: this.assets.registerExternalFile(path) }))
+    if (folder === '' || !existsSync(folder)) return []
+    const modifiedAtMs = statSync(folder).mtimeMs
+    const cached = this.mediaCache.get(folder)
+    if (cached?.modifiedAtMs === modifiedAtMs) return cached.items
+    const items = this.listFiles(folder).map((path) => ({ name: basename(path), url: this.assets.registerExternalFile(path) }))
+    this.mediaCache.set(folder, { modifiedAtMs, items })
+    return items
   }
 
   private listFiles(folder: string): string[] {
