@@ -38,7 +38,7 @@ export const WINDOW_CAPABILITIES: Readonly<Record<WindowKind, WindowCapabilities
       'window.open', 'window.show', 'window.hide', 'window.close', 'window.quit', 'window.focus', 'core.invoke', 'core.status',
       'pet.ready', 'pet.getAssetManifest', 'pet.setIgnoreMouseEvents',
       'pet.dragStart', 'pet.dragMove', 'pet.dragEnd', 'pet.updateWindow',
-      'pet.reportVisualBounds', 'pet.reportMetrics',
+      'pet.reportMetrics',
       'pet.presentation.get', 'pet.presentation.execute', 'media.registerLocalFile'
     ],
     events: true

@@ -8,40 +8,12 @@ export interface Bounds {
   height: number
 }
 
-export interface Point {
-  x: number
-  y: number
-}
-
 export type PetWindowAlignment = 'center' | 'right-of-center'
 
 const PET_WINDOW_GAP = 16
 
-export function physicalPetItemBoundsToDip(
-  physicalPetWindowBounds: Bounds,
-  rendererItemBounds: Bounds,
-  rendererScaleFactor: number,
-  screenToDipPoint: (point: Point) => Point,
-  targetDisplayScaleFactor: (dipPoint: Point) => number
-): Bounds {
-  const physicalWidth = rendererItemBounds.width * rendererScaleFactor
-  const physicalHeight = rendererItemBounds.height * rendererScaleFactor
-  const physicalCenter = {
-    x: physicalPetWindowBounds.x + (rendererItemBounds.x + rendererItemBounds.width / 2) * rendererScaleFactor,
-    y: physicalPetWindowBounds.y + (rendererItemBounds.y + rendererItemBounds.height / 2) * rendererScaleFactor
-  }
-  const dipCenter = screenToDipPoint(physicalCenter)
-  const displayScaleFactor = targetDisplayScaleFactor(dipCenter)
-  return {
-    x: dipCenter.x - physicalWidth / displayScaleFactor / 2,
-    y: dipCenter.y - physicalHeight / displayScaleFactor / 2,
-    width: physicalWidth / displayScaleFactor,
-    height: physicalHeight / displayScaleFactor
-  }
-}
-
 export function petWindowAlignment(kind: WindowKind, displayMode?: PetDisplayMode): PetWindowAlignment {
-  return kind === 'chat' || kind === 'status' || displayMode === 'image' || displayMode === 'png-sequence'
+  return kind === 'status' || displayMode === 'image' || displayMode === 'png-sequence'
     ? 'center'
     : 'right-of-center'
 }

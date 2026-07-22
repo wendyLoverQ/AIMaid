@@ -92,7 +92,6 @@ export default function PetPage(): React.JSX.Element {
             dragMove: () => { void bridge.pet.dragMove(); },
             dragEnd: () => { void bridge.pet.dragEnd(); },
             updateWindow: (update) => { void bridge.pet.updateWindow(update); },
-            reportVisualBounds: (bounds) => { void bridge.pet.reportVisualBounds(bounds); },
             onScale: setRenderScale,
             onClick: (event) => pointerClickRef.current(event)
         });

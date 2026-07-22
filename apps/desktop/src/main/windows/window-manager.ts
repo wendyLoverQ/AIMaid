@@ -1,7 +1,6 @@
 import { screen } from 'electron'
 import type { BrowserWindow, Rectangle, WebContents } from 'electron'
 import type { PetDisplayMode } from '../../shared/presentation'
-import type { PetVisualBounds } from '../../shared/pet'
 import type { WindowKind } from '../../shared/windows'
 import type { Logger } from '../logging/logger'
 import type { WindowFactory } from './window-factory'
@@ -24,8 +23,6 @@ export class WindowManager {
   private readonly windows = new Map<WindowKind, BrowserWindow>()
   private destroyingAll = false
   private foreignWindowMoveHandlers: ForeignWindowMoveHandlers | undefined
-  private petVisualBounds: PetVisualBounds | undefined
-  private readonly petOwnedWindowContexts = new Map<WindowKind, WindowActionContext>()
 
   constructor(
     private readonly factory: WindowFactory,
@@ -37,8 +34,6 @@ export class WindowManager {
   }
 
   open(kind: WindowKind, ownerKind?: WindowKind, context: WindowActionContext = {}): BrowserWindow {
-    if (ownerKind === 'pet') this.petOwnedWindowContexts.set(kind, context)
-    else this.petOwnedWindowContexts.delete(kind)
     const existing = this.get(kind)
     if (existing !== undefined) {
       this.positionWindow(kind, existing, ownerKind, context)
@@ -86,7 +81,6 @@ export class WindowManager {
     })
     window.on('closed', () => {
       this.windows.delete(kind)
-      this.petOwnedWindowContexts.delete(kind)
       this.log.info('window', 'Window destroyed', { kind, windowId: window.id })
     })
     window.on('show', () => this.log.info('window', 'Window shown', { kind, windowId: window.id }))
@@ -209,21 +203,12 @@ export class WindowManager {
     }
   }
 
-  updatePetVisualBounds(bounds: PetVisualBounds): void {
-    this.petVisualBounds = bounds
-    for (const [kind, context] of this.petOwnedWindowContexts) {
-      const window = this.get(kind)
-      if (window !== undefined) this.positionWindow(kind, window, 'pet', context)
-    }
-  }
-
   destroyAll(): void {
     this.destroyingAll = true
     for (const window of this.windows.values()) {
       if (!window.isDestroyed()) window.destroy()
     }
     this.windows.clear()
-    this.petOwnedWindowContexts.clear()
   }
 
   private attachForeignWindowMoveGuard(window: BrowserWindow): void {
@@ -250,23 +235,14 @@ export class WindowManager {
     if (kind === 'pet' || kind === 'tray-menu') return
     const owner = ownerKind === undefined ? undefined : this.get(ownerKind)
     if (ownerKind === 'pet' && owner !== undefined) {
-      const petBounds = this.petVisualBounds
-      if (petBounds === undefined) return
-      const petCenter = { x: petBounds.x + petBounds.width / 2, y: petBounds.y + petBounds.height / 2 }
-      const workArea = screen.getDisplayNearestPoint(petCenter).workArea
-      const targetBounds = positionWindowNearPet(
+      const petBounds = owner.getBounds()
+      const workArea = screen.getDisplayMatching(petBounds).workArea
+      window.setBounds(positionWindowNearPet(
         window.getBounds(),
         petBounds,
         workArea,
         petWindowAlignment(kind, context.petDisplayMode)
-      )
-      window.setBounds(targetBounds, false)
-      this.log.info('window-positioning', 'Pet-owned window positioned', {
-        kind,
-        petBounds,
-        workArea,
-        windowBounds: window.getBounds()
-      })
+      ), false)
       return
     }
     const ownerCentered = owner !== undefined && OWNER_CENTERED_WINDOWS.has(kind)
