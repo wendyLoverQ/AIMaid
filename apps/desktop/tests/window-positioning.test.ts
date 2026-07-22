@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { petWindowAlignment, positionWindowNearPet, resolvePetVisualBounds } from '../src/main/windows/window-positioning'
+import { petWindowAlignment, physicalPetItemBoundsToDip, positionWindowNearPet } from '../src/main/windows/window-positioning'
 
 describe('pet-relative window positioning', () => {
   const workArea = { x: 0, y: 0, width: 1920, height: 1040 }
@@ -33,18 +33,22 @@ describe('pet-relative window positioning', () => {
     expect(petWindowAlignment('status', 'live2d')).toBe('center')
   })
 
-  it('converts the renderer item rectangle to an absolute desktop rectangle once', () => {
-    expect(resolvePetVisualBounds(
-      { x: -1920, y: -200, width: 4480, height: 1640 },
-      { x: 1200, y: 420, width: 560, height: 980 }
-    )).toEqual({ x: -720, y: 220, width: 560, height: 980 })
-  })
-
-  it('preserves negative virtual-desktop origins on a three-screen layout', () => {
-    expect(resolvePetVisualBounds(
-      { x: -1152, y: -1011, width: 4928, height: 3073 },
-      { x: 1512, y: 913, width: 560, height: 980 }
-    )).toEqual({ x: 360, y: -98, width: 560, height: 980 })
+  it('maps the fullscreen item through the physical virtual desktop on the 175% display', () => {
+    const screenToDipPoint = ({ x, y }: { x: number; y: number }) => ({
+      x: x >= 2560 ? 2048 + (x - 2560) / 1.75 : x / 1.25,
+      y: x >= 2560 ? -723 + (y + 1264) / 1.75 : y / 1.25
+    })
+    const mapped = physicalPetItemBoundsToDip(
+      { x: -1440, y: -1264, width: 6160, height: 3840 },
+      { x: 3538, y: 996, width: 560, height: 980 },
+      1.25,
+      screenToDipPoint,
+      () => 1.75
+    )
+    expect(mapped.x).toBeCloseTo(2289.4286, 4)
+    expect(mapped.y).toBeCloseTo(-11.5714, 4)
+    expect(mapped.width).toBe(400)
+    expect(mapped.height).toBe(700)
   })
 
   it('centers the actual chat window size on the reported item center', () => {
@@ -54,11 +58,5 @@ describe('pet-relative window positioning', () => {
       { x: 0, y: 0, width: 1920, height: 1080 },
       petWindowAlignment('chat', 'live2d')
     )).toEqual({ x: 320, y: 410, width: 520, height: 360 })
-  })
-
-  it('uses the centered pet item as the deterministic initial anchor before the renderer report arrives', () => {
-    expect(resolvePetVisualBounds(
-      { x: 0, y: 0, width: 1920, height: 1080 }
-    )).toEqual({ x: 680, y: 50, width: 560, height: 980 })
   })
 })

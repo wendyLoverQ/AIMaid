@@ -1,4 +1,3 @@
-import { PET_BASE_WINDOW_HEIGHT, PET_BASE_WINDOW_WIDTH } from '../../shared/pet-geometry'
 import type { PetDisplayMode } from '../../shared/presentation'
 import type { WindowKind } from '../../shared/windows'
 
@@ -9,25 +8,35 @@ export interface Bounds {
   height: number
 }
 
+export interface Point {
+  x: number
+  y: number
+}
+
 export type PetWindowAlignment = 'center' | 'right-of-center'
 
 const PET_WINDOW_GAP = 16
 
-export function resolvePetVisualBounds(
-  petWindowBounds: Bounds,
-  rendererVisualBounds?: Bounds
+export function physicalPetItemBoundsToDip(
+  physicalPetWindowBounds: Bounds,
+  rendererItemBounds: Bounds,
+  rendererScaleFactor: number,
+  screenToDipPoint: (point: Point) => Point,
+  targetDisplayScaleFactor: (dipPoint: Point) => number
 ): Bounds {
-  const relative = rendererVisualBounds ?? {
-    x: Math.round((petWindowBounds.width - PET_BASE_WINDOW_WIDTH) / 2),
-    y: Math.round((petWindowBounds.height - PET_BASE_WINDOW_HEIGHT) / 2),
-    width: PET_BASE_WINDOW_WIDTH,
-    height: PET_BASE_WINDOW_HEIGHT
+  const physicalWidth = rendererItemBounds.width * rendererScaleFactor
+  const physicalHeight = rendererItemBounds.height * rendererScaleFactor
+  const physicalCenter = {
+    x: physicalPetWindowBounds.x + (rendererItemBounds.x + rendererItemBounds.width / 2) * rendererScaleFactor,
+    y: physicalPetWindowBounds.y + (rendererItemBounds.y + rendererItemBounds.height / 2) * rendererScaleFactor
   }
+  const dipCenter = screenToDipPoint(physicalCenter)
+  const displayScaleFactor = targetDisplayScaleFactor(dipCenter)
   return {
-    x: petWindowBounds.x + relative.x,
-    y: petWindowBounds.y + relative.y,
-    width: relative.width,
-    height: relative.height
+    x: dipCenter.x - physicalWidth / displayScaleFactor / 2,
+    y: dipCenter.y - physicalHeight / displayScaleFactor / 2,
+    width: physicalWidth / displayScaleFactor,
+    height: physicalHeight / displayScaleFactor
   }
 }
 

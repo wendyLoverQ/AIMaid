@@ -129,7 +129,7 @@ export class SystemSettingsService {
   private async execute(action: HotkeyAction): Promise<void> {
     const definition = HOTKEY_ACTIONS.find((item) => item.action === action)!
     if ('target' in definition && definition.target !== undefined) {
-      this.windows.open(definition.target, 'pet', {
+      this.windows.toggle(definition.target, 'pet', {
         trigger: 'global-hotkey',
         petDisplayMode: this.presentation.snapshot().mode
       })

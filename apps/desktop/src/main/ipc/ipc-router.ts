@@ -20,7 +20,7 @@ import type { Logger } from '../logging/logger'
 import type { WindowManager } from '../windows/window-manager'
 import type { PetAssetService } from '../services/pet-asset-service'
 import type { PetWindowManager } from '../windows/pet-window-manager'
-import type { PetPerformanceMetrics, PetVisualBounds, PetWindowUpdate } from '../../shared/pet'
+import type { PetPerformanceMetrics, PetRendererVisualBounds, PetWindowUpdate } from '../../shared/pet'
 import { isPetPresentationAction } from '../../shared/presentation'
 import type { PetPresentationService } from '../services/pet-presentation-service'
 import type { DouyinSessionService } from '../services/douyin-session-service'
@@ -498,14 +498,20 @@ function readPetWindowUpdate(payload: unknown): PetWindowUpdate {
   return payload as unknown as PetWindowUpdate
 }
 
-function readPetVisualBounds(payload: unknown): PetVisualBounds {
+function readPetVisualBounds(payload: unknown): PetRendererVisualBounds {
   if (!isRecord(payload)) throw new TypeError('Invalid pet visual bounds payload')
-  const values = ['x', 'y', 'width', 'height'].map((key) => payload[key])
+  const values = ['x', 'y', 'width', 'height', 'scaleFactor'].map((key) => payload[key])
   if (!values.every((value) => typeof value === 'number' && Number.isFinite(value)) ||
-      (values[2] as number) <= 0 || (values[3] as number) <= 0) {
+      (values[2] as number) <= 0 || (values[3] as number) <= 0 || (values[4] as number) <= 0) {
     throw new TypeError('Invalid pet visual bounds payload')
   }
-  return { x: values[0] as number, y: values[1] as number, width: values[2] as number, height: values[3] as number }
+  return {
+    x: values[0] as number,
+    y: values[1] as number,
+    width: values[2] as number,
+    height: values[3] as number,
+    scaleFactor: values[4] as number
+  }
 }
 
 function toIpcError(error: unknown): IpcError {

@@ -53,6 +53,10 @@ export interface PetVisualBounds {
   height: number
 }
 
+export interface PetRendererVisualBounds extends PetVisualBounds {
+  scaleFactor: number
+}
+
 export interface PetLifecycleEvent {
   type: PetLifecycleSignal
   scaleFactor: number

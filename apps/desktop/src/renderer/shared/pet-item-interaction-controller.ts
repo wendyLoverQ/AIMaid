@@ -1,4 +1,4 @@
-import type { PetVisualBounds, PetWindowUpdate } from '../../shared/pet'
+import type { PetRendererVisualBounds, PetWindowUpdate } from '../../shared/pet'
 import { PET_BASE_WINDOW_HEIGHT, PET_BASE_WINDOW_WIDTH } from '../../shared/pet-geometry'
 
 const STORAGE_KEY = 'aimaid.pet-item-state.v1'
@@ -22,7 +22,7 @@ export interface PetItemInteractionOptions {
   dragMove: () => void
   dragEnd: () => void
   updateWindow: (update: PetWindowUpdate) => void
-  reportVisualBounds: (bounds: PetVisualBounds) => void
+  reportVisualBounds: (bounds: PetRendererVisualBounds) => void
   onScale: (scale: number) => void
   onClick: (event: MouseEvent) => void
 }
@@ -201,7 +201,8 @@ export class PetItemInteractionController {
         x: Math.round(bounds.x),
         y: Math.round(bounds.y),
         width: Math.round(bounds.width),
-        height: Math.round(bounds.height)
+        height: Math.round(bounds.height),
+        scaleFactor: window.devicePixelRatio
       })
     })
   }
