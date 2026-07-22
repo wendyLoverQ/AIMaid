@@ -241,21 +241,13 @@ export class WindowManager {
     if (kind === 'pet' || kind === 'tray-menu' || kind === 'music-visualizer') return
     const owner = ownerKind === undefined ? undefined : this.get(ownerKind)
     if (ownerKind === 'pet' && owner !== undefined) {
-      const petWindowBounds = owner.getBounds()
-      const petBounds = resolvePetVisualBounds(petWindowBounds, this.petVisualBounds)
-      const petAnchor = this.petVisualBounds?.anchorX === undefined || this.petVisualBounds.anchorY === undefined
-        ? undefined
-        : {
-            x: petWindowBounds.x + this.petVisualBounds.anchorX,
-            y: petWindowBounds.y + this.petVisualBounds.anchorY
-          }
+      const petBounds = resolvePetVisualBounds(owner.getBounds(), this.petVisualBounds)
       const workArea = screen.getDisplayMatching(petBounds).workArea
       window.setBounds(positionWindowNearPet(
         window.getBounds(),
         petBounds,
         workArea,
-        petWindowAlignment(kind, context.petDisplayMode),
-        petAnchor
+        petWindowAlignment(kind, context.petDisplayMode)
       ), false)
       return
     }

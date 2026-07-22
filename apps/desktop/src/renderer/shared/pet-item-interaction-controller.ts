@@ -82,10 +82,6 @@ export class PetItemInteractionController {
     this.setIgnoring(!this.isInteractivePoint(this.lastPointerX, this.lastPointerY))
   }
 
-  refreshVisualBounds(): void {
-    this.queueVisualBoundsReport()
-  }
-
   resetPosition(): void {
     this.offsetX = 0
     this.offsetY = 0

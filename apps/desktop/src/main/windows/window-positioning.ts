@@ -9,7 +9,7 @@ export interface Bounds {
   height: number
 }
 
-export type PetWindowAlignment = 'center' | 'right-of-pet'
+export type PetWindowAlignment = 'center' | 'right-of-center'
 
 const PET_WINDOW_GAP = 16
 
@@ -31,21 +31,20 @@ export function resolvePetVisualBounds(petWindowBounds: Bounds, rendererVisualBo
 export function petWindowAlignment(kind: WindowKind, displayMode?: PetDisplayMode): PetWindowAlignment {
   return kind === 'status' || displayMode === 'image' || displayMode === 'png-sequence'
     ? 'center'
-    : 'right-of-pet'
+    : 'right-of-center'
 }
 
 export function positionWindowNearPet(
   windowBounds: Bounds,
   petBounds: Bounds,
   workArea: Bounds,
-  alignment: PetWindowAlignment,
-  petAnchor?: { x: number; y: number }
+  alignment: PetWindowAlignment
 ): Bounds {
   const width = Math.min(windowBounds.width, workArea.width)
   const height = Math.min(windowBounds.height, workArea.height)
-  const anchorX = petAnchor?.x ?? petBounds.x + petBounds.width / 2
-  const anchorY = petAnchor?.y ?? petBounds.y + petBounds.height / 2
-  const desiredX = alignment === 'center' ? anchorX - width / 2 : petBounds.x + petBounds.width + PET_WINDOW_GAP
+  const anchorX = petBounds.x + petBounds.width / 2
+  const anchorY = petBounds.y + petBounds.height / 2
+  const desiredX = alignment === 'center' ? anchorX - width / 2 : anchorX + PET_WINDOW_GAP
   const desiredY = anchorY - height / 2
 
   return {

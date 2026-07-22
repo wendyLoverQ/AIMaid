@@ -1,4 +1,4 @@
-import type { PetLifecycleEvent, PetPerformanceMetrics, PetRuntimeState, PetVisualBounds } from '../../shared/pet'
+import type { PetLifecycleEvent, PetPerformanceMetrics, PetRuntimeState } from '../../shared/pet'
 import { bridge } from '../shared/bridge'
 import { PerformanceMonitor } from './performance-monitor'
 import { Live2DPlayer } from './runtime/Live2DPlayer'
@@ -88,26 +88,6 @@ export class PetRuntime {
 
   containsPoint(clientX: number, clientY: number): boolean {
     return this.state === 'ready' && this.player.containsClientPoint(clientX, clientY)
-  }
-
-  getVisualBounds(): PetVisualBounds | null {
-    const geometry = this.player.getModelGeometry()
-    if (geometry === null) return null
-    const canvasBounds = this.canvas.getBoundingClientRect()
-    const metrics = this.player.getRenderMetrics()
-    if (canvasBounds.width <= 0 || canvasBounds.height <= 0 || metrics.backingWidth <= 0 || metrics.backingHeight <= 0) return null
-    // Pixi model geometry is reported in backing-pixel coordinates. Convert it
-    // to renderer CSS DIPs before the main process adds the fullscreen window origin.
-    const scaleX = canvasBounds.width / metrics.backingWidth
-    const scaleY = canvasBounds.height / metrics.backingHeight
-    return {
-      x: Math.round(canvasBounds.x + geometry.modelBounds.x * scaleX),
-      y: Math.round(canvasBounds.y + geometry.modelBounds.y * scaleY),
-      width: Math.round(geometry.modelBounds.width * scaleX),
-      height: Math.round(geometry.modelBounds.height * scaleY),
-      anchorX: Math.round(canvasBounds.x + geometry.anchors.bodyCenter.x * scaleX),
-      anchorY: Math.round(canvasBounds.y + geometry.anchors.bodyCenter.y * scaleY)
-    }
   }
 
   setScale(scale: number): void {
