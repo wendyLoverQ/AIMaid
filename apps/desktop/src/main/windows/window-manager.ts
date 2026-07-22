@@ -41,8 +41,10 @@ export class WindowManager {
       this.positionWindow(kind, existing, ownerKind, context)
       if (kind === 'pet') existing.showInactive()
       else {
+        if (kind === 'chat') existing.setAlwaysOnTop(true, 'screen-saver')
         existing.show()
         existing.focus()
+        if (kind === 'chat') existing.moveTop()
       }
       this.log.info('window', 'Existing window opened', { kind, windowId: existing.id, ...context })
       return existing
@@ -50,6 +52,8 @@ export class WindowManager {
 
     const definition = WINDOW_REGISTRY[kind]
     const window = this.factory.create(definition)
+
+    if (kind === 'chat') window.setAlwaysOnTop(true, 'screen-saver')
 
     if (kind !== 'pet') {
       this.attachForeignWindowMoveGuard(window)
@@ -65,6 +69,7 @@ export class WindowManager {
         shown = true
         window.show()
         window.focus()
+        if (kind === 'chat') window.moveTop()
       }
       window.once('ready-to-show', showLoadedWindow)
       window.webContents.once('did-finish-load', showLoadedWindow)
