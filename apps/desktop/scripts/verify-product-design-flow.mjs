@@ -107,12 +107,12 @@ try {
       notebookCreateRoundTrip = created && titled && (await evaluate(client, 'document.body.innerText')).includes('点击验收笔记')
     }
     if (kind === 'appearance') {
-      const selected = await clickButton(client, 'Fluent 雾白')
+      const selected = await clickButton(client, '港湾蓝')
       await delay(500)
       await client.send('Page.reload', { ignoreCache: true })
       await delay(900)
       const currentTheme = await evaluate(client, `document.querySelector('[aria-current="true"]')?.textContent ?? ''`)
-      appearanceSaveRoundTrip = selected && currentTheme.includes('Fluent 雾白')
+      appearanceSaveRoundTrip = selected && currentTheme.includes('港湾蓝')
     }
     if (kind === 'timer') {
       const started = await clickButton(client, '10 分钟')

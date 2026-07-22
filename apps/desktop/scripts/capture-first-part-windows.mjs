@@ -4,7 +4,8 @@ import { resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 
 const port = 9335
-const appPath = resolve('release/win-unpacked/AIMaid.exe')
+const useDevelopmentBuild = process.env.AIMAID_CAPTURE_DEV === '1'
+const appPath = useDevelopmentBuild ? resolve('node_modules/electron/dist/electron.exe') : resolve('release/win-unpacked/AIMaid.exe')
 const outputDirectory = resolve('artifacts/ui-first-part')
 const windows = [
   { kind: 'main', width: 1280, height: 820, minWidth: 960, minHeight: 680 },
@@ -26,7 +27,8 @@ const selectedWindows = process.env.AIMAID_CAPTURE_WINDOW === undefined
 
 await mkdir(outputDirectory, { recursive: true })
 const profile = resolve(`artifacts/.capture-first-${Date.now()}`)
-const app = spawn(appPath, [`--remote-debugging-port=${port}`, `--user-data-dir=${profile}`], {
+const appArguments = [...(useDevelopmentBuild ? ['.'] : []), `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`]
+const app = spawn(appPath, appArguments, {
   stdio: 'ignore', windowsHide: true,
   env: {
     ...process.env,

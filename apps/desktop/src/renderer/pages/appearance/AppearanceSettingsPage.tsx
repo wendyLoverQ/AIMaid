@@ -1,27 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AppearanceConfigurationDto } from '../../../shared/business'
-import { Badge, ColorPalette, LayoutSlot, Page, PageContent, Pressable, SegmentedControl, SettingRow, SettingsSection, Stack, Strong, Switch, WindowTitleBar, useToast } from '../../components/ui'
+import { Badge, ColorPalette, LayoutSlot, Page, PageContent, Pressable, SegmentedControl, SettingRow, SettingsSection, Stack, Strong, Switch, Text, WindowTitleBar, useToast } from '../../components/ui'
 import { bridge } from '../../shared/bridge'
 import { saveAndApplyAppearance } from './appearance-runtime'
 
-interface ThemeDefinition { id: string; name: string; colors: readonly [string, string, string, string] }
+interface ThemeDefinition { id: string; name: string; description: string; colors: readonly [string, string, string, string] }
 const THEMES: readonly ThemeDefinition[] = [
-  theme('fluent_fog', 'Fluent 雾白', '#E9ECEF', '#E1E5E9', '#FFFFFF', '#0F6CBD'),
-  theme('macos_mist', 'macOS 云雾', '#E7E9EC', '#DDE1E6', '#FFFFFF', '#1477D4'),
-  theme('material_sage', 'Material 鼠尾草', '#E6E8E2', '#DCE2D9', '#FFFFFF', '#4D6355'),
-  theme('wechat_soft', '微信柔和', '#E8EBE9', '#DDE3DF', '#FFFFFF', '#07C160'),
-  theme('notion_paper', 'Notion 纸页', '#E9E7E2', '#E2DED6', '#FFFFFF', '#6B5C4D'),
-  theme('slack_aubergine', 'Slack 茄紫', '#E8E5EA', '#3F2346', '#FFFFFF', '#7B3F86'),
-  theme('neutral_soft', '静灰低眩光', '#E7E9EB', '#DDE0E3', '#FFFFFF', '#49727A'),
-  theme('cream_paper', '奶油书页', '#E9E3DA', '#DED4C7', '#FFFFFF', '#A05D3E'),
-  theme('cool_slate', '冷调石板', '#E2E7EB', '#D4DCE2', '#FFFFFF', '#416E91'),
-  theme('anime_sakura_cream', '樱花奶油', '#ECE5E8', '#E2D4DA', '#FFFFFF', '#B65378'),
-  theme('anime_mint_soda', '薄荷苏打', '#E1EAE7', '#D2DFDB', '#FFFFFF', '#2F806B'),
-  theme('anime_peach_cream', '桃子奶油', '#ECE0DA', '#E0CEC5', '#FFFFFF', '#B35D3D'),
-  theme('anime_sky_sailor', '天空水手', '#E0E7EE', '#CFDAE5', '#FFFFFF', '#3F73AE'),
-  theme('anime_candy_park', '糖果乐园', '#E7E2EB', '#D8CFE0', '#FFFFFF', '#8E56A8')
+  theme('harbor_blue', '港湾蓝', '清爽、沉静', '#EAF2F8', '#DDEAF4', '#FFFFFF', '#286F9D'),
+  theme('cedar_green', '雪松绿', '自然、专注', '#EEF2EB', '#DFE9DC', '#FEFFFD', '#4C7650'),
+  theme('amber_sand', '琥珀砂', '温暖、柔和', '#F7F0E3', '#ECE1CC', '#FFFDFC', '#A66A24'),
+  theme('rose_clay', '玫瑰陶', '克制、雅致', '#F8ECEC', '#F0DCDD', '#FFFDFD', '#B34F5F'),
+  theme('lavender_haze', '薰衣草雾', '轻盈、舒缓', '#F2EEF8', '#E5DCF1', '#FFFEFF', '#7655A6'),
+  theme('sea_glass', '海盐青', '通透、平和', '#E8F3F1', '#D8E9E5', '#FCFFFE', '#287C72'),
+  theme('river_stone', '河岸石', '中性、耐看', '#F0F0EC', '#E4E3DC', '#FEFEFC', '#5B6864'),
+  theme('apricot_glow', '杏子光', '明快、亲和', '#F7EEE8', '#EEDDD1', '#FFFDFC', '#BB6444'),
+  theme('iris_blue', '鸢尾蓝', '理性、优雅', '#EDF0F8', '#DDE3F2', '#FFFFFF', '#4F67A8')
 ]
-const DEFAULT_CONFIGURATION: AppearanceConfigurationDto = { themeId: 'neutral_soft', contentBrightness: 'Standard', fontFamily: '', fontScale: 1, cornerRadiusStyle: 'Medium', density: 'Standard', headerStyle: 'Subtle', animationsEnabled: true }
+const DEFAULT_CONFIGURATION: AppearanceConfigurationDto = { themeId: 'sea_glass', contentBrightness: 'Standard', fontFamily: '', fontScale: 1, cornerRadiusStyle: 'Medium', density: 'Standard', headerStyle: 'Subtle', animationsEnabled: true }
 
 export function AppearanceSettingsPage(): React.JSX.Element {
   const toast = useToast()
@@ -78,15 +73,23 @@ export function AppearanceSettingsPage(): React.JSX.Element {
 
 function ThemeCard({ item, selected, select }: { item: ThemeDefinition; selected: boolean; select: () => void }): React.JSX.Element {
   return <Pressable appearance="card" selected={selected} aria-current={selected ? 'true' : undefined} onClick={select}>
-    <LayoutSlot as="span" variant="theme-card__preview"><ColorPalette colors={item.colors} /><LayoutSlot as="span" variant="theme-card__block" /><LayoutSlot as="span" variant="theme-card__block" /><LayoutSlot as="span" variant="theme-card__block" /></LayoutSlot>
-    <Stack gap="xs"><Strong>{item.name}</Strong>{selected ? <Badge tone="accent">当前方案</Badge> : null}</Stack>
+    <LayoutSlot as="span" variant="theme-card__preview"><ColorPalette colors={item.colors} /></LayoutSlot>
+    <LayoutSlot as="span" variant="theme-card__meta">
+      <Stack gap="xs"><Strong>{item.name}</Strong><Text size="xs" tone="muted">{item.description}</Text></Stack>
+      {selected ? <Badge tone="accent">当前方案</Badge> : null}
+    </LayoutSlot>
   </Pressable>
 }
-function theme(id: string, name: string, ...colors: [string, string, string, string]): ThemeDefinition { return { id, name, colors } }
-function colorsFor(themeId: string): readonly [string, string, string, string] { return THEMES.find((item) => item.id === themeId)?.colors ?? THEMES.find((item) => item.id === DEFAULT_CONFIGURATION.themeId)!.colors }
+function theme(id: string, name: string, description: string, ...colors: [string, string, string, string]): ThemeDefinition { return { id, name, description, colors } }
+function colorsFor(themeId: string): readonly [string, string, string, string] {
+  const selected = THEMES.find((item) => item.id === themeId)
+  if (selected === undefined) throw new Error(`未知配色方案：${themeId}`)
+  return selected.colors
+}
 function normalizeThemeId(themeId: string): string {
   const legacy: Readonly<Record<string, string>> = {
-    fluent_fog_light: 'fluent_fog', macos_mist_light: 'macos_mist', material_sage_light: 'material_sage', wechat_soft_light: 'wechat_soft', notion_paper_light: 'notion_paper', slack_aubergine_light: 'slack_aubergine', neutral_soft_light: 'neutral_soft', cream_paper_light: 'cream_paper', cool_slate_light: 'cool_slate', fluent_graphite_dark: 'neutral_soft', macos_ocean_dark: 'neutral_soft', material_indigo_dark: 'neutral_soft', wechat_soft_dark: 'neutral_soft', vscode_modern_dark: 'neutral_soft', jetbrains_darcula: 'neutral_soft', oled_black_dark: 'neutral_soft', anime_neon_nightingale: 'neutral_soft'
+    fluent_fog: 'harbor_blue', macos_mist: 'harbor_blue', material_sage: 'cedar_green', wechat_soft: 'sea_glass', notion_paper: 'amber_sand', slack_aubergine: 'lavender_haze', neutral_soft: 'river_stone', cream_paper: 'amber_sand', cool_slate: 'iris_blue', anime_sakura_cream: 'rose_clay', anime_mint_soda: 'sea_glass', anime_peach_cream: 'apricot_glow', anime_sky_sailor: 'harbor_blue', anime_candy_park: 'lavender_haze',
+    fluent_fog_light: 'harbor_blue', macos_mist_light: 'harbor_blue', material_sage_light: 'cedar_green', wechat_soft_light: 'sea_glass', notion_paper_light: 'amber_sand', slack_aubergine_light: 'lavender_haze', neutral_soft_light: 'river_stone', cream_paper_light: 'amber_sand', cool_slate_light: 'iris_blue', fluent_graphite_dark: 'river_stone', macos_ocean_dark: 'harbor_blue', material_indigo_dark: 'iris_blue', wechat_soft_dark: 'sea_glass', vscode_modern_dark: 'river_stone', jetbrains_darcula: 'river_stone', oled_black_dark: 'river_stone', anime_neon_nightingale: 'lavender_haze'
   }
   const migrated = legacy[themeId]
   if (migrated !== undefined) return migrated

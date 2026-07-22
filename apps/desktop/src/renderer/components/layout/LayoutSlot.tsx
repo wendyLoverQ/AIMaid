@@ -8,7 +8,7 @@ export type LayoutSlotVariant =
   | 'reminder-list' | 'reminder-row__time' | 'dialog-form-section'
   | 'notebook-workspace' | 'notebook-list' | 'notebook-editor__header' | 'notebook-toolbar' | 'notebook-editor__body' | 'notebook-attachments' | 'notebook-attachment'
   | 'conversation-workspace' | 'conversation-list' | 'conversation-header' | 'conversation-messages' | 'conversation-message conversation-message--user' | 'conversation-message conversation-message--assistant' | 'conversation-composer'
-  | 'appearance-content' | 'theme-card-grid' | 'theme-card__preview' | 'theme-card__block'
+  | 'appearance-content' | 'theme-card-grid' | 'theme-card__preview' | 'theme-card__meta'
   | 'status-overview' | 'status-tier status-tier--primary' | 'status-tier status-tier--secondary' | 'status-tier status-tier--detail'
   | 'settings-workspace' | 'settings-navigation' | 'settings-category-list' | 'settings-content' | 'settings-content__header' | 'settings-search-results'
   | 'video-library-grid' | 'video-library-card__cover' | 'video-library-card__copy'

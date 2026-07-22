@@ -54,6 +54,17 @@ describe('renderer UI foundation', () => {
     expect(runtime).toContain("root.style.colorScheme = 'only light'")
   })
 
+  it('offers nine compact replacement palettes with balanced cards', () => {
+    const catalog = read('src/renderer/pages/appearance/AppearanceSettingsPage.tsx')
+    const styles = read('src/renderer/components/components.css')
+    const visibleCatalog = catalog.slice(catalog.indexOf('const THEMES'), catalog.indexOf('const DEFAULT_CONFIGURATION'))
+    expect(visibleCatalog.match(/\btheme\('/gu)).toHaveLength(9)
+    expect(visibleCatalog).not.toMatch(/Fluent|macOS|Material|微信|Notion|Slack|静灰|奶油书页|冷调石板|樱花奶油|薄荷苏打|桃子奶油|天空水手|糖果乐园/u)
+    expect(styles).toContain('.theme-card-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));')
+    expect(styles).toContain('.theme-card__preview .ui-color-palette { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); width: 100%;')
+    expect(styles).toContain('.theme-card__meta { display: flex;')
+  })
+
   it('keeps direct Electron bridge access inside renderer/shared/bridge', () => {
     const pageSources = [
       'src/renderer/App.tsx',
