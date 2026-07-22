@@ -41,8 +41,8 @@ export const WINDOW_REGISTRY: Readonly<Record<WindowKind, WindowDefinition>> = {
     route: 'chat',
     closeBehavior: 'hide',
     options: {
-      width: 400,
-      height: 200,
+      width: 300,
+      height: 140,
       transparent: true,
       backgroundColor: '#00000000',
       frame: false,

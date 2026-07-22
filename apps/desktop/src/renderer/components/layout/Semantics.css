@@ -1,4 +1,4 @@
 body.prompt-surface .ui-main-region > .ui-section[data-variant="prompt"] {
-  width: min(360px, calc(100vw - var(--space-6)));
-  padding: var(--space-4) var(--space-5);
+  width: min(272px, calc(100vw - var(--space-4)));
+  padding: var(--space-3) var(--space-4);
 }
