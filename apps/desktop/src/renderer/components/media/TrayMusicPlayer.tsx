@@ -12,13 +12,14 @@ export interface TrayMusicPlayerProps {
 
 export function TrayMusicPlayer({ title, singer, paused, onTogglePause, onStop }: TrayMusicPlayerProps): React.JSX.Element {
   return <section className="ui-tray-music-player" aria-label="音乐播放器">
-    <Text size="xs" tone="muted">正在播放</Text>
-    <Text size="sm" wrap>{title}</Text>
-    {singer === '' ? null : <Text size="xs" tone="secondary" wrap>{singer}</Text>}
+    <div className="ui-tray-music-player__copy">
+      <Text size="sm" wrap>{title}</Text>
+      {singer === '' ? null : <Text size="xs" tone="secondary" wrap>{singer}</Text>}
+    </div>
     <div className="ui-tray-music-player__controls" role="group" aria-label="播放控制">
       <IconButton
         label={paused ? '继续播放' : '暂停'}
-        size="lg"
+        size="sm"
         className="ui-tray-music-player__control ui-tray-music-player__control--primary"
         onClick={onTogglePause}
       >
@@ -26,7 +27,7 @@ export function TrayMusicPlayer({ title, singer, paused, onTogglePause, onStop }
       </IconButton>
       <IconButton
         label="停止"
-        size="lg"
+        size="sm"
         className="ui-tray-music-player__control"
         onClick={onStop}
       >

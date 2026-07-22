@@ -22,7 +22,7 @@ describe('tray music controls', () => {
   it('shrinks the menu when idle and preserves its bottom edge', () => {
     const router = readFileSync(resolve(root, 'src/main/ipc/ipc-router.ts'), 'utf8')
     expect(router).toContain("case 'tray.setMusicVisible'")
-    expect(router).toContain('const height = visible ? 480 : 344')
+    expect(router).toContain('const height = visible ? 384 : 344')
     expect(router).toContain('bottom - height')
   })
 

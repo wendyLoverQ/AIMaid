@@ -303,7 +303,7 @@ export class IpcRouter {
       }
       case 'tray.setMusicVisible': {
         const visible = readBoolean(request.payload, 'visible')
-        const height = visible ? 480 : 344
+        const height = visible ? 384 : 344
         const window = this.windows.get('tray-menu')
         if (window === undefined) throw new Error('Tray menu window is unavailable')
         const bounds = window.getBounds()
