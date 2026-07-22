@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AIMaidApi, Unsubscribe, VoiceInputCommand } from '../shared/api'
+import type { AIMaidApi, Unsubscribe } from '../shared/api'
 import { WINDOW_CAPABILITIES, canRequest } from '../shared/capabilities'
 import { coreRequestTimeoutMs, isCoreEventType } from '../shared/core'
 import type { CoreEventType, CoreRequest, CoreStatus } from '../shared/core'
@@ -158,18 +158,6 @@ const voiceInputApi: AIMaidApi['voiceInput'] = windowKind === 'voice-input' || c
             consume: () => invoke<{ id: string | null; text: string | null }>('voice-input.consume', {}),
             acknowledge: (id: string) => invoke<{ acknowledged: boolean }>('voice-input.acknowledge', { id })
           }
-        : {}),
-      ...(windowKind === 'voice-input'
-        ? { onCommand: (listener: (command: VoiceInputCommand) => void): Unsubscribe => {
-            const handler = (_event: Electron.IpcRendererEvent, command: VoiceInputCommand): void => listener(command)
-            ipcRenderer.on(IPC_CHANNELS.voiceInput, handler)
-            const unsubscribe = (): void => {
-              ipcRenderer.off(IPC_CHANNELS.voiceInput, handler)
-              subscriptions.delete(unsubscribe)
-            }
-            subscriptions.add(unsubscribe)
-            return unsubscribe
-          } }
         : {})
     })
   : undefined
@@ -262,7 +250,7 @@ function createRequestId(): string {
 
 function clampTimeout(timeoutMs: number): number {
   if (!Number.isFinite(timeoutMs)) return 10_000
-  return Math.min(120_000, Math.max(100, Math.trunc(timeoutMs)))
+  return Math.min(600_000, Math.max(100, Math.trunc(timeoutMs)))
 }
 
 function forbiddenResponse<T>(type: IpcRequestType): IpcResponseEnvelope<T> {

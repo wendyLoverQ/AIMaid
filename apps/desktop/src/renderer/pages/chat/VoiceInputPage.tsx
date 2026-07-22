@@ -12,8 +12,11 @@ export function VoiceInputPage(): React.JSX.Element {
   const chunksRef = useRef<Blob[]>([])
   const characterIdRef = useRef('')
   const disposedRef = useRef(false)
+  const discardRecordingRef = useRef(false)
 
   const fail = useCallback((reason: unknown): void => {
+    discardRecordingRef.current = true
+    if (recorderRef.current?.state === 'recording') recorderRef.current.stop()
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = undefined
     setState('error')
@@ -57,9 +60,10 @@ export function VoiceInputPage(): React.JSX.Element {
       if (navigator.mediaDevices?.getUserMedia === undefined || typeof MediaRecorder === 'undefined') {
         throw new Error('当前系统不支持麦克风录音。')
       }
-      const [characters, stream] = await Promise.all([
+      const [characters, stream, virtualKeys] = await Promise.all([
         loadCharacters(),
-        navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false })
+        navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false }),
+        loadVoiceInputVirtualKeys()
       ])
       if (disposedRef.current) {
         stream.getTracks().forEach((track) => track.stop())
@@ -76,13 +80,17 @@ export function VoiceInputPage(): React.JSX.Element {
       const recorder = new MediaRecorder(stream, { mimeType })
       recorderRef.current = recorder
       chunksRef.current = []
+      discardRecordingRef.current = false
       recorder.ondataavailable = (event) => { if (event.data.size > 0) chunksRef.current.push(event.data) }
       recorder.onerror = () => fail(new Error('麦克风录音失败，请检查系统权限。'))
       recorder.onstop = () => {
         stream.getTracks().forEach((track) => track.stop())
         streamRef.current = undefined
         recorderRef.current = undefined
-        if (disposedRef.current) return
+        if (disposedRef.current || discardRecordingRef.current) {
+          chunksRef.current = []
+          return
+        }
         const audio = new Blob(chunksRef.current, { type: recorder.mimeType })
         chunksRef.current = []
         if (audio.size === 0) {
@@ -93,19 +101,19 @@ export function VoiceInputPage(): React.JSX.Element {
       }
       recorder.start(500)
       setState('recording')
-      setMessage('正在录音·点击结束')
+      setMessage('正在录音')
+      const released = await bridge.core.invoke({ type: 'system.keyboard.wait_release', payload: { virtualKeys } }, 600_000)
+      if (!released.success) throw new Error(released.error?.message ?? '全局快捷键松开检测失败。')
+      if (!disposedRef.current) stopRecording()
     }
     void start().catch(fail)
-    const unsubscribe = bridge.voiceInput.onCommand((command) => {
-      if (command.type === 'stop') stopRecording()
-    })
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') void bridge.window.close()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => {
       disposedRef.current = true
-      unsubscribe()
+      discardRecordingRef.current = true
       window.removeEventListener('keydown', onKeyDown)
       document.body.classList.remove('voice-input-surface')
       recorderRef.current?.stop()
@@ -117,6 +125,32 @@ export function VoiceInputPage(): React.JSX.Element {
     if (state === 'recording') stopRecording()
     else if (state === 'error') void bridge.window.close()
   }} />
+}
+
+async function loadVoiceInputVirtualKeys(): Promise<number[]> {
+  const response = await bridge.core.invoke({ type: 'settings.get', payload: { keys: ['hotkey_open_voice_input'] } })
+  if (!response.success) throw new Error(response.error?.message ?? '语音快捷键读取失败。')
+  const payload = response.payload as { settings?: Array<{ key: string; value: string }> } | null
+  const gesture = payload?.settings?.find((item) => item.key === 'hotkey_open_voice_input')?.value || 'Ctrl+Shift+S'
+  return gesture.split('+').map((part) => virtualKey(part.trim()))
+}
+
+function virtualKey(part: string): number {
+  const named: Record<string, number> = {
+    Ctrl: 0x11, Alt: 0x12, Shift: 0x10, Win: 0x5b,
+    Backspace: 0x08, Tab: 0x09, Enter: 0x0d, Escape: 0x1b, Space: 0x20,
+    PageUp: 0x21, PageDown: 0x22, End: 0x23, Home: 0x24,
+    Left: 0x25, Up: 0x26, Right: 0x27, Down: 0x28, Insert: 0x2d, Delete: 0x2e
+  }
+  const known = named[part]
+  if (known !== undefined) return known
+  if (/^[A-Z0-9]$/u.test(part)) return part.charCodeAt(0)
+  const functionKey = /^F(\d{1,2})$/u.exec(part)?.[1]
+  if (functionKey !== undefined) {
+    const number = Number(functionKey)
+    if (number >= 1 && number <= 24) return 0x6f + number
+  }
+  throw new Error(`语音按住快捷键不支持按键“${part}”。`)
 }
 
 function blobToDataUrl(blob: Blob): Promise<string> {

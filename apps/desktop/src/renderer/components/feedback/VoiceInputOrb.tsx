@@ -18,7 +18,6 @@ export function VoiceInputOrb({ state, message, onActivate }: {
     >
       <span className="ui-voice-input-orb__pulse" aria-hidden="true" />
       <span className="ui-voice-input-orb__icon" aria-hidden="true">{state === 'error' ? '!' : '●'}</span>
-      <span className="ui-voice-input-orb__label">{message}</span>
     </button>
   )
 }

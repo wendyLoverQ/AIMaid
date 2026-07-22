@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CoreProtocolViolation, parseCoreLine } from '../src/main/core/protocol/envelope'
-import { CORE_DEFAULT_REQUEST_TIMEOUT_MS, CORE_LONG_REQUEST_TIMEOUT_MS, coreRequestTimeoutMs, isCoreRequest } from '../src/shared/core'
+import { CORE_DEFAULT_REQUEST_TIMEOUT_MS, CORE_HOLD_REQUEST_TIMEOUT_MS, CORE_LONG_REQUEST_TIMEOUT_MS, coreRequestTimeoutMs, isCoreRequest } from '../src/shared/core'
 
 const base = { protocolVersion: '1.0', timestamp: new Date().toISOString() }
 
@@ -10,6 +10,7 @@ describe('Core protocol parser', () => {
     expect(coreRequestTimeoutMs('tts.speak')).toBe(CORE_LONG_REQUEST_TIMEOUT_MS)
     expect(coreRequestTimeoutMs('asr.transcribe')).toBe(CORE_LONG_REQUEST_TIMEOUT_MS)
     expect(coreRequestTimeoutMs('agent.decide')).toBe(CORE_LONG_REQUEST_TIMEOUT_MS)
+    expect(coreRequestTimeoutMs('system.keyboard.wait_release')).toBe(CORE_HOLD_REQUEST_TIMEOUT_MS)
     expect(coreRequestTimeoutMs('system.health')).toBe(CORE_DEFAULT_REQUEST_TIMEOUT_MS)
   })
 
@@ -37,6 +38,12 @@ describe('Core protocol parser', () => {
       type: 'system.window.center_on_client_rect',
       payload: { petWindowHandle: '12345', targetWindowHandle: '67890', x: 0, y: 0, width: 0, height: 980, viewportWidth: 4928, viewportHeight: 3072 }
     })).toBe(false)
+  })
+
+  it('validates physical shortcut release monitoring keys', () => {
+    expect(isCoreRequest({ type: 'system.keyboard.wait_release', payload: { virtualKeys: [0x11, 0x10, 0x53] } })).toBe(true)
+    expect(isCoreRequest({ type: 'system.keyboard.wait_release', payload: { virtualKeys: [] } })).toBe(false)
+    expect(isCoreRequest({ type: 'system.keyboard.wait_release', payload: { virtualKeys: [256] } })).toBe(false)
   })
 
   it.each([

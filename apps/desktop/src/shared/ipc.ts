@@ -4,8 +4,7 @@ export const IPC_CHANNELS = {
   invoke: 'aimaid:invoke',
   send: 'aimaid:send',
   event: 'aimaid:event',
-  petLifecycle: 'aimaid:pet-lifecycle',
-  voiceInput: 'aimaid:voice-input'
+  petLifecycle: 'aimaid:pet-lifecycle'
 } as const
 
 export const IPC_REQUEST_TYPES = [

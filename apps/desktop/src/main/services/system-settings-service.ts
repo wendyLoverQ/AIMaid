@@ -5,7 +5,6 @@ import type { Logger } from '../logging/logger'
 import type { WindowManager } from '../windows/window-manager'
 import type { PetWindowManager } from '../windows/pet-window-manager'
 import type { PetPresentationService } from './pet-presentation-service'
-import { IPC_CHANNELS } from '../../shared/ipc'
 import { HOTKEY_ACTIONS, isHotkeyAction } from '../../shared/system-settings'
 import type { HotkeyAction, HotkeyBindingSnapshot, PlatformSettingsSnapshot } from '../../shared/system-settings'
 
@@ -131,10 +130,7 @@ export class SystemSettingsService {
     const definition = HOTKEY_ACTIONS.find((item) => item.action === action)!
     if (action === 'open-voice-input') {
       const existing = this.windows.get('voice-input')
-      if (existing !== undefined && existing.isVisible()) {
-        existing.webContents.send(IPC_CHANNELS.voiceInput, { type: 'stop' })
-        return
-      }
+      if (existing !== undefined && existing.isVisible()) return
       const window = this.windows.open('voice-input', 'pet', { trigger: 'global-hotkey' })
       await this.petWindows.positionWindowAtItem(window)
       return

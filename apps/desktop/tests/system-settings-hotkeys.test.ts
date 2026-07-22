@@ -59,10 +59,10 @@ describe('system settings direction hotkeys', () => {
     expect(executeHotkey).toHaveBeenNthCalledWith(2, 'play-previous')
   })
 
-  it('opens voice input at the pet item and uses the same hotkey to stop recording', async () => {
-    const send = vi.fn()
-    const captureWindow = { isVisible: () => true, webContents: { send } }
-    const get = vi.fn(() => undefined as typeof captureWindow | undefined)
+  it('opens voice input once while the hold shortcut repeats', async () => {
+    const captureWindow = { isVisible: () => true }
+    let opened = false
+    const get = vi.fn(() => opened ? captureWindow : undefined)
     const open = vi.fn(() => captureWindow)
     const positionWindowAtItem = vi.fn(() => Promise.resolve())
     const service = new SystemSettingsService(
@@ -75,11 +75,10 @@ describe('system settings direction hotkeys', () => {
 
     await service.initialize()
     registeredCallbacks.get('CommandOrControl+Shift+S')?.()
+    opened = true
+    registeredCallbacks.get('CommandOrControl+Shift+S')?.()
     await vi.waitFor(() => expect(positionWindowAtItem).toHaveBeenCalledWith(captureWindow))
     expect(open).toHaveBeenCalledWith('voice-input', 'pet', { trigger: 'global-hotkey' })
-
-    get.mockReturnValue(captureWindow)
-    registeredCallbacks.get('CommandOrControl+Shift+S')?.()
-    await vi.waitFor(() => expect(send).toHaveBeenCalledWith('aimaid:voice-input', { type: 'stop' }))
+    expect(open).toHaveBeenCalledTimes(1)
   })
 })

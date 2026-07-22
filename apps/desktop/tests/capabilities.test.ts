@@ -45,6 +45,6 @@ describe('window registry and capabilities', () => {
     expect(canRequest('voice-input', 'voice-input.complete')).toBe(true)
     expect(canRequest('voice-input', 'system.settings.get')).toBe(false)
     expect(canRequest('chat', 'voice-input.consume')).toBe(true)
-    expect(WINDOW_REGISTRY['voice-input'].options).toMatchObject({ width: 148, height: 148, transparent: true, frame: false })
+    expect(WINDOW_REGISTRY['voice-input'].options).toMatchObject({ width: 64, height: 64, transparent: true, frame: false, alwaysOnTop: true, focusable: false })
   })
 })
