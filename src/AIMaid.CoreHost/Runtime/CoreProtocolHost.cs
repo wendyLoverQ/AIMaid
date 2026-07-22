@@ -65,7 +65,7 @@ public sealed class CoreProtocolHost(
         , "script.list", "script.save", "script.run"
         , "timer_record.list", "timer_record.save", "timer_record.delete"
         , "remote_site.list", "remote_site.get", "remote_site.save", "remote_site.delete"
-        , "remote_video.resolve", "remote_video.formats", "remote_video.play"
+        , "remote_video.resolve", "remote_video.thumbnail", "remote_video.formats", "remote_video.play"
         , "remote_video.download.start", "remote_video.download.cancel", "remote_video.download.list", "remote_video.download.delete", "remote_video.download.play"
         , "remote_video.play.list", "remote_video.play.replay"
         , "remote_video.settings.get", "remote_video.settings.save", "remote_video.diagnostics"
@@ -413,6 +413,9 @@ public sealed class CoreProtocolHost(
                     break;
                 case "remote_video.resolve":
                     await writer.SuccessAsync(request, await remoteVideos.ResolveAsync(ReadRequiredString(request.Payload, "input"), source.Token), source.Token);
+                    break;
+                case "remote_video.thumbnail":
+                    await writer.SuccessAsync(request, await remoteVideos.GetThumbnailAsync(ReadRequiredString(request.Payload, "itemId"), source.Token), source.Token);
                     break;
                 case "remote_video.formats":
                     await writer.SuccessAsync(request, await remoteVideos.GetFormatsAsync(ReadRequiredString(request.Payload, "itemId"), source.Token), source.Token);

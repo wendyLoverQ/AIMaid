@@ -201,6 +201,7 @@ public sealed record RemoteVideoResolvedItemDto(
     bool IsLive, string DownloadStatus, IReadOnlyList<RemoteVideoFormatDto> Formats);
 public sealed record RemoteVideoResolveResultDto(
     IReadOnlyList<RemoteVideoResolvedItemDto> Items, string DiagnosticSummary);
+public sealed record RemoteVideoThumbnailDto(string MimeType, string Base64Data);
 public sealed record RemoteVideoDownloadDto(
     string TaskId, string ItemId, string OriginalUrl, string Title, string Author,
     string SiteName, string OutputPath, string Quality, string Status, double Progress,

@@ -12,6 +12,10 @@ export type LayoutSlotVariant =
   | 'status-overview' | 'status-tier status-tier--primary' | 'status-tier status-tier--secondary' | 'status-tier status-tier--detail'
   | 'settings-workspace' | 'settings-navigation' | 'settings-category-list' | 'settings-content' | 'settings-content__header' | 'settings-search-results'
   | 'video-library-grid' | 'video-library-card__cover' | 'video-library-card__copy'
+  | 'remote-video-hero' | 'remote-video-hero__composer'
+  | 'remote-video-result-feature' | 'remote-video-result-feature__media' | 'remote-video-result-feature__copy' | 'remote-video-result-feature__actions'
+  | 'remote-video-result-toolbar' | 'remote-video-result-grid' | 'remote-video-result-card' | 'remote-video-result-card__media' | 'remote-video-result-card__copy' | 'remote-video-result-card__actions'
+  | 'remote-video-record-list' | 'remote-video-record-card' | 'remote-video-record-card__main' | 'remote-video-record-card__meta' | 'remote-video-record-card__actions'
 
 export function LayoutSlot({ as = 'div', variant, children, ...props }: PropsWithChildren<Omit<HTMLAttributes<HTMLElement>, 'className' | 'style'> & { as?: 'div' | 'section' | 'header' | 'footer' | 'aside' | 'main' | 'nav' | 'article' | 'span'; variant: LayoutSlotVariant }>): React.JSX.Element {
   const Component = as

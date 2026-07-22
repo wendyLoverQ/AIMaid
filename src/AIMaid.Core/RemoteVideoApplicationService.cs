@@ -87,6 +87,31 @@ public sealed partial class RemoteVideoApplicationService
     public async Task<IReadOnlyList<RemoteVideoFormatDto>> GetFormatsAsync(string itemId, CancellationToken cancellationToken = default)
         => (await GetItemAsync(itemId, cancellationToken)).Formats;
 
+    public async Task<RemoteVideoThumbnailDto> GetThumbnailAsync(string itemId, CancellationToken cancellationToken = default)
+    {
+        var item = await GetItemAsync(itemId, cancellationToken);
+        if (!Uri.TryCreate(item.ThumbnailUrl, UriKind.Absolute, out var thumbnailUri) || thumbnailUri.Scheme is not ("http" or "https"))
+            throw new InvalidDataException("解析结果没有可用的远程封面地址。");
+        var site = await MatchSiteAsync(item.OriginalUrl, cancellationToken);
+        using var handler = new HttpClientHandler { AutomaticDecompression = System.Net.DecompressionMethods.All };
+        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) };
+        using var request = new HttpRequestMessage(HttpMethod.Get, thumbnailUri);
+        request.Headers.UserAgent.TryParseAdd(ReadSiteSetting(site, "userAgent") ?? "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/134.0.0.0 Safari/537.36");
+        var referer = ReadSiteSetting(site, "referer") ?? item.OriginalUrl;
+        if (Uri.TryCreate(referer, UriKind.Absolute, out var refererUri)) request.Headers.Referrer = refererUri;
+        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        var mimeType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
+        if (!mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("远程封面响应不是图片内容。");
+        if (response.Content.Headers.ContentLength is > 8 * 1024 * 1024)
+            throw new InvalidDataException("远程封面超过 8 MB 安全上限。");
+        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        if (bytes.Length == 0 || bytes.Length > 8 * 1024 * 1024)
+            throw new InvalidDataException("远程封面内容为空或超过 8 MB 安全上限。");
+        return new RemoteVideoThumbnailDto(mimeType, Convert.ToBase64String(bytes));
+    }
+
     public async Task<RemoteVideoPlayHistoryDto> PlayAsync(
         string itemId, string? formatSelector, string mode, CancellationToken cancellationToken = default)
     {
