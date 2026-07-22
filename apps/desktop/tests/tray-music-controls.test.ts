@@ -11,11 +11,19 @@ describe('tray music controls', () => {
     expect(tray).toContain("type: 'music.current'")
     expect(tray).toContain("type: action === 'toggle-pause' ? 'music.toggle_pause' : 'music.stop'")
     expect(tray).toContain('<TrayMusicPlayer')
+    expect(tray).toContain('bridge.tray.setMusicVisible(hasMusic)')
     expect(player).toContain("label={paused ? '继续播放' : '暂停'}")
     expect(player).toContain('<UiIcon name={paused ? \'play\' : \'pause\'} />')
     expect(player).toContain('label="停止"')
     expect(player).toContain('<UiIcon name="stop" />')
     expect(`${tray}\n${player}`).not.toMatch(/seek|快进/u)
+  })
+
+  it('shrinks the menu when idle and preserves its bottom edge', () => {
+    const router = readFileSync(resolve(root, 'src/main/ipc/ipc-router.ts'), 'utf8')
+    expect(router).toContain("case 'tray.setMusicVisible'")
+    expect(router).toContain('const height = visible ? 480 : 344')
+    expect(router).toContain('bottom - height')
   })
 
   it('keeps actual audio pause and resume inside the pet renderer', () => {

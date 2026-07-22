@@ -74,7 +74,7 @@ export const WINDOW_CAPABILITIES: Readonly<Record<WindowKind, WindowCapabilities
   'template-card': moduleCapabilities(false),
   'character-editor': { requests: [...MODULE_REQUESTS, 'media.registerLocalFile'], events: false },
   'agent-confirm': { requests: ['window.close', 'agent.confirmation.get', 'agent.confirmation.resolve'], events: false },
-  'tray-menu': { requests: ['window.open', 'window.close', 'tray.action', 'core.invoke'], events: true },
+  'tray-menu': { requests: ['window.open', 'window.close', 'tray.action', 'tray.setMusicVisible', 'core.invoke'], events: true },
   'douyin-login': { requests: ['window.close', 'window.minimize', 'window.toggleMaximize', 'douyin.session.save'], events: false },
   'ui-showcase': moduleCapabilities(false)
 }

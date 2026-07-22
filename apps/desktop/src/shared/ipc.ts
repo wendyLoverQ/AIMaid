@@ -27,6 +27,7 @@ export const IPC_REQUEST_TYPES = [
   'notebook.attachment.action',
   'speech.audio.importData',
   'tray.action',
+  'tray.setMusicVisible',
   'douyin.session.save',
   'douyin.session.inspect',
   'douyin.session.clear',

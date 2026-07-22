@@ -79,6 +79,11 @@ export function TrayMenuPage(): React.JSX.Element {
   }
 
   const hasMusic = music !== null && music.url !== '' && (music.isPlaying || music.isPaused)
+  useEffect(() => {
+    void bridge.tray.setMusicVisible(hasMusic).then((response) => {
+      if (!response.success) setError(response.error?.message ?? '托盘尺寸更新失败。')
+    })
+  }, [hasMusic])
   return <TrayMenuSurface onKeyDown={(event) => { if (event.key === 'Escape') void bridge.window.close() }} tabIndex={-1}>
     <Button onClick={() => run('show')}>显示</Button>
     <Divider />

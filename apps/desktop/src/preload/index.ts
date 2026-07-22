@@ -150,7 +150,10 @@ const speechApi: AIMaidApi['speech'] = canRequest(windowKind, 'speech.audio.impo
   : undefined
 
 const trayApi: AIMaidApi['tray'] = canRequest(windowKind, 'tray.action')
-  ? Object.freeze({ action: (action) => invoke('tray.action', { action }) })
+  ? Object.freeze({
+      action: (action) => invoke('tray.action', { action }),
+      setMusicVisible: (visible) => invoke<{ height: number }>('tray.setMusicVisible', { visible })
+    })
   : undefined
 const douyinApi: AIMaidApi['douyin'] = canRequest(windowKind, 'douyin.session.save') || canRequest(windowKind, 'douyin.session.inspect') || canRequest(windowKind, 'douyin.session.clear')
   ? Object.freeze({

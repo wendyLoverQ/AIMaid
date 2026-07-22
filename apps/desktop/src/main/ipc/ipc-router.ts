@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain, shell } from 'electron'
+import { app, dialog, ipcMain, screen, shell } from 'electron'
 import type { IpcMainEvent, IpcMainInvokeEvent, OpenDialogOptions } from 'electron'
 import { canRequest } from '../../shared/capabilities'
 import { coreRequestTimeoutMs, isCoreRequest } from '../../shared/core'
@@ -300,6 +300,17 @@ export class IpcRouter {
         else if (action === 'hide') this.petWindows.hide()
         else setImmediate(() => app.quit())
         return { action }
+      }
+      case 'tray.setMusicVisible': {
+        const visible = readBoolean(request.payload, 'visible')
+        const height = visible ? 480 : 344
+        const window = this.windows.get('tray-menu')
+        if (window === undefined) throw new Error('Tray menu window is unavailable')
+        const bounds = window.getBounds()
+        const workArea = screen.getDisplayMatching(bounds).workArea
+        const bottom = Math.min(Math.max(bounds.y + bounds.height, workArea.y + height), workArea.y + workArea.height)
+        window.setBounds({ x: bounds.x, y: bottom - height, width: bounds.width, height }, false)
+        return { height }
       }
       case 'douyin.session.save':
         return this.douyinSession.saveMetadata()
