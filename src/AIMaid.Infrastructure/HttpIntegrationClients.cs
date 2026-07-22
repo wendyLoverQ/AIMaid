@@ -197,6 +197,11 @@ public sealed class AiProviderHttpClient : IAiProviderClient
         {
             using var document = JsonDocument.Parse(body);
             var root = document.RootElement;
+            // 某些上游（如 Gemini）错误时返回 JSON 数组 [{error:{...}}] 而非对象
+            if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() > 0)
+                root = root[0];
+            if (root.ValueKind != JsonValueKind.Object)
+                return SanitizeErrorText(body);
             var error = root.TryGetProperty("error", out var errorElement) ? errorElement : root;
             var message = ReadString(error, "message") ?? ReadString(root, "message") ?? ReadString(root, "detail");
             var code = ReadString(error, "code") ?? ReadString(root, "code");
