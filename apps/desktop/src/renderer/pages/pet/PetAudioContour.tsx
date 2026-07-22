@@ -6,8 +6,10 @@ import { advanceBarDynamics, barSpectrumTarget, spectrumPeak } from '../../../sh
 import type { MusicVisualizerStyle } from '../../../shared/music-visualizer'
 import { readPetMusicSpectrum } from './pet-music-playback'
 
-const MASK_WIDTH = 192
-const MASK_REFRESH_MS = 50
+const MASK_WIDTH = 160
+const MASK_REFRESH_MS = 120
+const SURROUND_PADDING = 72
+const BOTTOM_EXTENSION = 88
 
 export function PetAudioContour({ sourceCanvasRef, readContour, visualizerStyle }: {
   sourceCanvasRef: React.RefObject<HTMLCanvasElement | null>
@@ -20,37 +22,51 @@ export function PetAudioContour({ sourceCanvasRef, readContour, visualizerStyle 
     const overlay = overlayRef.current
     if (overlay === null) return
     const maskCanvas = document.createElement('canvas')
+    const context = overlay.getContext('2d')
+    if (context === null) return
     const spectrum = new Uint8Array(ALPHA_CONTOUR_ANGLE_COUNT / 2)
     const dynamics = new Map<number, number>()
     let contour: AlphaContour | null = null
     let lastMaskAt = Number.NEGATIVE_INFINITY
     let animationId = 0
+    let wasActive = false
 
     const render = (now: number): void => {
       const source = sourceCanvasRef.current
       const sourceBounds = source?.getBoundingClientRect()
-      const overlayBounds = overlay.getBoundingClientRect()
-      const context = overlay.getContext('2d', { willReadFrequently: true })
+      const stageBounds = overlay.parentElement?.getBoundingClientRect()
       if (source === null || sourceBounds === undefined || sourceBounds.width <= 0 || sourceBounds.height <= 0 ||
-        overlayBounds.width <= 0 || overlayBounds.height <= 0 || context === null) {
+        stageBounds === undefined || stageBounds.width <= 0 || stageBounds.height <= 0) {
         animationId = requestAnimationFrame(render)
         return
       }
 
-      resizeOverlay(overlay, overlayBounds.width, overlayBounds.height)
-      const pixelRatio = overlay.width / overlayBounds.width
-      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
-      context.clearRect(0, 0, overlayBounds.width, overlayBounds.height)
-
       const hasAudio = readPetMusicSpectrum(spectrum)
+      if (!hasAudio) {
+        if (wasActive) {
+          context.resetTransform()
+          context.clearRect(0, 0, overlay.width, overlay.height)
+          overlay.hidden = true
+          wasActive = false
+        }
+        animationId = requestAnimationFrame(render)
+        return
+      }
+      wasActive = true
+      overlay.hidden = false
       if (hasAudio && now - lastMaskAt >= MASK_REFRESH_MS) {
         lastMaskAt = now
         const nextContour = readContour === undefined ? captureAlphaContour(source, maskCanvas) : readContour()
         contour = nextContour ?? contour
       }
-      if (hasAudio) {
-        const x = sourceBounds.left - overlayBounds.left
-        const y = sourceBounds.top - overlayBounds.top
+      if (contour !== null) {
+        const region = positionOverlay(overlay, sourceBounds, stageBounds, visualizerStyle)
+        resizeOverlay(overlay, region.width, region.height)
+        const pixelRatio = overlay.width / region.width
+        context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
+        context.clearRect(0, 0, region.width, region.height)
+        const x = sourceBounds.left - stageBounds.left - region.left
+        const y = sourceBounds.top - stageBounds.top - region.top
         if (visualizerStyle === 'bottom-wave' && contour !== null) drawBottomBars(context, contour, spectrum, dynamics, x, y, sourceBounds.width, sourceBounds.height)
         else if (visualizerStyle !== 'bottom-wave' && contour !== null) drawSurroundWave(context, contour, spectrum, dynamics, x, y, sourceBounds.width, sourceBounds.height, visualizerStyle)
       }
@@ -61,7 +77,34 @@ export function PetAudioContour({ sourceCanvasRef, readContour, visualizerStyle 
     return () => cancelAnimationFrame(animationId)
   }, [readContour, sourceCanvasRef, visualizerStyle])
 
-  return <PetAudioContourCanvas ref={overlayRef} geometry="full" data-visualizer-style={visualizerStyle} aria-hidden="true"/>
+  return <PetAudioContourCanvas ref={overlayRef} geometry="full" data-visualizer-style={visualizerStyle} aria-hidden="true" hidden/>
+}
+
+interface OverlayRegion { left: number; top: number; width: number; height: number }
+
+function positionOverlay(
+  overlay: HTMLCanvasElement,
+  source: DOMRect,
+  stage: DOMRect,
+  style: MusicVisualizerStyle
+): OverlayRegion {
+  const padding = style === 'bottom-wave' ? 0 : SURROUND_PADDING
+  const extension = style === 'bottom-wave' ? BOTTOM_EXTENSION : SURROUND_PADDING
+  const desiredLeft = source.left - stage.left - padding
+  const desiredTop = source.top - stage.top - padding
+  const desiredRight = source.right - stage.left + padding
+  const desiredBottom = source.bottom - stage.top + extension
+  const left = Math.max(0, Math.floor(desiredLeft))
+  const top = Math.max(0, Math.floor(desiredTop))
+  const right = Math.min(stage.width, Math.ceil(desiredRight))
+  const bottom = Math.min(stage.height, Math.ceil(desiredBottom))
+  const region = { left, top, width: Math.max(1, right - left), height: Math.max(1, bottom - top) }
+  overlay.style.inset = 'auto'
+  overlay.style.left = `${region.left}px`
+  overlay.style.top = `${region.top}px`
+  overlay.style.width = `${region.width}px`
+  overlay.style.height = `${region.height}px`
+  return region
 }
 
 export function captureAlphaContour(source: HTMLCanvasElement, maskCanvas: HTMLCanvasElement): AlphaContour | null {
