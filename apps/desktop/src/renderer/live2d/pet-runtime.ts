@@ -1,4 +1,4 @@
-import type { PetLifecycleEvent, PetPerformanceMetrics, PetRuntimeState } from '../../shared/pet'
+import type { PetLifecycleEvent, PetPerformanceMetrics, PetRuntimeState, PetVisualBounds } from '../../shared/pet'
 import type { AlphaContour } from '../../shared/alpha-contour'
 import { bridge } from '../shared/bridge'
 import { PerformanceMonitor } from './performance-monitor'
@@ -89,6 +89,22 @@ export class PetRuntime {
 
   containsPoint(clientX: number, clientY: number): boolean {
     return this.state === 'ready' && this.player.containsClientPoint(clientX, clientY)
+  }
+
+  getVisualBounds(): PetVisualBounds | null {
+    const geometry = this.player.getModelGeometry()
+    if (geometry === null) return null
+    const canvasBounds = this.canvas.getBoundingClientRect()
+    const metrics = this.player.getRenderMetrics()
+    if (canvasBounds.width <= 0 || canvasBounds.height <= 0 || metrics.backingWidth <= 0 || metrics.backingHeight <= 0) return null
+    const scaleX = canvasBounds.width / metrics.backingWidth
+    const scaleY = canvasBounds.height / metrics.backingHeight
+    return {
+      x: Math.round(window.screenX + canvasBounds.x + geometry.modelBounds.x * scaleX),
+      y: Math.round(window.screenY + canvasBounds.y + geometry.modelBounds.y * scaleY),
+      width: Math.round(geometry.modelBounds.width * scaleX),
+      height: Math.round(geometry.modelBounds.height * scaleY)
+    }
   }
 
   captureAlphaContour(): AlphaContour | null {
@@ -190,6 +206,7 @@ export class PetRuntime {
       console.error('[ActionTag] invalid generated response payload', error)
     }
   }
+
   private readonly onLifecycle = (event: PetLifecycleEvent): void => {
     if (event.type === 'suspend') this.suspend()
     else if (event.type === 'resume') this.resume()
