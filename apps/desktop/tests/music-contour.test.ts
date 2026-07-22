@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildOuterAlphaContour } from '../src/shared/alpha-contour'
+import { MUSIC_VISUALIZER_STYLE_OPTIONS, parseMusicVisualizerStyle } from '../src/shared/music-visualizer'
 
 describe('dynamic pet music contour', () => {
   it('wraps the visible alpha silhouette instead of the rectangular asset bounds', () => {
@@ -19,6 +20,13 @@ describe('dynamic pet music contour', () => {
     const restingLeft = Math.min(...resting!.points.map((point) => point.x))
     const movingLeft = Math.min(...moving!.points.map((point) => point.x))
     expect(movingLeft).toBeLessThan(restingLeft - 0.1)
+  })
+
+  it('offers surround bars, an outline line, and bottom bars with surround bars as the default', () => {
+    expect(MUSIC_VISUALIZER_STYLE_OPTIONS.map(([value]) => value)).toEqual(['surround-bars', 'surround-line', 'bottom-wave'])
+    expect(parseMusicVisualizerStyle('surround-line')).toBe('surround-line')
+    expect(parseMusicVisualizerStyle('bottom-wave')).toBe('bottom-wave')
+    expect(parseMusicVisualizerStyle('invalid')).toBe('surround-bars')
   })
 })
 

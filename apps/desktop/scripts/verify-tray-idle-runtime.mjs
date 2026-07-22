@@ -32,19 +32,27 @@ try {
   const trayTarget = await waitForTarget((candidate) => candidate.url.includes('window=tray-menu'))
   trayClient = await connect(trayTarget.webSocketDebuggerUrl)
   await trayClient.send('Page.enable')
-  await waitFor(() => evaluate(trayClient, `document.body.innerText.includes('当前未播放音乐') && window.innerHeight === 344`))
+  await waitFor(() => evaluate(trayClient, `(() => {
+    const surface = document.querySelector('.tray-menu-shell');
+    const exit = Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.trim() === '退出');
+    if (!(surface instanceof HTMLElement) || !(exit instanceof HTMLElement)) return false;
+    return document.body.innerText.includes('当前未播放音乐') &&
+      Math.abs(window.innerHeight - Math.ceil(surface.getBoundingClientRect().height)) <= 1 &&
+      exit.getBoundingClientRect().bottom <= window.innerHeight;
+  })()`))
 
   const metrics = await evaluate(trayClient, `(() => {
     const exit = Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.trim() === '退出');
     const bounds = exit.getBoundingClientRect();
     return {
       innerHeight: window.innerHeight,
+      contentHeight: document.querySelector('.tray-menu-shell').getBoundingClientRect().height,
       exitBottom: bounds.bottom,
       blankAfterExit: window.innerHeight - bounds.bottom,
       musicPlayerVisible: document.querySelector('[aria-label="音乐播放器"]') !== null
     };
   })()`)
-  if (metrics.innerHeight !== 344 || metrics.exitBottom > metrics.innerHeight || metrics.blankAfterExit > 40 || metrics.musicPlayerVisible) {
+  if (Math.abs(metrics.innerHeight - Math.ceil(metrics.contentHeight)) > 1 || metrics.exitBottom > metrics.innerHeight || metrics.blankAfterExit > 16 || metrics.musicPlayerVisible) {
     throw new Error(`Idle tray did not compact correctly: ${JSON.stringify(metrics)}`)
   }
 

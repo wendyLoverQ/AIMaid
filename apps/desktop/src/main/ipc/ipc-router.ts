@@ -301,13 +301,13 @@ export class IpcRouter {
         else setImmediate(() => app.quit())
         return { action }
       }
-      case 'tray.setMusicVisible': {
-        const visible = readBoolean(request.payload, 'visible')
-        const height = visible ? 384 : 344
+      case 'tray.resize': {
+        const requestedHeight = readTrayHeight(request.payload)
         const window = this.windows.get('tray-menu')
         if (window === undefined) throw new Error('Tray menu window is unavailable')
         const bounds = window.getBounds()
         const workArea = screen.getDisplayMatching(bounds).workArea
+        const height = Math.min(requestedHeight, workArea.height)
         const bottom = Math.min(Math.max(bounds.y + bounds.height, workArea.y + height), workArea.y + workArea.height)
         window.setBounds({ x: bounds.x, y: bottom - height, width: bounds.width, height }, false)
         return { height }
@@ -492,6 +492,13 @@ function readPetMetrics(payload: unknown): PetPerformanceMetrics {
   if (!numberFields.every((field) => typeof payload[field] === 'number' && Number.isFinite(payload[field])) ||
     typeof payload.contextLost !== 'boolean') throw new TypeError('Invalid Pet metrics')
   return payload as unknown as PetPerformanceMetrics
+}
+
+function readTrayHeight(payload: unknown): number {
+  if (!isRecord(payload) || typeof payload.height !== 'number' || !Number.isSafeInteger(payload.height) || payload.height <= 0) {
+    throw new TypeError('Invalid tray height')
+  }
+  return payload.height
 }
 
 function readPetWindowUpdate(payload: unknown): PetWindowUpdate {

@@ -74,7 +74,7 @@ export interface AIMaidApi {
   }
   readonly tray?: {
     action: (action: 'show' | 'reset-position' | 'hide' | 'quit') => Promise<IpcResponseEnvelope>
-    setMusicVisible: (visible: boolean) => Promise<IpcResponseEnvelope<{ height: number }>>
+    resize: (height: number) => Promise<IpcResponseEnvelope<{ height: number }>>
   }
   readonly douyin?: {
     saveSession: () => Promise<IpcResponseEnvelope<{ cookieCount: number; hasSession: boolean; hasTtwid: boolean; hasMsToken: boolean; savedAt: string }>>

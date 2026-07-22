@@ -982,7 +982,7 @@ public sealed class CoreProtocolHost(
             return DefaultSafeSettingKeys;
         if (element.ValueKind != JsonValueKind.Array) throw new ArgumentException("keys 必须是字符串数组。");
         var keys = element.EnumerateArray().Select(value => value.GetString() ?? string.Empty).ToArray();
-        if (keys.Length > 20 || keys.Any(key => string.IsNullOrWhiteSpace(key) || key.Length > 100 || IsSensitiveKey(key)))
+        if (keys.Length > 50 || keys.Any(key => string.IsNullOrWhiteSpace(key) || key.Length > 100 || IsSensitiveKey(key)))
             throw new ArgumentException("settings.get 包含无效或敏感设置键。");
         return keys;
     }

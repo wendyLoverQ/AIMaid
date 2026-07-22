@@ -19,6 +19,7 @@ interface MusicPlaybackState {
 export function TrayMenuPage(): React.JSX.Element {
   const safeAudio: MasterAudioState = { muted: true, volume: 0 }
   const confirmedAudio = useRef(safeAudio)
+  const surfaceRef = useRef<HTMLElement>(null)
   const [audio, setAudio] = useState<MasterAudioState>(safeAudio)
   const [music, setMusic] = useState<MusicPlaybackState | null>(null)
   const [error, setError] = useState('')
@@ -78,13 +79,25 @@ export function TrayMenuPage(): React.JSX.Element {
     await bridge.window.close()
   }
 
-  const hasMusic = music !== null && music.url !== '' && (music.isPlaying || music.isPaused)
   useEffect(() => {
-    void bridge.tray.setMusicVisible(hasMusic).then((response) => {
-      if (!response.success) setError(response.error?.message ?? '托盘尺寸更新失败。')
-    })
-  }, [hasMusic])
-  return <TrayMenuSurface onKeyDown={(event) => { if (event.key === 'Escape') void bridge.window.close() }} tabIndex={-1}>
+    const surface = surfaceRef.current
+    if (surface === null) return
+    let lastHeight = 0
+    const report = (): void => {
+      const height = Math.ceil(surface.getBoundingClientRect().height)
+      if (height === lastHeight) return
+      lastHeight = height
+      void bridge.tray.resize(height).then((response) => {
+        if (!response.success) setError(response.error?.message ?? '托盘尺寸更新失败。')
+      })
+    }
+    const observer = new ResizeObserver(report)
+    observer.observe(surface)
+    report()
+    return () => observer.disconnect()
+  }, [])
+  const hasMusic = music !== null && music.url !== '' && (music.isPlaying || music.isPaused)
+  return <TrayMenuSurface ref={surfaceRef} onKeyDown={(event) => { if (event.key === 'Escape') void bridge.window.close() }} tabIndex={-1}>
     <Button onClick={() => run('show')}>显示</Button>
     <Divider />
     {hasMusic

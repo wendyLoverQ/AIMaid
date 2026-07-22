@@ -114,8 +114,8 @@ export const bridge = Object.freeze({
   tray: Object.freeze({
     action: (action: 'show' | 'reset-position' | 'hide' | 'quit'): Promise<IpcResponseEnvelope> =>
       requireCapability(window.aimaid.tray?.action, 'tray.action')(action),
-    setMusicVisible: (visible: boolean): Promise<IpcResponseEnvelope<{ height: number }>> =>
-      requireCapability(window.aimaid.tray?.setMusicVisible, 'tray.setMusicVisible')(visible)
+    resize: (height: number): Promise<IpcResponseEnvelope<{ height: number }>> =>
+      requireCapability(window.aimaid.tray?.resize, 'tray.resize')(height)
   }),
   douyin: Object.freeze({
     saveSession: (): Promise<IpcResponseEnvelope<{ cookieCount: number; hasSession: boolean; hasTtwid: boolean; hasMsToken: boolean; savedAt: string }>> =>

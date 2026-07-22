@@ -2,6 +2,9 @@ import { Container, PetItemSurface, TransparentCanvas, TransparentStage } from "
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessageDto } from '../../../shared/business';
 import type { PetPresentationAction, PetPresentationSnapshot } from '../../../shared/presentation';
+import type { AlphaContour } from '../../../shared/alpha-contour';
+import { MUSIC_VISUALIZER_STYLE_KEY, parseMusicVisualizerStyle } from '../../../shared/music-visualizer';
+import type { MusicVisualizerStyle } from '../../../shared/music-visualizer';
 import type { WindowKind } from '../../../shared/windows';
 import { UiIcon } from '../../components/ui';
 import { ContextMenuSurface } from '../../components/ui';
@@ -29,13 +32,29 @@ export default function PetPage(): React.JSX.Element {
     const { current: bubble, speechHeld, show: showBubble, expire: expireBubble } = usePetBubbleQueue();
     const [renderScale, setRenderScale] = useState(1);
     const [voiceMenu, setVoiceMenu] = useState({ roleName: '未选择', intimacy: '信赖 5 级' });
+    const [visualizerStyle, setVisualizerStyle] = useState<MusicVisualizerStyle>('surround-bars');
     const readySentRef = useRef(false);
     const stageRef = useRef<HTMLElement>(null);
     const itemRef = useRef<HTMLDivElement>(null);
+    const visualCanvasRef = useRef<HTMLCanvasElement>(null);
+    const liveContourReaderRef = useRef<(() => AlphaContour | null) | null>(null);
     const hitTestRef = useRef<PetHitTest>(() => false);
     const pointerClickRef = useRef<PetPointerClick>(() => undefined);
     const interactionRef = useRef<PetItemInteractionController | null>(null);
     useEffect(() => startPetMusicPlayback(), []);
+    useEffect(() => {
+        const load = (): void => {
+            void loadMusicVisualizerStyle().then(setVisualizerStyle).catch((reason: unknown) => {
+                console.error('[MusicVisualizer] style load failed', reason);
+            });
+        };
+        load();
+        return bridge.events.subscribe(['settings.changed'], load);
+    }, []);
+    const readLiveContour = useCallback((): AlphaContour | null => liveContourReaderRef.current?.() ?? null, []);
+    const registerLiveContourReader = useCallback((reader: (() => AlphaContour | null) | null): void => {
+        liveContourReaderRef.current = reader;
+    }, []);
     const registerHitTest = useCallback((hitTest: PetHitTest | null): void => {
         hitTestRef.current = hitTest ?? (() => false);
         interactionRef.current?.refreshHitTest();
@@ -215,11 +234,13 @@ export default function PetPage(): React.JSX.Element {
         }}>
     <PetItemSurface ref={itemRef}>
       {presentation === null ? <Container>{error ?? '正在读取桌宠显示模式…'}</Container> : null}
-      {presentation?.mode === 'image' ? <ImageMode presentation={presentation} scale={renderScale} onAdvance={() => void execute('next-image')} onFirstFrame={revealPetWindow} registerHitTest={registerHitTest}/> : null}
-      {presentation?.mode === 'png-sequence' ? <PngSequenceMode presentation={presentation} scale={renderScale} onFirstFrame={revealPetWindow} registerHitTest={registerHitTest}/> : null}
-      {presentation?.mode === 'live2d' ? <Live2DMode role={presentation.live2dRole} scale={renderScale} registerHitTest={registerHitTest} registerPointerClick={registerPointerClick} showBubble={showBubble}/> : null}
+      {presentation?.mode === 'image' ? <ImageMode canvasRef={visualCanvasRef} presentation={presentation} scale={renderScale} onAdvance={() => void execute('next-image')} onFirstFrame={revealPetWindow} registerHitTest={registerHitTest}/> : null}
+      {presentation?.mode === 'png-sequence' ? <PngSequenceMode canvasRef={visualCanvasRef} presentation={presentation} scale={renderScale} onFirstFrame={revealPetWindow} registerHitTest={registerHitTest}/> : null}
+      {presentation?.mode === 'live2d' ? <Live2DMode canvasRef={visualCanvasRef} role={presentation.live2dRole} scale={renderScale} registerHitTest={registerHitTest} registerPointerClick={registerPointerClick} registerContourReader={registerLiveContourReader} showBubble={showBubble}/> : null}
       <PetBubble message={bubble} speechHeld={speechHeld} onExpired={expireBubble}/>
     </PetItemSurface>
+    {presentation !== null ? <PetAudioContour sourceCanvasRef={visualCanvasRef}
+      readContour={presentation.mode === 'live2d' ? readLiveContour : undefined} visualizerStyle={visualizerStyle}/> : null}
     {menu !== null && presentation !== null ? <PetContextMenu position={menu} presentation={presentation} voiceMenu={voiceMenu} execute={(action) => void execute(action)} open={open} cycleVoiceIntimacy={() => void cycleVoiceIntimacy()} clearVoiceCache={() => void clearVoiceCache()} showCurrentConversation={() => void showCurrentConversation()} close={() => setMenu(null)}/> : null}
   </TransparentStage>;
 }
@@ -255,14 +276,14 @@ function latestAssistantAudioPaths(messages: readonly ChatMessageDto[]): string[
     }
     return paths;
 }
-function ImageMode({ presentation, scale, onAdvance, onFirstFrame, registerHitTest }: {
+function ImageMode({ canvasRef, presentation, scale, onAdvance, onFirstFrame, registerHitTest }: {
+    canvasRef: React.RefObject<HTMLCanvasElement | null>;
     presentation: PetPresentationSnapshot;
     scale: number;
     onAdvance: () => void;
     onFirstFrame: () => void;
     registerHitTest: (hitTest: PetHitTest | null) => void;
 }): React.JSX.Element {
-    const canvasRef = useRef<HTMLCanvasElement>(null);
     useEffect(() => {
         const canvas = canvasRef.current;
         if (canvas === null)
@@ -282,18 +303,22 @@ function ImageMode({ presentation, scale, onAdvance, onFirstFrame, registerHitTe
     const canvasHeight = Math.max(1, Math.round(PET_CANVAS_HEIGHT * backingScale));
     return presentation.currentImage === null
         ? <Container>未找到图片。右键选择图片文件夹。</Container>
-        : <>
-          <TransparentCanvas ref={canvasRef} width={canvasWidth} height={canvasHeight} aria-label={presentation.currentImage.name}/>
-          <PetAudioContour sourceCanvasRef={canvasRef}/>
-        </>;
+        : <TransparentCanvas ref={canvasRef} width={canvasWidth} height={canvasHeight} aria-label={presentation.currentImage.name}/>;
 }
-function PngSequenceMode({ presentation, scale, onFirstFrame, registerHitTest }: {
+async function loadMusicVisualizerStyle(): Promise<MusicVisualizerStyle> {
+    const response = await bridge.core.invoke({ type: 'settings.get', payload: { keys: [MUSIC_VISUALIZER_STYLE_KEY] } });
+    if (!response.success)
+        throw new Error(response.error?.message ?? '音浪样式读取失败。');
+    const payload = response.payload as { settings?: Array<{ key: string; value: string }> } | null;
+    return parseMusicVisualizerStyle(payload?.settings?.find((item) => item.key === MUSIC_VISUALIZER_STYLE_KEY)?.value);
+}
+function PngSequenceMode({ canvasRef, presentation, scale, onFirstFrame, registerHitTest }: {
+    canvasRef: React.RefObject<HTMLCanvasElement | null>;
     presentation: PetPresentationSnapshot;
     scale: number;
     onFirstFrame: () => void;
     registerHitTest: (hitTest: PetHitTest | null) => void;
 }): React.JSX.Element {
-    const canvasRef = useRef<HTMLCanvasElement>(null);
     const frameRef = useRef(0);
     const cacheRef = useRef(new Map<string, HTMLImageElement>());
     useEffect(() => {
@@ -367,10 +392,7 @@ function PngSequenceMode({ presentation, scale, onFirstFrame, registerHitTest }:
     const canvasHeight = Math.max(1, Math.round(PET_CANVAS_HEIGHT * backingScale));
     return presentation.pngFrames.length === 0
         ? <Container>未找到 PNG 序列素材。</Container>
-        : <>
-          <TransparentCanvas ref={canvasRef} width={canvasWidth} height={canvasHeight} aria-label={presentation.pngRole}/>
-          <PetAudioContour sourceCanvasRef={canvasRef}/>
-        </>;
+        : <TransparentCanvas ref={canvasRef} width={canvasWidth} height={canvasHeight} aria-label={presentation.pngRole}/>;
 }
 function useDrawCanvasImage(
     ref: React.RefObject<HTMLCanvasElement | null>,
@@ -468,16 +490,16 @@ function PetContextMenu({ position, presentation, voiceMenu, execute, open, cycl
     return <ContextMenuSurface label="桌宠菜单" items={items} position={position} footer={`版本 ${bridge.app.version}`} onClose={close}/>;
 }
 function modeLabel(mode: PetPresentationSnapshot['mode']): string { return mode === 'image' ? '图片' : mode === 'png-sequence' ? 'PNG' : 'Live2D'; }
-function Live2DMode({ role, scale, registerHitTest, registerPointerClick, showBubble }: {
+function Live2DMode({ canvasRef, role, scale, registerHitTest, registerPointerClick, registerContourReader, showBubble }: {
+    canvasRef: React.RefObject<HTMLCanvasElement | null>;
     role: string;
     scale: number;
     registerHitTest: (hitTest: PetHitTest | null) => void;
     registerPointerClick: (click: PetPointerClick | null) => void;
+    registerContourReader: (reader: (() => AlphaContour | null) | null) => void;
     showBubble: PetBubbleQueue['show'];
 }): React.JSX.Element {
-    const canvasRef = useRef<HTMLCanvasElement>(null);
     const runtimeRef = useRef<PetRuntime | null>(null);
-    const readContour = useCallback(() => runtimeRef.current?.captureAlphaContour() ?? null, []);
     useEffect(() => {
         const canvas = canvasRef.current;
         if (canvas === null)
@@ -489,6 +511,7 @@ function Live2DMode({ role, scale, registerHitTest, registerPointerClick, showBu
             onMetrics: () => undefined
         });
         runtimeRef.current = runtime;
+        registerContourReader(() => runtime.captureAlphaContour());
         runtime.setScale(scale);
         registerHitTest((x, y) => runtime.containsPoint(x, y));
         registerPointerClick((event) => {
@@ -499,10 +522,11 @@ function Live2DMode({ role, scale, registerHitTest, registerPointerClick, showBu
         return () => {
             registerHitTest(null);
             registerPointerClick(null);
+            registerContourReader(null);
             runtimeRef.current = null;
             runtime.dispose();
         };
-    }, [registerHitTest, registerPointerClick, showBubble]);
+    }, [canvasRef, registerContourReader, registerHitTest, registerPointerClick, showBubble]);
     useEffect(() => {
         const runtime = runtimeRef.current;
         if (runtime === null)
@@ -520,7 +544,6 @@ function Live2DMode({ role, scale, registerHitTest, registerPointerClick, showBu
     }), [showBubble]);
     return <>
     <TransparentCanvas ref={canvasRef} aria-label="Live2D 桌宠模型"/>
-    <PetAudioContour sourceCanvasRef={canvasRef} readContour={readContour} geometry="full"/>
   </>;
 }
 function formatConversationMessage(message: ChatMessageDto): string {
