@@ -24,9 +24,11 @@ body.prompt-surface .ui-main-region > .ui-section[data-variant="prompt"] > .ui-i
 }
 
 body.prompt-surface .prompt-voice-button.ui-icon-button {
+  flex: 0 0 1.5rem;
   width: 1.5rem;
   min-width: 1.5rem;
   height: 1.5rem;
+  margin-inline-end: var(--space-1);
   border-radius: var(--radius-sm);
 }
 

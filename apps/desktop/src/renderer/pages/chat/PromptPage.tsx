@@ -55,7 +55,11 @@ export function PromptPage(): React.JSX.Element {
             if (recognized === '')
                 throw new Error('语音识别没有返回文字。');
             setText(recognized);
-            await submit(false, false, recognized);
+            requestAnimationFrame(() => {
+                input.current?.focus();
+                input.current?.setSelectionRange(recognized.length, recognized.length);
+            });
+            publishPetBubble('语音已转成文字，请确认后发送。', 'feedback');
         }
         catch (reason) {
             publishPetBubble(reason instanceof Error ? reason.message : String(reason), 'error', 'error');
@@ -193,7 +197,7 @@ export function PromptPage(): React.JSX.Element {
         variant="promptVoice"
         size="sm"
         label={recording ? '结束录音' : transcribing ? '正在识别语音' : '语音输入'}
-        tooltip={recording ? '结束录音并发送' : '录音并发送'}
+        tooltip={recording ? '结束录音并转文字' : '录音转文字'}
         loading={transcribing}
         aria-pressed={recording}
         onClick={() => recording ? stopRecording() : void startRecording()}
