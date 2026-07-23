@@ -330,18 +330,11 @@ public sealed class PetVoiceCatalogTests
 
     private static string CreateLinesJson(string prefix = "语音缓存测试台词", int count = 9)
     {
-        var lines = PetVoiceTriggerCatalog.Plans.Take(count).Select((plan, index) =>
+        var lines = PetVoiceTriggerCatalog.Plans.Take(count).Select((plan, index) => new
         {
-            var text = plan.TriggerId == "startup.welcome"
-                ? $"{prefix}，欢迎回来 {index + 1}"
-                : $"{prefix} {index + 1}";
-            if (text.Length < 8) text = text.PadRight(8, '呀');
-            return new
-            {
-                key = plan.Key,
-                text,
-                voiceStyle = plan.SuggestedStyle
-            };
+            key = plan.Key,
+            text = $"{prefix} {index + 1}",
+            voiceStyle = plan.SuggestedStyle
         });
         return JsonSerializer.Serialize(new { lines });
     }

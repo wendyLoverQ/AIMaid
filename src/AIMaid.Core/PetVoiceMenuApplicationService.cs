@@ -33,10 +33,6 @@ public sealed class PetVoiceMenuApplicationService(
     private const string VoiceCacheDedupeDomain = "voice_cache_dedupe";
     private const string BusinessModelDomain = "llm_business_model";
     private const int DefaultIntimacyLevel = 5;
-    private const int ClickTextMinLength = 8;
-    private const int ClickTextMaxLength = 20;
-    private const int StartupTextMinLength = 12;
-    private const int StartupTextMaxLength = 30;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { PropertyNameCaseInsensitive = true };
     private readonly SemaphoreSlim generationGate = new(1, 1);
     private readonly CancellationTokenSource lifetime = new();
@@ -524,17 +520,8 @@ public sealed class PetVoiceMenuApplicationService(
                 ["scene"] = "desktop_pet",
                 ["tier"] = FormatIntimacy(intimacyLevel),
                 ["count"] = remaining.Length.ToString(CultureInfo.InvariantCulture),
-                ["style"] = $"按触发项选择 normal/soft/lively/close；click 必须为 {ClickTextMinLength}-{ClickTextMaxLength} 个字符；startup.welcome 必须为 {StartupTextMinLength}-{StartupTextMaxLength} 个字符；只写一句可立即说完的中文台词",
-                ["itemsJson"] = JsonSerializer.Serialize(remaining.Select(plan => new
-                {
-                    key = plan.Key,
-                    triggerId = plan.TriggerId,
-                    category = plan.Category,
-                    bodyPart = plan.BodyPart,
-                    textLength = plan.TriggerId.Equals("startup.welcome", StringComparison.OrdinalIgnoreCase)
-                        ? $"{StartupTextMinLength}-{StartupTextMaxLength}"
-                        : $"{ClickTextMinLength}-{ClickTextMaxLength}"
-                })),
+                ["style"] = "按触发项选择 normal/soft/lively/close",
+                ["itemsJson"] = JsonSerializer.Serialize(remaining.Select(plan => new { key = plan.Key, triggerId = plan.TriggerId, category = plan.Category, bodyPart = plan.BodyPart })),
                 ["existingLinesJson"] = JsonSerializer.Serialize(forbidden),
                 ["acceptedLinesJson"] = JsonSerializer.Serialize(result.Values.Select(line => line.Text)),
                 ["duplicateLinesJson"] = "[]",
@@ -559,7 +546,7 @@ public sealed class PetVoiceMenuApplicationService(
                 var remainingByKey = remaining.ToDictionary(plan => plan.Key, StringComparer.OrdinalIgnoreCase);
                 foreach (var line in generated)
                 {
-                    if (!remainingByKey.TryGetValue(line.CacheKey, out var plan) || !IsAllowedTextLength(line.Text, plan)) continue;
+                    if (!remainingByKey.ContainsKey(line.CacheKey)) continue;
                     if (line.VoiceStyle.Trim().ToLowerInvariant() is not ("normal" or "soft" or "lively" or "close")) continue;
                     var fingerprint = NormalizeFingerprint(line.Text);
                     if (fingerprint.Length == 0 || forbidden.Concat(result.Values.Select(value => value.Text))
@@ -855,15 +842,7 @@ public sealed class PetVoiceMenuApplicationService(
         var resultKeys = lines.Select(x => x.CacheKey).ToArray();
         if (resultKeys.Any(string.IsNullOrWhiteSpace) || resultKeys.Distinct(StringComparer.OrdinalIgnoreCase).Count() != resultKeys.Length ||
             resultKeys.Any(key => !requestedKeys.Contains(key))) throw new InvalidDataException("缓存文案包含重复或未请求的槽位。");
-        if (lines.Any(x => string.IsNullOrWhiteSpace(x.Text) || x.Text.Trim().Length > 300)) throw new InvalidDataException("缓存文案存在空文本或超长文本。");
-    }
-
-    private static bool IsAllowedTextLength(string text, PetVoiceTriggerPlan plan)
-    {
-        var length = text.Trim().Length;
-        return plan.TriggerId.Equals("startup.welcome", StringComparison.OrdinalIgnoreCase)
-            ? length is >= StartupTextMinLength and <= StartupTextMaxLength
-            : length is >= ClickTextMinLength and <= ClickTextMaxLength;
+        if (lines.Any(x => string.IsNullOrWhiteSpace(x.Text))) throw new InvalidDataException("缓存文案存在空文本。");
     }
 
     private static void ValidateAudioFile(string path)
