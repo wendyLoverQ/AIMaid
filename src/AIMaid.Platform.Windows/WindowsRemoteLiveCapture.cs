@@ -181,14 +181,14 @@ internal static class WindowsRemoteLiveCapture
             .OrderByDescending(ScoreStream)
             .FirstOrDefault()
             ?? throw new InvalidDataException("直播响应中没有可播放的 HLS 或 FLV 地址。");
-        var title = FindNamedString(captured, "title", "room_name", "roomName") ??
-                    FindEmbeddedField(captured, "title", "room_name", "roomName") ??
+        var title = FindEmbeddedField(captured, "title", "room_name", "roomName") ??
+                    FindNamedString(captured, "title", "room_name", "roomName") ??
                     $"{request.SiteKey} 直播";
-        var author = FindNamedString(captured, "nickname", "anchor_name", "user_name") ??
-                     FindEmbeddedField(captured, "nickname", "anchor_name", "user_name") ??
+        var author = FindEmbeddedField(captured, "nickname", "anchor_name", "user_name") ??
+                     FindNamedString(captured, "nickname", "anchor_name", "user_name") ??
                      string.Empty;
-        var cover = FindNamedString(captured, "cover_url", "room_cover", "cover", "coverUrl") ??
-                    FindEmbeddedImage(captured) ??
+        var cover = FindEmbeddedImage(captured) ??
+                    FindNamedString(captured, "cover_url", "room_cover", "cover", "coverUrl") ??
                     string.Empty;
         var videoId = Uri.TryCreate(request.Url, UriKind.Absolute, out var uri)
             ? uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? string.Empty
