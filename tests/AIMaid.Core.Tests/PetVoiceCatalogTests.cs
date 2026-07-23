@@ -86,6 +86,22 @@ public sealed class PetVoiceCatalogTests
     }
 
     [TestMethod]
+    public async Task Ensure_SourcePromptChange_RegeneratesWithANewIdentity()
+    {
+        using var fixture = new VoiceCacheFixture(CreateLinesJson());
+        var first = await fixture.Service.EnsureCurrentCacheAsync(includeNextPeriod: false);
+        fixture.Ai.Response = CreateLinesJson("新提示词身份台词");
+        fixture.Documents.Put("llm_source_prompt", "lazy_voice_lines", new LlmSourcePromptDto("lazy_voice_lines", "", "changed", "", "{}", true, DateTimeOffset.Now, DateTimeOffset.Now));
+
+        var second = await fixture.Service.EnsureCurrentCacheAsync(includeNextPeriod: false, forceRefresh: true);
+
+        Assert.IsTrue(first.Succeeded, first.ErrorMessage);
+        Assert.IsTrue(second.Succeeded, second.ErrorMessage);
+        Assert.AreNotEqual(first.Value!.ContextHash, second.Value!.ContextHash);
+        Assert.AreEqual(2, fixture.Ai.Calls);
+    }
+
+    [TestMethod]
     public async Task Ensure_IncompleteLines_LeavesNoReadyManifestOrPartialCache()
     {
         using var fixture = new VoiceCacheFixture(CreateLinesJson(count: 8));
