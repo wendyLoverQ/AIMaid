@@ -61,7 +61,11 @@ try
     var reminders = new ReminderApplicationService(store, events, aiProvider);
     var proactive = new ProactiveApplicationService(store, store, events, aiProvider);
     var chat = new ChatApplicationService(store, store, aiProvider, events);
-    var templateCards = new TemplateCardApplicationService(store, store, aiProvider, events);
+    var templateCards = new TemplateCardApplicationService(store, store, store, aiProvider, events);
+    await using var templateCardRefresh = new CharacterCardTemplateRefreshService(
+        templateCards,
+        (message, exception) => CoreLog.Write(Console.Error, "warning", "template_card_auto_refresh", message, exception: exception));
+    await templateCardRefresh.StartAsync();
     await using var petVoiceMenu = new PetVoiceMenuApplicationService(store, store, store, store, events, aiProvider, speechClient, templateCards, paths);
     var status = new StatusApplicationService(statusPlatform, store, store, store, petVoiceMenu);
     using var httpAgentExecutor = new HttpApiAgentExecutor();

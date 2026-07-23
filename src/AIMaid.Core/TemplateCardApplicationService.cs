@@ -12,6 +12,7 @@ namespace AIMaid.Core;
 
 public sealed class TemplateCardApplicationService(
     ICharacterStore characters,
+    ISettingsStore settings,
     IDomainDocumentStore documents,
     IAiProviderClient aiProvider,
     IEventPublisher events) :
@@ -23,19 +24,54 @@ public sealed class TemplateCardApplicationService(
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> Gates = new(StringComparer.OrdinalIgnoreCase);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { PropertyNameCaseInsensitive = true };
 
+    public async Task<OperationResult<CharacterDto>> RefreshCurrentRoleAsync(CancellationToken cancellationToken = default)
+    {
+        var roleId = (await settings.GetAsync("voice_current_role_id", cancellationToken))?.Value?.Trim();
+        if (string.IsNullOrWhiteSpace(roleId))
+            return OperationResult<CharacterDto>.Success(null!);
+
+        var intervalValue = (await settings.GetAsync("user_config:App:CharacterCardTemplate:RefreshIntervalHours", cancellationToken))?.Value;
+        if (!TryParseRefreshIntervalHours(intervalValue, out var intervalHours))
+            return OperationResult<CharacterDto>.Failure(
+                "character.invalid_refresh_interval",
+                "角色模板刷新周期必须是 1 到 720 小时之间的整数。");
+        var role = await characters.GetAsync(roleId, cancellationToken);
+        if (role is null)
+            return OperationResult<CharacterDto>.Failure("character.not_found", $"角色不存在：{roleId}");
+        if (string.IsNullOrWhiteSpace(role.SourceCardJson))
+            return OperationResult<CharacterDto>.Failure("character.source_card_missing", $"角色 SourceCardJson 为空：{role.RoleId}");
+
+        var sourceHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(role.SourceCardJson)));
+        if (string.IsNullOrWhiteSpace(role.TemplateCardJson))
+            return await GenerateAsync(role.RoleId, continueIteration: false, cancellationToken);
+        if (!string.Equals(sourceHash, role.TemplateCardSourceHash, StringComparison.OrdinalIgnoreCase))
+            return await GenerateAsync(role.RoleId, continueIteration: false, cancellationToken);
+        if (role.TemplateCardGeneratedAt is not null &&
+            role.TemplateCardGeneratedAt.Value + TimeSpan.FromHours(intervalHours) > DateTimeOffset.Now)
+            return OperationResult<CharacterDto>.Success(role);
+
+        return await GenerateAsync(role.RoleId, continueIteration: true, cancellationToken);
+    }
+
     public async Task<OperationResult<CharacterDto>> HandleAsync(GenerateTemplateCardCommand command, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(command.RoleId))
             return OperationResult<CharacterDto>.Failure("character.invalid_role", "角色 ID 不能为空。");
-        var gate = Gates.GetOrAdd(command.RoleId.Trim(), _ => new SemaphoreSlim(1, 1));
+        return await GenerateAsync(command.RoleId, command.ContinueIteration, cancellationToken);
+    }
+
+    private async Task<OperationResult<CharacterDto>> GenerateAsync(string roleId, bool continueIteration, CancellationToken cancellationToken)
+    {
+        var normalizedRoleId = roleId.Trim();
+        var gate = Gates.GetOrAdd(normalizedRoleId, _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(cancellationToken);
         try
         {
-            var role = await characters.GetAsync(command.RoleId.Trim(), cancellationToken);
+            var role = await characters.GetAsync(normalizedRoleId, cancellationToken);
             if (role is null) return OperationResult<CharacterDto>.Failure("character.not_found", "角色不存在。");
             if (string.IsNullOrWhiteSpace(role.SourceCardJson))
                 return OperationResult<CharacterDto>.Failure("character.source_card_missing", $"角色 SourceCardJson 为空：{role.RoleId}");
-            if (command.ContinueIteration && string.IsNullOrWhiteSpace(role.TemplateCardJson))
+            if (continueIteration && string.IsNullOrWhiteSpace(role.TemplateCardJson))
                 return OperationResult<CharacterDto>.Failure("character.template_missing", $"当前角色卡尚未生成，不能继续迭代：{role.RoleId}");
 
             var sourcePrompt = await LoadSourcePromptAsync(cancellationToken);
@@ -76,7 +112,7 @@ public sealed class TemplateCardApplicationService(
                         role = role with {
                             TemplateCardJson = templateJson,
                             TemplateCardGeneratedAt = DateTimeOffset.Now,
-                            TemplateCardIterationCount = command.ContinueIteration ? checked(role.TemplateCardIterationCount + 1) : 0,
+                            TemplateCardIterationCount = continueIteration ? checked(role.TemplateCardIterationCount + 1) : 0,
                             TemplateCardSourceHash = sourceHash,
                             TemplateCardGenerationStatus = "ready",
                             TemplateCardGenerationMessage = "",
@@ -143,6 +179,17 @@ public sealed class TemplateCardApplicationService(
             return string.IsNullOrWhiteSpace(model?.Model) ? configuration.ModelKey : model.Model;
         }
         return string.Empty;
+    }
+
+    private static bool TryParseRefreshIntervalHours(string? value, out int hours)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            hours = 24;
+            return true;
+        }
+
+        return int.TryParse(value.Trim(), out hours) && hours is >= 1 and <= 720;
     }
 
     private static string ValidateTemplateCardJson(string rawText)
