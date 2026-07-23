@@ -105,6 +105,7 @@ export function RemoteVideoPage(): React.JSX.Element {
     const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
     const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
     const [diagnosticText, setDiagnosticText] = useState('暂无诊断记录。');
+    const [recordThumbnails, setRecordThumbnails] = useState<Record<string, string>>({});
     const [selectedResultId, setSelectedResultId] = useState('');
     const [formatSelector, setFormatSelector] = useState('');
     const [busy, setBusy] = useState(false);
@@ -122,8 +123,26 @@ export function RemoteVideoPage(): React.JSX.Element {
             invoke('remote_video.download.list', {}, 30000),
             invoke('remote_video.play.list', {}, 30000)
         ]);
-        setDownloads(Array.isArray(downloadPayload) ? downloadPayload as DownloadRecord[] : []);
-        setPlays(Array.isArray(playPayload) ? playPayload as PlayRecord[] : []);
+        const downloadList = Array.isArray(downloadPayload) ? downloadPayload as DownloadRecord[] : [];
+        const playList = Array.isArray(playPayload) ? playPayload as PlayRecord[] : [];
+        setDownloads(downloadList);
+        setPlays(playList);
+        void loadRecordThumbnails([...downloadList, ...playList].filter((r) => 'itemId' in r && typeof r.itemId === 'string' && r.itemId !== '').map((r) => ('itemId' in r ? r.itemId : '') as string));
+    }
+    async function loadRecordThumbnails(ids: string[]): Promise<void> {
+        if (ids.length === 0) return;
+        const unique = [...new Set(ids.filter((id) => id !== '' && !recordThumbnails[id]))];
+        if (unique.length === 0) return;
+        await Promise.all(unique.map(async (itemId) => {
+            try {
+                const payload = await invoke('remote_video.thumbnail', { itemId }, 30000) as { mimeType: string; base64Data: string };
+                if (payload.mimeType.startsWith('image/') && payload.base64Data !== '') {
+                    const source = `data:${payload.mimeType};base64,${payload.base64Data}`;
+                    setRecordThumbnails((current) => ({ ...current, [itemId]: source }));
+                }
+            }
+            catch { /* non-critical */ }
+        }));
     }
     async function load(): Promise<void> {
         try {
@@ -182,6 +201,7 @@ export function RemoteVideoPage(): React.JSX.Element {
                 if (!payload.mimeType.startsWith('image/') || payload.base64Data === '') return;
                 const source = `data:${payload.mimeType};base64,${payload.base64Data}`;
                 setResults((current) => current.map((candidate) => candidate.itemId === item.itemId ? { ...candidate, thumbnailUrl: source } : candidate));
+                setRecordThumbnails((current) => ({ ...current, [item.itemId]: source }));
             }
             catch { /* The result remains usable while the explicit empty-cover state is shown. */ }
         }));
@@ -298,7 +318,7 @@ export function RemoteVideoPage(): React.JSX.Element {
     return <ProductPage>
     <WindowTitleBar title="远程视频中心"/>
     <ProductWorkspace layout="single" data-product="remote-video">
-      <ProductPanel title="添加远程内容" emphasis>
+      <ProductPanel emphasis>
         <LayoutSlot variant="remote-video-hero">
           <LayoutSlot variant="remote-video-hero__composer">
             <Textarea id="remote-video-source" rows={2} aria-label="远程视频地址" placeholder="粘贴视频链接、作者主页、频道地址、播放列表或 UID" value={url} onChange={(event) => setUrl(event.target.value)}/>
@@ -307,11 +327,11 @@ export function RemoteVideoPage(): React.JSX.Element {
         </LayoutSlot>
       </ProductPanel>
       <ProductTabNavigation label="远程视频内容" tabs={tabs.map((item) => <Pressable role="tab" id={`remote-video-tab-${item.label}`} aria-controls="remote-video-tabpanel" selected={tab === item.label} tabIndex={tab === item.label ? 0 : -1} key={item.label} onKeyDown={(event) => onTabKeyDown(event, item.label)} onClick={() => setTab(item.label)}><Strong>{item.label}</Strong><SmallText>{item.count}</SmallText></Pressable>)} actions={<><Button onClick={() => { setRightPanel('diagnostics'); void refreshDiagnostics(); }}>诊断</Button><Button onClick={() => void bridge.window.open('remote-site-config')}>站点配置</Button><Button onClick={() => setRightPanel('settings')}>下载设置</Button></>}/>
-      <ProductPanel title={tab} scroll>
+      <ProductPanel scroll>
         <Container id="remote-video-tabpanel" role="tabpanel" aria-labelledby={`remote-video-tab-${tab}`}>
           {tab === '解析结果' ? <ResultTab items={results} selected={selectedResult} selectedIds={selectedIds} formatSelector={formatSelector} busy={busy} select={setSelectedResultId} selectIds={setSelectedIds} setFormatSelector={setFormatSelector} play={play} download={(ids) => void startDownloads(ids)} copyText={copyText}/> : null}
-          {tab === '下载记录' ? <DownloadTab items={downloads} thumbnailFor={(id) => results.find((item) => item.itemId === id)?.thumbnailUrl ?? ''} refresh={() => void refreshRecords()} cancel={(id) => void invoke('remote_video.download.cancel', { taskId: id }, 30000).then(refreshRecords).catch((error: unknown) => setStatus(messageOf(error)))} play={(id) => void invoke('remote_video.download.play', { taskId: id }, 120000).then(refreshRecords).catch((error: unknown) => setStatus(messageOf(error)))} openLocation={(path) => void bridge.shell.showItemInFolder(path)} remove={setDeleteTaskId}/> : null}
-          {tab === '播放记录' ? <PlayTab items={plays} thumbnailFor={(id) => results.find((item) => item.itemId === id)?.thumbnailUrl ?? ''} refresh={() => void refreshRecords()} replay={(id) => void invoke('remote_video.play.replay', { historyId: id }, 120000).then(refreshRecords).catch((error: unknown) => setStatus(messageOf(error)))}/> : null}
+          {tab === '下载记录' ? <DownloadTab items={downloads} thumbnailFor={(id) => recordThumbnails[id] ?? results.find((item) => item.itemId === id)?.thumbnailUrl ?? ''} refresh={() => void refreshRecords()} cancel={(id) => void invoke('remote_video.download.cancel', { taskId: id }, 30000).then(refreshRecords).catch((error: unknown) => setStatus(messageOf(error)))} play={(id) => void invoke('remote_video.download.play', { taskId: id }, 120000).then(refreshRecords).catch((error: unknown) => setStatus(messageOf(error)))} openLocation={(path) => void bridge.shell.showItemInFolder(path)} remove={setDeleteTaskId}/> : null}
+          {tab === '播放记录' ? <PlayTab items={plays} thumbnailFor={(id) => recordThumbnails[id] ?? results.find((item) => item.itemId === id)?.thumbnailUrl ?? ''} refresh={() => void refreshRecords()} replay={(id) => void invoke('remote_video.play.replay', { historyId: id }, 120000).then(refreshRecords).catch((error: unknown) => setStatus(messageOf(error)))}/> : null}
         </Container>
       </ProductPanel>
       <ProductStatusBar>{status}</ProductStatusBar>
@@ -357,7 +377,7 @@ function ResultTab({ items, selected, selectedIds, formatSelector, busy, select,
       </LayoutSlot>
     </LayoutSlot>;
     return <Container>
-      <LayoutSlot variant="remote-video-result-toolbar"><Container><Title2>解析结果</Title2><InlineText>已解析 {items.length} 项 · 已选择 {selectedIds.length} 项</InlineText></Container><Container><Button size="sm" onClick={() => selectIds(items.map((item) => item.itemId))}>全选</Button><Button size="sm" onClick={() => selectIds(items.filter((item) => item.downloadStatus !== 'Downloaded').map((item) => item.itemId))}>选未下载</Button><Button size="sm" onClick={() => selectIds(items.filter((item) => !selectedIds.includes(item.itemId)).map((item) => item.itemId))}>反选</Button><Button size="sm" variant="primary" disabled={selectedIds.length === 0} onClick={() => download(selectedIds)}>下载所选</Button></Container></LayoutSlot>
+      <LayoutSlot variant="remote-video-result-toolbar"><Container><InlineText>已解析 {items.length} 项 · 已选择 {selectedIds.length} 项</InlineText></Container><Container><Button size="sm" onClick={() => selectIds(items.map((item) => item.itemId))}>全选</Button><Button size="sm" onClick={() => selectIds(items.filter((item) => item.downloadStatus !== 'Downloaded').map((item) => item.itemId))}>选未下载</Button><Button size="sm" onClick={() => selectIds(items.filter((item) => !selectedIds.includes(item.itemId)).map((item) => item.itemId))}>反选</Button><Button size="sm" variant="primary" disabled={selectedIds.length === 0} onClick={() => download(selectedIds)}>下载所选</Button></Container></LayoutSlot>
       <LayoutSlot variant="remote-video-result-grid" role="listbox" aria-label="解析结果">{items.map((item) => <LayoutSlot as="article" variant="remote-video-result-card" role="option" aria-selected={selected?.itemId === item.itemId} tabIndex={0} key={item.itemId} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); select(item.itemId); } }} onClick={() => select(item.itemId)}>
         <Checkbox aria-label={`选择 ${item.title}`} checked={selectedIds.includes(item.itemId)} onClick={(event) => event.stopPropagation()} onChange={(event) => selectIds(event.target.checked ? [...selectedIds, item.itemId] : selectedIds.filter((id) => id !== item.itemId))}/>
         <LayoutSlot variant="remote-video-result-card__media"><RemoteThumbnail source={item.thumbnailUrl} alt={item.title}/><SmallText>{durationText(item.durationSeconds)}</SmallText></LayoutSlot>
@@ -375,10 +395,15 @@ function DownloadTab({ items, thumbnailFor, refresh, cancel, play, openLocation,
     openLocation: (path: string) => void;
     remove: (id: string) => void;
 }): React.JSX.Element {
-    return <Container><LayoutSlot variant="remote-video-result-toolbar"><Container><Title2>下载记录</Title2><Paragraph>包含进行中和已完成的任务</Paragraph></Container><Button onClick={refresh}>刷新</Button></LayoutSlot>{items.length === 0 ? <EmptyState title="暂无下载记录" description="下载任务、速度与进度会显示在这里。"/> : <LayoutSlot variant="remote-video-record-list">{items.map((item) => <LayoutSlot as="article" variant="remote-video-record-card" key={item.taskId}>
+    return <Container><LayoutSlot variant="remote-video-result-toolbar"><Container><Paragraph>包含进行中和已完成的任务</Paragraph></Container><Button onClick={refresh}>刷新</Button></LayoutSlot>{items.length === 0 ? <EmptyState title="暂无下载记录" description="下载任务、速度与进度会显示在这里。"/> : <LayoutSlot variant="remote-video-record-list">{items.map((item) => <LayoutSlot as="article" variant="remote-video-record-card" key={item.taskId}>
       <LayoutSlot variant="remote-video-result-card__media"><RemoteThumbnail source={thumbnailFor(item.itemId)} alt={item.title}/></LayoutSlot>
       <LayoutSlot variant="remote-video-record-card__main"><Container><Strong>{item.title}</Strong><Badge tone={downloadTone(item.status)}>{downloadText(item.status)}</Badge></Container><LayoutSlot variant="remote-video-record-card__meta"><InlineText>{item.author || '未知作者'}</InlineText><InlineText>{fileSize(item.fileSize)}</InlineText><TimeValue>{formatDate(item.createdAt)}</TimeValue>{item.status === 'Running' ? <InlineText>{item.speed} · {item.eta}</InlineText> : null}</LayoutSlot>{item.status === 'Running' || item.status === 'Queued' ? <Container><Meter value={item.progress} max={100}/><InlineText>{item.progress.toFixed(0)}%</InlineText></Container> : null}{item.errorMessage !== '' ? <Paragraph>{item.errorMessage}</Paragraph> : null}</LayoutSlot>
-      <LayoutSlot variant="remote-video-record-card__actions">{item.status === 'Running' || item.status === 'Queued' ? <Button size="sm" variant="danger" onClick={() => cancel(item.taskId)}>取消</Button> : null}{item.status === 'Completed' ? <><Button size="sm" onClick={() => play(item.taskId)}>播放</Button><Button size="sm" onClick={() => openLocation(item.outputPath)}>位置</Button></> : null}<Button size="sm" variant="danger" disabled={item.status === 'Running' || item.status === 'Queued'} onClick={() => remove(item.taskId)}>删除</Button></LayoutSlot>
+      <LayoutSlot variant="remote-video-record-card__actions">
+        <Button size="sm" variant="danger" disabled={item.status !== 'Running' && item.status !== 'Queued'} onClick={() => item.status === 'Running' || item.status === 'Queued' ? cancel(item.taskId) : undefined} style={{ visibility: item.status === 'Running' || item.status === 'Queued' ? 'visible' : 'hidden' }}>取消</Button>
+        <Button size="sm" disabled={item.status !== 'Completed'} onClick={() => item.status === 'Completed' ? play(item.taskId) : undefined} style={{ visibility: item.status === 'Completed' ? 'visible' : 'hidden' }}>播放</Button>
+        <Button size="sm" disabled={item.status !== 'Completed'} onClick={() => item.status === 'Completed' ? openLocation(item.outputPath) : undefined} style={{ visibility: item.status === 'Completed' ? 'visible' : 'hidden' }}>位置</Button>
+        <Button size="sm" variant="danger" disabled={item.status === 'Running' || item.status === 'Queued'} onClick={() => remove(item.taskId)}>删除</Button>
+      </LayoutSlot>
     </LayoutSlot>)}</LayoutSlot>}</Container>;
 }
 function PlayTab({ items, thumbnailFor, refresh, replay }: {
@@ -387,7 +412,7 @@ function PlayTab({ items, thumbnailFor, refresh, replay }: {
     refresh: () => void;
     replay: (id: string) => void;
 }): React.JSX.Element {
-    return <Container><LayoutSlot variant="remote-video-result-toolbar"><Container><Title2>播放记录</Title2><Paragraph>最近共 {items.length} 条记录</Paragraph></Container><Button onClick={refresh}>刷新</Button></LayoutSlot>{items.length === 0 ? <EmptyState title="暂无播放记录" description="直接播放与缓存播放记录会显示在这里。"/> : <LayoutSlot variant="remote-video-record-list">{items.map((item) => <LayoutSlot as="article" variant="remote-video-record-card" key={item.historyId} onDoubleClick={() => replay(item.historyId)}>
+    return <Container><LayoutSlot variant="remote-video-result-toolbar"><Container><Paragraph>最近共 {items.length} 条记录</Paragraph></Container><Button onClick={refresh}>刷新</Button></LayoutSlot>{items.length === 0 ? <EmptyState title="暂无播放记录" description="直接播放与缓存播放记录会显示在这里。"/> : <LayoutSlot variant="remote-video-record-list">{items.map((item) => <LayoutSlot as="article" variant="remote-video-record-card" key={item.historyId} onDoubleClick={() => replay(item.historyId)}>
       <LayoutSlot variant="remote-video-result-card__media"><RemoteThumbnail source={thumbnailFor(item.itemId ?? '')} alt={item.title}/></LayoutSlot>
       <LayoutSlot variant="remote-video-record-card__main"><Strong>{item.title}</Strong><LayoutSlot variant="remote-video-record-card__meta"><InlineText>{item.author || '未知作者'}</InlineText><InlineText>{item.siteName}</InlineText></LayoutSlot></LayoutSlot>
       <Badge tone="accent">{playActionText(item.action)}</Badge><TimeValue>{formatDate(item.playedAt)}</TimeValue><LayoutSlot variant="remote-video-record-card__actions"><Button size="sm" onClick={() => replay(item.historyId)}>再次播放</Button></LayoutSlot>
