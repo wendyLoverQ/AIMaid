@@ -77,8 +77,8 @@ public sealed class TemplateCardApplicationService(
             var sourcePrompt = await LoadSourcePromptAsync(cancellationToken);
             var modelName = await LoadModelNameAsync(cancellationToken);
             var hadTemplate = !string.IsNullOrWhiteSpace(role.TemplateCardJson);
-            var input = command.ContinueIteration ? role.TemplateCardJson : role.SourceCardJson;
-            var inputKind = command.ContinueIteration ? "当前角色卡（在上一版基础上继续迭代）" : "原角色卡（从原始设定开始生成）";
+            var input = continueIteration ? role.TemplateCardJson : role.SourceCardJson;
+            var inputKind = continueIteration ? "当前角色卡（在上一版基础上继续迭代）" : "原角色卡（从原始设定开始生成）";
             var sourceHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(role.SourceCardJson)));
             role = role with { TemplateCardGenerationStatus = "generating", TemplateCardGenerationMessage = "", TemplateCardLastAttemptAt = DateTimeOffset.Now, UpdatedAt = DateTimeOffset.Now };
             await characters.UpsertAsync(role, cancellationToken);
