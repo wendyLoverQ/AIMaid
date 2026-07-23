@@ -272,8 +272,30 @@ describe('phase 4 PetWindow integration', () => {
     expect(manager).toContain("type: 'system.window.fit_virtual_desktop'")
     expect(nativeController).toContain('SmXVirtualScreen = 76')
     expect(nativeController).toContain('SetWindowPos(handle')
+    expect(nativeController).not.toContain('SwpShowWindow')
+    expect(manager).toContain('window.showInactive()')
     expect(manager).toContain("window.setAlwaysOnTop(true, 'screen-saver')")
     expect(manager).not.toContain('setShape')
+  })
+
+  it('does not expose a browser window before its first rendered frame', () => {
+    const factory = readFileSync(resolve(import.meta.dirname, '../src/main/windows/window-factory.ts'), 'utf8')
+    const manager = readFileSync(resolve(import.meta.dirname, '../src/main/windows/window-manager.ts'), 'utf8')
+    expect(factory).toContain("backgroundColor: definition.options.backgroundColor ?? '#e7e9eb'")
+    expect(manager).toContain("window.once('ready-to-show', showLoadedWindow)")
+    expect(manager).not.toContain("window.webContents.once('did-finish-load', showLoadedWindow)")
+    expect(manager).toContain("window.once('ready-to-show', ready)")
+  })
+
+  it('reveals the transparent pet window atomically after visible frames are composited', () => {
+    const manager = readFileSync(resolve(import.meta.dirname, '../src/main/windows/pet-window-manager.ts'), 'utf8')
+    const reveal = manager.slice(manager.indexOf('private async revealReadyWindow'))
+    expect(reveal).toContain('window.setOpacity(0)')
+    expect(reveal).toContain('window.showInactive()')
+    expect(reveal).toContain('requestAnimationFrame(() => requestAnimationFrame(resolve))')
+    expect(reveal).toContain('window.setOpacity(1)')
+    expect(reveal.indexOf('window.setOpacity(0)')).toBeLessThan(reveal.indexOf('window.showInactive()'))
+    expect(reveal.indexOf('window.showInactive()')).toBeLessThan(reveal.indexOf('window.setOpacity(1)'))
   })
 
   it('moves and scales the shared pet item without changing the virtual-desktop window', () => {

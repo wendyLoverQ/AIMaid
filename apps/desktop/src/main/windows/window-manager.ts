@@ -75,7 +75,6 @@ export class WindowManager {
         if (kind === 'chat') window.moveTop()
       }
       window.once('ready-to-show', showLoadedWindow)
-      window.webContents.once('did-finish-load', showLoadedWindow)
     }
     if (kind === 'chat') window.on('blur', () => window.hide())
     if (kind === 'tray-menu') window.on('blur', () => {
@@ -106,24 +105,22 @@ export class WindowManager {
     if (kind === 'pet' || kind === 'tray-menu') return window
 
     if (!window.isVisible()) {
-      if (window.webContents.isLoadingMainFrame()) {
-        await new Promise<void>((resolve, reject) => {
-          const cleanup = (): void => {
-            window.webContents.off('did-finish-load', loaded)
-            window.webContents.off('did-fail-load', failed)
-            window.off('closed', closed)
-          }
-          const loaded = (): void => { cleanup(); resolve() }
-          const failed = (_event: Electron.Event, errorCode: number, errorDescription: string): void => {
-            cleanup()
-            reject(new Error(`Window ${kind} failed to load (${errorCode}): ${errorDescription}`))
-          }
-          const closed = (): void => { cleanup(); reject(new Error(`Window ${kind} closed before it was shown`)) }
-          window.webContents.once('did-finish-load', loaded)
-          window.webContents.once('did-fail-load', failed)
-          window.once('closed', closed)
-        })
-      }
+      await new Promise<void>((resolve, reject) => {
+        const cleanup = (): void => {
+          window.off('ready-to-show', ready)
+          window.webContents.off('did-fail-load', failed)
+          window.off('closed', closed)
+        }
+        const ready = (): void => { cleanup(); resolve() }
+        const failed = (_event: Electron.Event, errorCode: number, errorDescription: string): void => {
+          cleanup()
+          reject(new Error(`Window ${kind} failed to load (${errorCode}): ${errorDescription}`))
+        }
+        const closed = (): void => { cleanup(); reject(new Error(`Window ${kind} closed before it was shown`)) }
+        window.once('ready-to-show', ready)
+        window.webContents.once('did-fail-load', failed)
+        window.once('closed', closed)
+      })
       if (window.isDestroyed()) throw new Error(`Window ${kind} was destroyed before it was shown`)
       window.show()
     }

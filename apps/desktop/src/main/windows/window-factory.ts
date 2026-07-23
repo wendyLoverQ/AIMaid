@@ -19,6 +19,7 @@ export class WindowFactory {
   create(definition: WindowDefinition): BrowserWindow {
     const window = new BrowserWindow({
       ...definition.options,
+      backgroundColor: definition.options.backgroundColor ?? '#e7e9eb',
       title: `AIMaid - ${definition.id}`,
       icon: this.iconPath,
       webPreferences: {

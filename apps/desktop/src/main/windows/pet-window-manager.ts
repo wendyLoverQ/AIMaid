@@ -80,12 +80,14 @@ export class PetWindowManager {
     const window = this.requireWindow(contents)
     this.setIgnoreMouseEvents(contents, true)
     this.ready = true
-    void this.fitVirtualDesktop(window).then(() => {
-      if (window.isDestroyed()) return
-      window.showInactive()
+    void this.revealReadyWindow(window).then(() => {
       this.sendLifecycle('resume')
       this.log.info('pet-window', 'Pet renderer ready; virtual desktop window shown', { bounds: window.getBounds() })
-    }).catch((error: unknown) => this.log.error('pet-window', 'Failed to fit virtual desktop window', error))
+    }).catch((error: unknown) => {
+      this.ready = false
+      if (!window.isDestroyed()) window.hide()
+      this.log.error('pet-window', 'Failed to reveal the ready pet window', error)
+    })
   }
 
   show(context: WindowActionContext = {}): void {
@@ -266,6 +268,18 @@ export class PetWindowManager {
       payload: { windowHandle }
     }, new AbortController().signal)
     this.log.info('pet-window', 'Pet window fitted to Windows virtual desktop', { bounds, electronBounds: window.getBounds() })
+  }
+
+  private async revealReadyWindow(window: BrowserWindow): Promise<void> {
+    window.setOpacity(0)
+    await this.fitVirtualDesktop(window)
+    if (window.isDestroyed()) throw new Error('Pet window was destroyed before its first visible frame')
+    window.showInactive()
+    await window.webContents.executeJavaScript(
+      'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))'
+    )
+    if (window.isDestroyed()) throw new Error('Pet window was destroyed before its first visible frame')
+    window.setOpacity(1)
   }
 
   async positionWindowAtItem(targetWindow: BrowserWindow): Promise<void> {

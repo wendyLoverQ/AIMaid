@@ -13,7 +13,6 @@ public static class WindowsPetWindowController
     private const uint SwpNoSize = 0x0001;
     private const uint SwpNoZOrder = 0x0004;
     private const uint SwpNoActivate = 0x0010;
-    private const uint SwpShowWindow = 0x0040;
     private static readonly nint PerMonitorAwareV2 = new(-4);
 
     public static PetWindowBounds FitVirtualDesktop(string windowHandle)
@@ -39,7 +38,7 @@ public static class WindowsPetWindowController
                 throw new InvalidOperationException("Windows returned an invalid virtual desktop rectangle.");
 
             if (!SetWindowPos(handle, 0, bounds.X, bounds.Y, bounds.Width, bounds.Height,
-                    SwpNoZOrder | SwpNoActivate | SwpShowWindow))
+                    SwpNoZOrder | SwpNoActivate))
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "SetWindowPos failed for the pet virtual desktop window.");
 
             return bounds;
