@@ -1,12 +1,37 @@
 import { Badge, Button, Dialog, EmptyState, Inline, LayoutSlot, Page, PageContent, Stack, Strong, Surface, Text, Textarea, WindowTitleBar } from '../../components/ui';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CharacterDto } from '../../../shared/business';
 import { bridge } from '../../shared/bridge';
 export function TemplateCardPage(): React.JSX.Element {
     const initialRole = useMemo(readRole, []);
     const [role, setRole] = useState(initialRole);
+    const roleRef = useRef(initialRole);
+    const generationVersionRef = useRef(0);
     const [operation, setOperation] = useState<'重新生成' | '继续迭代' | null>(null);
     const [error, setError] = useState('');
+    useEffect(() => {
+        const refreshRole = (): void => {
+            const nextRole = readRole();
+            const roleChanged = nextRole?.roleId !== roleRef.current?.roleId;
+            roleRef.current = nextRole;
+            setRole(nextRole);
+            if (!roleChanged)
+                return;
+            generationVersionRef.current += 1;
+            setOperation(null);
+            setError('');
+        };
+        const refreshStoredRole = (event: StorageEvent): void => {
+            if (event.key === TEMPLATE_CARD_ROLE_KEY)
+                refreshRole();
+        };
+        window.addEventListener('focus', refreshRole);
+        window.addEventListener('storage', refreshStoredRole);
+        return () => {
+            window.removeEventListener('focus', refreshRole);
+            window.removeEventListener('storage', refreshStoredRole);
+        };
+    }, []);
     const generatedAt = formatDate(role?.templateCardGeneratedAt);
     const status = formatStatus(role?.templateCardGenerationStatus);
     const json = formatJson(role?.templateCardJson);
@@ -27,21 +52,27 @@ export function TemplateCardPage(): React.JSX.Element {
         if (role === null)
             return;
         const name = continueIteration ? '继续迭代' : '重新生成';
+        const generationVersion = generationVersionRef.current + 1;
+        generationVersionRef.current = generationVersion;
         setOperation(name);
         setError('');
         const response = await bridge.core.invoke({ type: 'character.template.generate', payload: { roleId: role.roleId, continueIteration } }, 120000);
+        if (generationVersionRef.current !== generationVersion)
+            return;
         if (response.success && response.payload !== null) {
             const refreshed = response.payload as CharacterDto;
+            roleRef.current = refreshed;
             setRole(refreshed);
-            localStorage.setItem('aimaid.template-card-role', JSON.stringify(refreshed));
+            localStorage.setItem(TEMPLATE_CARD_ROLE_KEY, JSON.stringify(refreshed));
         }
         else
             setError(response.error?.message ?? `未能读取${name}后的当前角色卡。`);
         setOperation(null);
     }
 }
+const TEMPLATE_CARD_ROLE_KEY = 'aimaid.template-card-role';
 function readRole(): CharacterDto | null { try {
-    const value = localStorage.getItem('aimaid.template-card-role');
+    const value = localStorage.getItem(TEMPLATE_CARD_ROLE_KEY);
     return value === null ? null : JSON.parse(value) as CharacterDto;
 }
 catch {
