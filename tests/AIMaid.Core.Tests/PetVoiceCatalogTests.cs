@@ -72,6 +72,21 @@ public sealed class PetVoiceCatalogTests
     }
 
     [TestMethod]
+    public async Task Ensure_RejectsLlmTextWrappedAroundTheRequiredJsonObject()
+    {
+        using var fixture = new VoiceCacheFixture("说明：" + CreateLinesJson());
+
+        var result = await fixture.Service.EnsureCurrentCacheAsync(includeNextPeriod: false);
+
+        Assert.IsFalse(result.Succeeded);
+        Assert.AreEqual(0, fixture.Tts.Calls);
+        var manifests = await fixture.Documents.ListAsync("voice_cache_generation", CancellationToken.None);
+        Assert.AreEqual(1, manifests.Count);
+        using var manifest = JsonDocument.Parse(manifests[0]);
+        Assert.AreEqual("failed", manifest.RootElement.GetProperty("status").GetString());
+    }
+
+    [TestMethod]
     public async Task Ensure_UsesTemporarySqliteAndCommitsExactlyNineRecordsWithReadyManifest()
     {
         await using var fixture = await SqliteVoiceCacheFixture.CreateAsync(CreateLinesJson());

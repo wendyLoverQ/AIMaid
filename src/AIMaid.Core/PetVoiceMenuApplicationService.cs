@@ -743,10 +743,8 @@ public sealed class PetVoiceMenuApplicationService(
     private static IReadOnlyList<GeneratedLine> ParseLines(string raw)
     {
         var json = raw.Trim();
-        var start = json.IndexOf('{');
-        var end = json.LastIndexOf('}');
-        if (start < 0 || end <= start) throw new InvalidDataException("缓存文案模型没有返回 JSON 对象。");
-        using var document = JsonDocument.Parse(json[start..(end + 1)]);
+        if (!json.StartsWith('{') || !json.EndsWith('}')) throw new InvalidDataException("缓存文案模型必须只返回 JSON 对象。");
+        using var document = JsonDocument.Parse(json);
         if (!document.RootElement.TryGetProperty("lines", out var lines) || lines.ValueKind != JsonValueKind.Array)
             throw new InvalidDataException("缓存文案模型返回结果缺少 lines 数组。");
         return lines.EnumerateArray().Select(item =>
