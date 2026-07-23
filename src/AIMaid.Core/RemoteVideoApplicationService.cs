@@ -190,7 +190,10 @@ public sealed partial class RemoteVideoApplicationService
 
     public async Task<IReadOnlyList<RemoteVideoDownloadDto>> ListDownloadsAsync(CancellationToken cancellationToken = default)
     {
-        var persisted = (await store.ListAsync(DownloadDomain, cancellationToken)).Select(Deserialize<RemoteVideoDownloadDto>)
+        var persisted = (await store.ListAsync(DownloadDomain, cancellationToken))
+            .Select(json => TryDeserialize<RemoteVideoDownloadDto>(json))
+            .Where(x => x is not null && !string.IsNullOrEmpty(x.ItemId))
+            .Select(x => x!)
             .ToDictionary(x => x.TaskId, StringComparer.Ordinal);
         foreach (var orphan in persisted.Values.Where(x => x.Status is "Queued" or "Running" && !activeDownloads.ContainsKey(x.TaskId)).ToArray())
         {
@@ -709,6 +712,12 @@ public sealed partial class RemoteVideoApplicationService
     private static partial Regex CookiePathRegex();
     [GeneratedRegex(@"(https?://[^\s?]+)\?[^\s]+", RegexOptions.IgnoreCase)]
     private static partial Regex QueryStringRegex();
+    private static T? TryDeserialize<T>(string json) where T : class
+    {
+        try { return JsonSerializer.Deserialize<T>(json); }
+        catch (JsonException) { return null; }
+    }
+
     [GeneratedRegex(@"(?i)(\d{1,3}(?:\.\d+)?)%.*?([\d.]+\s*[KMG]?i?B/s|Unknown]+).*?ETA\s+([\d:]+|Unknown)")]
     private static partial Regex ProgressRegex();
     [GeneratedRegex(@"^/([^/]+)/status/(\d+)(?:/video/\d+)?/?$", RegexOptions.IgnoreCase)]

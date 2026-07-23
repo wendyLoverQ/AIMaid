@@ -600,9 +600,23 @@ internal sealed class LegacyRelationalDocumentStore
             M("video_play_history","VideoPlaybackHistories","Id",IdMode.PrefixedInteger,"legacy_video_play_","HistoryId",b:[],drop:["Id"]),
             M("video_subtitle","VideoSubtitleBindings","Id",IdMode.PrefixedInteger,"legacy_subtitle_","BindingId",b:[],drop:["Id"]),
             M("remote_site","RemoteSiteConfigs","Id",IdMode.PrefixedInteger,"legacy_site_","SiteId",["IsEnabled"],["Id","CreatedAt"],remove:["UserAgent","Referer","SupportedActions","DefaultPlayAction","DownloadRootOverride","Remark","CookieFilePath","CookieContent","CookieContentFormat","CookieUpdatedAt","CookieRemark"]),
-            M("remote_video_item","RemoteVideoItems","Id",IdMode.PrefixedInteger,"legacy_remote_video_","ItemId",b:[],drop:["Id"]),
-            M("remote_video_download","RemoteDownloadTasks","TaskId",IdMode.PrefixedInteger,"legacy_remote_download_","TaskId",b:[],drop:[]),
-            M("remote_video_play","RemotePlayHistories","Id",IdMode.PrefixedInteger,"legacy_remote_play_","HistoryId",b:[],drop:["Id"]),
+            M("remote_video_item","RemoteVideoItems","Id",IdMode.PrefixedInteger,"legacy_remote_video_","ItemId",b:[],drop:["Id"],
+                read: new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["AuthorName"] = "Author", ["Duration"] = "DurationSeconds",
+                    ["CoverUrl"] = "ThumbnailUrl", ["PublishTime"] = "PublishedAt"
+                }),
+            M("remote_video_download","RemoteDownloadTasks","TaskId",IdMode.PrefixedInteger,"legacy_remote_download_","TaskId",b:[],drop:[],
+                read: new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["VideoItemId"] = "ItemId", ["AuthorName"] = "Author", ["QualityPreference"] = "Quality",
+                    ["SpeedText"] = "Speed", ["EtaText"] = "Eta"
+                }),
+            M("remote_video_play","RemotePlayHistories","Id",IdMode.PrefixedInteger,"legacy_remote_play_","HistoryId",b:[],drop:["Id"],
+                read: new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["VideoItemId"] = "ItemId", ["AuthorName"] = "Author", ["PlayAction"] = "Action"
+                }),
             M("remote_video_settings","RemoteVideoSettings","Id",IdMode.Singleton,singleton:1,b:["DownloadThumbnail","DownloadInfoJson","DownloadSubtitles","DownloadDanmaku","OverwriteExisting","AutoImportToVideoLibrary"],drop:["Id"]),
             M("vault","VaultItems","Id",IdMode.PrefixedInteger,"legacy_vault_","ItemId",b:[],drop:["Id"],remove:["ChainType","WalletAddress","ServerAddress","ServerPort","Remark","PasswordEncrypted","ApiKeyEncrypted","SecretEncrypted","PrivateKeyEncrypted","MnemonicEncrypted"]),
             M("vault_history","VaultItemHistories","Id",IdMode.PrefixedInteger,"legacy_vault_history_","HistoryId",b:[],drop:["Id"],
