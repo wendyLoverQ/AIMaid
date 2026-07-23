@@ -196,6 +196,6 @@ public sealed class TemplateCardApplicationService(
         if (document.RootElement.ValueKind != JsonValueKind.Object) throw new InvalidDataException("模型返回内容不是 JSON 对象。");
         if (!document.RootElement.TryGetProperty("systemPrompt", out var prompt) || prompt.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(prompt.GetString()))
             throw new InvalidDataException("模型返回的角色卡缺少非空 systemPrompt。");
-        return JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions { WriteIndented = false });
+        return JsonSerializer.Serialize(document.RootElement, JsonConfig.Persistence);
     }
 }

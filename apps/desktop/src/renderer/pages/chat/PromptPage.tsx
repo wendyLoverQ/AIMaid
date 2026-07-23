@@ -183,7 +183,7 @@ export function PromptPage(): React.JSX.Element {
         }}>
     <Section variant="prompt" aria-label="快捷输入" onMouseDown={(event) => event.stopPropagation()}>
       <Inline wrap={false} align="center">
-      <Textarea ref={input} aria-label="快捷输入内容" value={text} rows={2} onChange={(event) => setText(event.target.value)} onKeyDown={(event) => {
+      <Textarea ref={input} aria-label="快捷输入内容" value={text} rows={2} onChange={(event) => setText(event.target.value)} onKeyDownCapture={(event) => {
             if (event.key === 'Escape') {
                 event.preventDefault();
                 stopRecording(true);
@@ -193,7 +193,9 @@ export function PromptPage(): React.JSX.Element {
             if (event.key !== 'Enter')
                 return;
             event.preventDefault();
-            void submit(event.ctrlKey, event.shiftKey);
+            event.stopPropagation();
+            const ttsPreviewOnly = event.shiftKey || event.getModifierState('Shift');
+            void submit(!ttsPreviewOnly && event.ctrlKey, ttsPreviewOnly);
       }}/>
       <IconButton
         variant="promptVoice"
