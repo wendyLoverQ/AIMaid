@@ -70,6 +70,22 @@ public sealed class PetVoiceCatalogTests
     }
 
     [TestMethod]
+    public async Task Ensure_DefaultTtsVoiceChange_RegeneratesWithANewIdentity()
+    {
+        using var fixture = new VoiceCacheFixture(CreateLinesJson());
+        var first = await fixture.Service.EnsureCurrentCacheAsync(includeNextPeriod: false);
+        fixture.Ai.Response = CreateLinesJson("新音色身份台词");
+        await fixture.Settings.SetManyAsync(new Dictionary<string, string> { ["user_config:App:Tts:VoiceId"] = "voice-b" });
+
+        var second = await fixture.Service.EnsureCurrentCacheAsync(includeNextPeriod: false, forceRefresh: true);
+
+        Assert.IsTrue(first.Succeeded, first.ErrorMessage);
+        Assert.IsTrue(second.Succeeded, second.ErrorMessage);
+        Assert.AreNotEqual(first.Value!.ContextHash, second.Value!.ContextHash);
+        Assert.AreNotEqual(first.Value.GenerationId, second.Value!.GenerationId);
+    }
+
+    [TestMethod]
     public async Task Ensure_IncompleteLines_LeavesNoReadyManifestOrPartialCache()
     {
         using var fixture = new VoiceCacheFixture(CreateLinesJson(count: 8));
