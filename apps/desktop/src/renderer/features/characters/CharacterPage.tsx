@@ -192,20 +192,20 @@ export function CharacterPage(): React.JSX.Element {
           </LayoutSlot>
           <Stack gap="md">
             <LayoutSlot variant="character-status-grid">
-            <Surface className="character-info-card">
+            <Surface variant="character-info">
               <SurfaceHeader title="状态" />
               <DetailList>
               <DetailRow label="启用状态" value={selectedItem.isEnabled ? '已启用' : '已停用'} />
               </DetailList>
             </Surface>
-            <Surface className="character-info-card">
+            <Surface variant="character-info">
               <SurfaceHeader title="音色" />
               <DetailList>
               <DetailRow label="默认音色" value={selectedItem.preferredVoiceId || selectedItem.voiceName || '-'} />
               <DetailRow label="可用音色" value={formatVoices(roleVoices)} wrap />
               </DetailList>
             </Surface>
-            <Surface className="character-info-card character-card-status">
+            <Surface variant="character-card-status">
               <LayoutSlot as="header" variant="character-section-header"><Strong>角色卡状态</Strong><Button onClick={() => void openEditor(selectedItem, '原角色卡')}>编辑原角色卡</Button></LayoutSlot>
               <DetailList>
               <DetailRow label="原角色卡" value={selectedItem.sourceCardJson ? '已配置' : '未配置'} />

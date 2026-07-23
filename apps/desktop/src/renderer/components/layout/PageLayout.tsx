@@ -12,7 +12,7 @@ export function WorkspaceGrid({ children }: PropsWithChildren): React.JSX.Elemen
   return <main className="ui-workspace-grid">{children}</main>
 }
 
-type SurfaceVariant = 'character-navigation' | 'character-detail' | 'character-binding' | 'template-card-reader' | 'character-editor-preview' | 'character-editor-form' | 'reminder-row' | 'notebook-navigation' | 'notebook-editor' | 'conversation-navigation' | 'conversation-detail'
+type SurfaceVariant = 'character-navigation' | 'character-detail' | 'character-info' | 'character-card-status' | 'character-binding' | 'template-card-reader' | 'character-editor-preview' | 'character-editor-form' | 'reminder-row' | 'notebook-navigation' | 'notebook-editor' | 'conversation-navigation' | 'conversation-detail'
 export function Surface({ children, className = '', variant, scroll = false, ...props }: PropsWithChildren<HTMLAttributes<HTMLElement> & { scroll?: boolean; variant?: SurfaceVariant }>): React.JSX.Element {
   return <section className={`ui-surface${scroll ? ' ui-surface--scroll' : ''}${variant === undefined ? '' : ` ${variant}`} ${className}`.trim()} {...props}>{children}</section>
 }
