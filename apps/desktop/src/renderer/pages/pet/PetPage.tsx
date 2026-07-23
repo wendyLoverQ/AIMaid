@@ -435,12 +435,16 @@ export default function PetPage(): React.JSX.Element {
         } });
         if (!playback.played) {
             if (playback.reason === 'audio_loading') return;
-            showBubble(playback.message, 'error');
+            console.error('[PetVoice] startup playback failed', playback.reason, playback.message);
             refreshBadVoiceCache(value.audioPath, playback.reason);
             return;
         }
         startupPlayedRef.current = true;
-        if (typeof value.text === 'string' && value.text !== '') showBubble(value.text, 'speech');
+        if (typeof value.text === 'string' && value.text !== '') {
+            const bubbleNonce = crypto.randomUUID();
+            showBubble(value.text, 'speech', bubbleNonce);
+            void playback.finished.then(() => expireBubble(bubbleNonce));
+        }
     }
     const playPetClickVoice = useCallback(async (context: PetVoiceClickContext): Promise<void> => {
         const { bodyPart } = context;
@@ -472,14 +476,17 @@ export default function PetPage(): React.JSX.Element {
         try {
             playback = await playCachedAudio(value.audioPath, 'click');
             reason = playback.played ? 'cache_match' : playback.reason;
-            if (playback.played && typeof value.text === 'string' && value.text.length > 0)
-                showBubble(value.text, 'speech');
+            if (playback.played && typeof value.text === 'string' && value.text.length > 0) {
+                const bubbleNonce = crypto.randomUUID();
+                showBubble(value.text, 'speech', bubbleNonce);
+                void playback.finished.then(() => expireBubble(bubbleNonce));
+            }
             else if (!playback.played)
-                showBubble(playback.message, playback.reason === 'audio_busy' ? 'feedback' : 'error');
+                console.error('[PetVoice] click playback failed', playback.reason, playback.message);
         }
         catch (error) {
             reason = error instanceof Error ? error.message : String(error);
-            showBubble(`点击语音播放失败：${reason}`, 'error');
+            console.error('[PetVoice] click playback threw', error);
             playback = { played: false, reason: 'play_failed', message: reason };
         }
         const played = playback.played;
@@ -495,7 +502,7 @@ export default function PetPage(): React.JSX.Element {
                 ...(context.normalizedY === undefined ? {} : { normalizedY: context.normalizedY })
             }
         });
-    }, [ensureVoiceCache, showBubble]);
+    }, [ensureVoiceCache, expireBubble, showBubble]);
     function refreshBadVoiceCache(audioPath: string, reason: string | null): void {
         if (reason !== 'file_unreadable' && reason !== 'decode_failed' && reason !== 'unsupported_format' && reason !== 'zero_duration') return;
         if (forcedVoiceRefreshPathsRef.current.has(audioPath)) return;

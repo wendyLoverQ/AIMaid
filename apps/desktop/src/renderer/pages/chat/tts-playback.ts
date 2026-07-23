@@ -4,15 +4,18 @@ import { paginatePetBubble } from '../../../shared/pet'
 
 let activeAudio: HTMLAudioElement | null = null
 let activeAudioContext: AudioContext | null = null
+let activeAudioObjectUrl: string | null = null
+let finishActiveAudio: (() => void) | null = null
 let stopActiveLipSync: (() => void) | null = null
 let audioSubscription: (() => void) | null = null
 const CACHED_AUDIO_MIN_DURATION_SECONDS = 0.15
+const CACHED_AUDIO_PROGRESS_TIMEOUT_MS = 3_000
 type CachedAudioSource = 'startup' | 'click'
 type PendingPlayback = { source: CachedAudioSource; cancel: () => void }
 let pendingPlayback: PendingPlayback | null = null
 
 export type CachedAudioPlaybackResult =
-  | { played: true; durationSeconds: number }
+  | { played: true; durationSeconds: number; finished: Promise<void> }
   | { played: false; reason: 'audio_loading' | 'audio_busy' | 'master_muted' | 'volume_zero' | 'file_unreadable' | 'decode_failed' | 'unsupported_format' | 'zero_duration' | 'play_failed'; message: string }
 
 class CachedAudioError extends Error {
@@ -68,7 +71,18 @@ export async function playLocalAudio(filePath: string, onPlaybackStarted?: () =>
       ? new CachedAudioError('file_unreadable', registered.error?.message ?? '语音文件读取失败。')
       : new Error(registered.error?.message ?? '语音文件读取失败。')
   stopAudioPlayback()
-  const audio = new Audio(registered.payload.url)
+  let objectUrl: string | null = null
+  try {
+    const response = await fetch(registered.payload.url)
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    objectUrl = URL.createObjectURL(await response.blob())
+  }
+  catch (error) {
+    throw options?.requireReady === true
+      ? new CachedAudioError('file_unreadable', `语音文件读取失败：${error instanceof Error ? error.message : String(error)}`)
+      : error
+  }
+  const audio = new Audio(objectUrl)
   audio.preload = 'auto'
   audio.volume = master.volume / 100
   let context: AudioContext | null = null
@@ -105,8 +119,12 @@ export async function playLocalAudio(filePath: string, onPlaybackStarted?: () =>
     if (audio.paused) throw new CachedAudioError('play_failed', '语音未进入播放状态。')
     if (Number.isFinite(audio.duration) && audio.duration <= CACHED_AUDIO_MIN_DURATION_SECONDS)
       throw new CachedAudioError('zero_duration', `语音时长无效：${audio.duration || 0} 秒。`)
+    await waitForAudioProgress(audio)
+    if (cancelled) throw new CachedAudioError('audio_loading', '语音加载已取消。')
     activeAudio = audio
     activeAudioContext = context
+    activeAudioObjectUrl = objectUrl
+    objectUrl = null
     if (pendingPlayback === pending) pendingPlayback = null
     context = null
     stopActiveLipSync = publishAudioLipSync('tts', analyser)
@@ -120,15 +138,45 @@ export async function playLocalAudio(filePath: string, onPlaybackStarted?: () =>
     audio.pause()
     audio.removeAttribute('src')
     audio.load()
+    if (objectUrl !== null) URL.revokeObjectURL(objectUrl)
     void context?.close().catch((reason: unknown) => console.error('[TTSPlayback] pending audio context close failed', reason))
     throw failure
   }
 }
 
+function waitForAudioProgress(audio: HTMLAudioElement): Promise<void> {
+  if (audio.currentTime > 0) return Promise.resolve()
+  return new Promise((resolve, reject) => {
+    const cleanup = (): void => {
+      clearTimeout(timeout)
+      audio.removeEventListener('timeupdate', onProgress)
+      audio.removeEventListener('error', onError)
+    }
+    const onProgress = (): void => {
+      if (audio.currentTime <= 0) return
+      cleanup()
+      resolve()
+    }
+    const onError = (): void => {
+      cleanup()
+      reject(new CachedAudioError('decode_failed', describeMediaError(audio)))
+    }
+    const timeout = window.setTimeout(() => {
+      cleanup()
+      reject(new CachedAudioError('play_failed', '语音已请求播放，但未产生实际播放进度。'))
+    }, CACHED_AUDIO_PROGRESS_TIMEOUT_MS)
+    audio.addEventListener('timeupdate', onProgress)
+    audio.addEventListener('error', onError)
+  })
+}
+
 export async function playCachedAudio(filePath: string, source: CachedAudioSource = 'click'): Promise<CachedAudioPlaybackResult> {
-  if (activeAudio !== null) return { played: false, reason: 'audio_busy', message: '当前正在播放其他语音。' }
+  if (activeAudio !== null) {
+    if (source === 'click') stopAudioPlayback()
+    else return { played: false, reason: 'audio_busy', message: '当前正在播放其他语音。' }
+  }
   if (pendingPlayback !== null) {
-    if (source === 'click' && pendingPlayback.source === 'startup') cancelPendingPlayback()
+    if (source === 'click') cancelPendingPlayback()
     else return { played: false, reason: 'audio_loading', message: '语音正在加载，请稍候。' }
   }
   const master = await loadMasterAudio()
@@ -136,7 +184,8 @@ export async function playCachedAudio(filePath: string, source: CachedAudioSourc
   try {
     const audio = await playLocalAudio(filePath, undefined, { requireReady: true, source })
     if (audio === null) return { played: false, reason: 'play_failed', message: '语音未进入播放状态。' }
-    return { played: true, durationSeconds: audio.duration }
+    const finished = new Promise<void>((resolve) => { finishActiveAudio = resolve })
+    return { played: true, durationSeconds: audio.duration, finished }
   } catch (error) {
     if (error instanceof CachedAudioError) return { played: false, reason: error.reason, message: error.message }
     return { played: false, reason: 'play_failed', message: error instanceof Error ? error.message : String(error) }
@@ -218,6 +267,11 @@ function releaseAudio(audio: HTMLAudioElement): void {
   stopActiveLipSync = null
   const context = activeAudioContext
   activeAudioContext = null
+  const objectUrl = activeAudioObjectUrl
+  activeAudioObjectUrl = null
+  if (objectUrl !== null) URL.revokeObjectURL(objectUrl)
+  finishActiveAudio?.()
+  finishActiveAudio = null
   void context?.close().catch((error: unknown) => console.error('[TTSPlayback] audio context close failed', error))
   reportPlayback(false)
 }
