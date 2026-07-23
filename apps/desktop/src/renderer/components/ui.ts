@@ -53,6 +53,8 @@ export { KeyboardKey as Keycap } from './layout/Primitives'
 export { ScrollArea } from './layout/ScrollArea'
 export { TrayMenuSurface } from './layout/TrayMenuSurface'
 export { WindowTitleBar } from './layout/WindowTitleBar'
+export { StatusDot, StatusHero, StatusMetric, StatusMetricGrid, StatusPanelGrid, StatusPanelTitle } from './layout/StatusPatterns'
+export type { StatusHealth } from './layout/StatusPatterns'
 export {
   ProductComposer, ProductFieldActions, ProductGrid, ProductHero, ProductList, ProductMetric, ProductPage, ProductPanel,
   ProductSidebar, ProductStatusBar, ProductTabNavigation, ProductToolbar, ProductWorkspace

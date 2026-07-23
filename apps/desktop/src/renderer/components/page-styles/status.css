@@ -1,0 +1,194 @@
+/* Status page (状态面板) */
+/* Scoped to elements rendered by pages/status/StatusPage.tsx */
+
+.ui-page-content:has(> [data-product="status"]) {
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+}
+[data-product="status"] {
+  height: 100%;
+  grid-template-rows: minmax(0, 1fr) max-content;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  overflow: hidden;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--color-accent-subtle) 45%, var(--color-bg-canvas)), var(--color-bg-canvas) 30%);
+}
+[data-product="status"] > .ui-product-panel {
+  border-color: color-mix(in srgb, var(--color-border) 82%, transparent);
+  box-shadow: var(--shadow-sm);
+}
+[data-product="status"] .ui-product-panel__header {
+  min-height: var(--control-height-lg);
+  padding: var(--space-3) var(--space-4);
+  background: color-mix(in srgb, var(--color-bg-subtle) 55%, transparent);
+}
+[data-product="status"] .ui-product-panel__header h2 {
+  letter-spacing: -.015em;
+}
+[data-product="status"] .ui-product-panel__body { display: grid; align-content: start; gap: var(--space-4); padding: var(--space-4); }
+
+/* 三列服务器卡片：在 dashboard 12 列网格里横跨整行，再拆 3 列 */
+.status-grid-3 {
+  grid-column: 1 / -1;
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+.status-grid-3--main { min-height: 0; }
+.status-grid-3--main > .ui-product-panel { height: 100%; }
+.status-grid-3--summary { align-items: start; }
+.status-grid-3--summary .status-metric { padding: var(--space-3); }
+.status-grid-3--summary .status-metric > .ui-strong { font-size: var(--font-size-sm); }
+
+/* 角色摘要 */
+.status-hero {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+}
+.status-hero--compact { gap: var(--space-4); justify-content: flex-start; }
+.status-hero__lead {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-1);
+}
+.status-hero__eyebrow {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.status-hero__lead > .ui-strong {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--font-size-2xl);
+  line-height: var(--line-height-page-title);
+  letter-spacing: -.01em;
+}
+.status-hero__trailing {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* 状态小圆点 */
+.status-dot {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: var(--space-4);
+  height: var(--space-4);
+  border-radius: var(--radius-full);
+  background: var(--color-text-muted);
+  box-shadow: 0 0 0 var(--space-1) color-mix(in srgb, var(--color-text-muted) 14%, transparent);
+}
+.status-dot--online {
+  background: var(--color-success);
+  box-shadow: 0 0 0 var(--space-1) color-mix(in srgb, var(--color-success) 16%, transparent);
+}
+.status-dot--offline {
+  background: var(--color-danger);
+  box-shadow: 0 0 0 var(--space-1) color-mix(in srgb, var(--color-danger) 16%, transparent);
+}
+.status-dot--unknown {
+  background: var(--color-text-muted);
+  box-shadow: 0 0 0 var(--space-1) color-mix(in srgb, var(--color-text-muted) 14%, transparent);
+}
+
+.status-panel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.status-panel-title__icon {
+  display: grid;
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
+  place-items: center;
+  border: var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent-subtle) 64%, var(--color-bg-surface));
+}
+.status-panel-title__icon .ui-icon { width: var(--space-6); height: var(--space-6); }
+
+/* AIProvider MonitorCenter 风格的 KPI 小卡，颜色仍消费 AIMaid 语义 token。 */
+.status-metric-grid {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-3);
+  align-content: start;
+}
+.status-metric-grid--1 { grid-template-columns: minmax(0, 1fr); }
+.status-metric-grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.status-metric-grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.status-metric-grid--3 .status-metric { padding-inline: var(--space-3); }
+.status-metric-grid--3 .status-metric__label { gap: var(--space-1); }
+.status-metric {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  border: var(--border-default);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-bg-canvas) 72%, var(--color-bg-surface));
+}
+.status-metric--wide { grid-column: 1 / -1; }
+.status-metric--accent { border-color: color-mix(in srgb, var(--color-accent) 35%, var(--color-border)); background: color-mix(in srgb, var(--color-accent-subtle) 34%, var(--color-bg-surface)); }
+.status-metric--success { border-color: color-mix(in srgb, var(--color-success) 32%, var(--color-border)); background: color-mix(in srgb, var(--color-success-subtle) 38%, var(--color-bg-surface)); }
+.status-metric--danger { border-color: color-mix(in srgb, var(--color-danger) 32%, var(--color-border)); background: color-mix(in srgb, var(--color-danger-subtle) 38%, var(--color-bg-surface)); }
+.status-metric__label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status-metric > .ui-strong {
+  font-size: var(--font-size-lg);
+  line-height: var(--line-height-title);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.status-metric > .ui-small-text {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+.status-metric .ui-meter {
+  width: 100%;
+  height: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* 卡片头部：右侧的 status-dot 与 header 对齐 */
+.ui-product-panel__actions .status-dot { margin: var(--space-2); }
+
+/* 角色卡片：紧凑 hero 顶部头像 + 名字 */
+.status-hero--compact .ui-avatar { width: var(--control-height-lg); height: var(--control-height-lg); flex: 0 0 auto; }
+.status-hero--compact .status-hero__lead > .ui-strong { font-size: var(--font-size-lg); line-height: var(--line-height-title); }
+
+/* 响应式：窄屏服务器卡片改 1 列 */
+@media (max-width: 52rem) {
+  .status-grid-3 { grid-template-columns: minmax(0, 1fr); }
+  .status-hero { flex-direction: column; align-items: stretch; }
+  .status-hero__trailing { justify-content: flex-start; }
+}
+
+@media (max-width: 44.9375rem) {
+  [data-product="status"] { overflow: auto; }
+  .status-hero__trailing > .ui-inline { flex-wrap: wrap; }
+  .status-metric-grid--3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

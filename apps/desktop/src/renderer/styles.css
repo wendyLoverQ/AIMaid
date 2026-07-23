@@ -1,6 +1,7 @@
 @import "./theme/tokens.css";
 @import "./components/components.css";
 @import "./components/page-styles/timer.css";
+@import "./components/page-styles/status.css";
 
 * { box-sizing: border-box; }
 

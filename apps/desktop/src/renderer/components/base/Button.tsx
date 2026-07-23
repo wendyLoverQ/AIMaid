@@ -8,6 +8,7 @@ export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
   icon?: ReactNode
   iconPosition?: 'left' | 'right'
   fullWidth?: boolean
+  visibility?: 'visible' | 'hidden'
 }
 
 export function Button({
@@ -18,13 +19,14 @@ export function Button({
   icon,
   iconPosition = 'left',
   fullWidth = false,
+  visibility = 'visible',
   disabled,
   className = '',
   ...props
 }: PropsWithChildren<ButtonProps>): React.JSX.Element {
   return (
     <button
-      className={`ui-button ui-button--${variant} ui-control--${size}${fullWidth ? ' ui-button--full' : ''} ${className}`.trim()}
+      className={`ui-button ui-button--${variant} ui-control--${size}${fullWidth ? ' ui-button--full' : ''}${visibility === 'hidden' ? ' ui-button--hidden' : ''} ${className}`.trim()}
       type="button"
       disabled={disabled === true || loading}
       aria-busy={loading}
