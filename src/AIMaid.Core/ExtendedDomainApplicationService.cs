@@ -39,6 +39,7 @@ public sealed class ExtendedDomainApplicationService :
     private const string BusinessModelDomain = "llm_business_model";
     private const string SourcePromptDomain = "llm_source_prompt";
     private readonly IDomainDocumentStore store;
+    private readonly IAtomicStore atomic;
     private readonly ISecretProtector secrets;
     private readonly ISettingsStore settings;
     private readonly IRemoteMediaResolver mediaResolver;
@@ -47,6 +48,7 @@ public sealed class ExtendedDomainApplicationService :
     public ExtendedDomainApplicationService(IDomainDocumentStore store, ISecretProtector secrets, ISettingsStore settings, IRemoteMediaResolver mediaResolver, IEventPublisher events)
     {
         this.store = store;
+        atomic = store as IAtomicStore ?? throw new InvalidOperationException("当前文档存储不支持原子 Mutation。");
         this.secrets = secrets;
         this.settings = settings;
         this.mediaResolver = mediaResolver;
@@ -111,7 +113,7 @@ public sealed class ExtendedDomainApplicationService :
             !header.Contains(value.HeaderStyle, StringComparer.OrdinalIgnoreCase) ||
             value.FontScale is < 0.9 or > 1.2 || value.FontFamily is not ("" or "Microsoft YaHei UI"))
             return Task.FromResult(OperationResult.Failure("appearance.invalid", "外观设置字段无效。"));
-        return SaveAsync(AppearanceDomain, "current", value, DateTimeOffset.Now, cancellationToken);
+        return SaveAtomicAsync(AppearanceDomain, "current", value, DateTimeOffset.Now, cancellationToken);
     }
 
     private static AppearanceConfigurationDto DefaultAppearance() =>
@@ -155,13 +157,14 @@ public sealed class ExtendedDomainApplicationService :
     public async Task<OperationResult> HandleAsync(SaveModelConfigurationsCommand command, CancellationToken cancellationToken = default)
     {
         if (command.Configurations.Count == 0) return OperationResult.Failure("model.empty", "至少需要一项模型配置。");
+        var mutations = new List<AtomicMutation>();
         foreach (var configuration in command.Configurations)
         {
             var validation = ValidateModelConfiguration(configuration);
             if (validation is not null) return validation;
             var now = DateTimeOffset.Now;
-            await store.UpsertAsync(ModelConfigurationDomain, configuration.ModelKey,
-                JsonSerializer.Serialize(configuration with { ApiKey = string.Empty }), now, cancellationToken);
+            mutations.Add(new(AtomicMutationKind.UpsertDomain, ModelConfigurationDomain, configuration.ModelKey,
+                JsonSerializer.Serialize(configuration with { ApiKey = string.Empty }), now));
             if (configuration.Type.Equals("api", StringComparison.OrdinalIgnoreCase))
             {
                 if (configuration.ApiKey == MaskedApiKey)
@@ -169,13 +172,14 @@ public sealed class ExtendedDomainApplicationService :
                     // The renderer only receives this sentinel. Round-tripping it preserves the existing secret.
                 }
                 else if (configuration.ApiKey.Length == 0)
-                    await store.DeleteAsync(ModelConfigurationSecretDomain, configuration.ModelKey, cancellationToken);
+                    mutations.Add(new(AtomicMutationKind.DeleteDomain, ModelConfigurationSecretDomain, configuration.ModelKey, IdempotentDelete: true));
                 else
-                    await store.UpsertAsync(ModelConfigurationSecretDomain, configuration.ModelKey, secrets.Protect(configuration.ApiKey), now, cancellationToken);
+                    mutations.Add(new(AtomicMutationKind.UpsertDomain, ModelConfigurationSecretDomain, configuration.ModelKey, secrets.Protect(configuration.ApiKey), now));
             }
             else
-                await store.DeleteAsync(ModelConfigurationSecretDomain, configuration.ModelKey, cancellationToken);
+                mutations.Add(new(AtomicMutationKind.DeleteDomain, ModelConfigurationSecretDomain, configuration.ModelKey, IdempotentDelete: true));
         }
+        await atomic.ApplyAsync(mutations, cancellationToken);
         return OperationResult.Success();
     }
 
@@ -266,28 +270,34 @@ public sealed class ExtendedDomainApplicationService :
     {
         if (string.IsNullOrWhiteSpace(command.Item.ItemId) || string.IsNullOrWhiteSpace(command.Item.Name))
             return OperationResult.Failure("vault.invalid", "保险库条目 ID 和名称不能为空。");
+        var mutations = new List<AtomicMutation>();
         if (command.PlainSecret is not null)
         {
             var previousProtected = await store.GetAsync(VaultSecretDomain, command.Item.ItemId, cancellationToken);
             if (previousProtected is not null)
-                await SaveVaultHistoryAsync(command.Item.ItemId, secrets.Unprotect(previousProtected), command.PlainSecret, command.ChangeRemark, cancellationToken);
-            await store.UpsertAsync(VaultSecretDomain, command.Item.ItemId, secrets.Protect(command.PlainSecret), DateTimeOffset.Now, cancellationToken);
+                mutations.AddRange(SaveVaultHistory(command.Item.ItemId, secrets.Unprotect(previousProtected), command.PlainSecret, command.ChangeRemark));
+            mutations.Add(new(AtomicMutationKind.UpsertDomain, VaultSecretDomain, command.Item.ItemId, secrets.Protect(command.PlainSecret), DateTimeOffset.Now));
         }
         var item = command.Item with { HasProtectedSecret = command.PlainSecret is not null || command.Item.HasProtectedSecret, UpdatedAt = DateTimeOffset.Now };
-        await store.UpsertAsync(VaultDomain, item.ItemId, JsonSerializer.Serialize(item), item.UpdatedAt, cancellationToken);
+        mutations.Add(new(AtomicMutationKind.UpsertDomain, VaultDomain, item.ItemId, JsonSerializer.Serialize(item), item.UpdatedAt));
+        await atomic.ApplyAsync(mutations, cancellationToken);
         return OperationResult.Success();
     }
     public async Task<OperationResult> HandleAsync(DeleteVaultItemCommand command, CancellationToken cancellationToken = default)
     {
         // TODO(UI): 删除保险库条目前必须展示名称和类型，并进行二次确认。
-        await store.DeleteAsync(VaultSecretDomain, command.ItemId, cancellationToken);
-        await store.DeleteAsync(VaultDomain, command.ItemId, cancellationToken);
+        var mutations = new List<AtomicMutation>
+        {
+            new(AtomicMutationKind.DeleteDomain, VaultSecretDomain, command.ItemId, IdempotentDelete: true),
+            new(AtomicMutationKind.DeleteDomain, VaultDomain, command.ItemId, IdempotentDelete: true)
+        };
         foreach (var history in await LoadVaultHistoryMetadataAsync(cancellationToken))
         {
             if (!history.ItemId.Equals(command.ItemId, StringComparison.Ordinal)) continue;
-            await store.DeleteAsync(VaultHistorySecretDomain, history.HistoryId, cancellationToken);
-            await store.DeleteAsync(VaultHistoryDomain, history.HistoryId, cancellationToken);
+            mutations.Add(new(AtomicMutationKind.DeleteDomain, VaultHistorySecretDomain, history.HistoryId, IdempotentDelete: true));
+            mutations.Add(new(AtomicMutationKind.DeleteDomain, VaultHistoryDomain, history.HistoryId, IdempotentDelete: true));
         }
+        await atomic.ApplyAsync(mutations, cancellationToken);
         return OperationResult.Success();
     }
     public async Task<OperationResult<VaultItemDetailDto>> HandleAsync(GetVaultItemQuery query, CancellationToken cancellationToken = default)
@@ -340,8 +350,9 @@ public sealed class ExtendedDomainApplicationService :
         return await HandleAsync(new SaveVaultItemCommand(item, JsonSerializer.Serialize(currentValues), "Restore from history"), cancellationToken);
     }
 
-    private async Task SaveVaultHistoryAsync(string itemId, string oldSecret, string newSecret, string? remark, CancellationToken cancellationToken)
+    private IReadOnlyList<AtomicMutation> SaveVaultHistory(string itemId, string oldSecret, string newSecret, string? remark)
     {
+        var mutations = new List<AtomicMutation>();
         var oldValues = ParseSecretRecord(oldSecret);
         var newValues = ParseSecretRecord(newSecret);
         foreach (var field in new[] { "Password", "ApiKey", "Secret", "PrivateKey", "Mnemonic" })
@@ -353,9 +364,10 @@ public sealed class ExtendedDomainApplicationService :
             var now = DateTimeOffset.Now;
             var metadata = new VaultHistoryMetadata(historyId, itemId, field, remark ?? string.Empty, now);
             var historySecret = JsonSerializer.Serialize(new Dictionary<string, string> { ["OldValue"] = oldValue, ["NewValue"] = newValue });
-            await store.UpsertAsync(VaultHistoryDomain, historyId, JsonSerializer.Serialize(metadata), now, cancellationToken);
-            await store.UpsertAsync(VaultHistorySecretDomain, historyId, secrets.Protect(historySecret), now, cancellationToken);
+            mutations.Add(new(AtomicMutationKind.UpsertDomain, VaultHistoryDomain, historyId, JsonSerializer.Serialize(metadata), now));
+            mutations.Add(new(AtomicMutationKind.UpsertDomain, VaultHistorySecretDomain, historyId, secrets.Protect(historySecret), now));
         }
+        return mutations;
     }
 
     private async Task<IReadOnlyList<VaultHistoryMetadata>> LoadVaultHistoryMetadataAsync(CancellationToken cancellationToken)
@@ -385,22 +397,24 @@ public sealed class ExtendedDomainApplicationService :
         if (string.IsNullOrWhiteSpace(command.Site.SiteId) || string.IsNullOrWhiteSpace(command.Site.SiteName) || string.IsNullOrWhiteSpace(command.Site.DomainPattern))
             return OperationResult.Failure("remote_site.invalid", "站点名称和域名匹配不能为空。");
         bool hasProtectedCookie;
+        var mutations = new List<AtomicMutation>();
         if (command.PlainCookie is null)
         {
             hasProtectedCookie = await store.GetAsync(RemoteSiteSecretDomain, command.Site.SiteId, cancellationToken) is not null;
         }
         else if (command.PlainCookie.Length == 0)
         {
-            await store.DeleteAsync(RemoteSiteSecretDomain, command.Site.SiteId, cancellationToken);
+            mutations.Add(new(AtomicMutationKind.DeleteDomain, RemoteSiteSecretDomain, command.Site.SiteId, IdempotentDelete: true));
             hasProtectedCookie = false;
         }
         else
         {
-            await store.UpsertAsync(RemoteSiteSecretDomain, command.Site.SiteId, secrets.Protect(command.PlainCookie), DateTimeOffset.Now, cancellationToken);
+            mutations.Add(new(AtomicMutationKind.UpsertDomain, RemoteSiteSecretDomain, command.Site.SiteId, secrets.Protect(command.PlainCookie), DateTimeOffset.Now));
             hasProtectedCookie = true;
         }
         var site = command.Site with { HasProtectedCookie = hasProtectedCookie, UpdatedAt = DateTimeOffset.Now };
-        await store.UpsertAsync(RemoteSiteDomain, site.SiteId, JsonSerializer.Serialize(site), site.UpdatedAt, cancellationToken);
+        mutations.Add(new(AtomicMutationKind.UpsertDomain, RemoteSiteDomain, site.SiteId, JsonSerializer.Serialize(site), site.UpdatedAt));
+        await atomic.ApplyAsync(mutations, cancellationToken);
         return OperationResult.Success();
     }
     public async Task<OperationResult<RemoteSiteDetailDto>> HandleAsync(GetRemoteSiteQuery query, CancellationToken cancellationToken = default)
@@ -412,8 +426,10 @@ public sealed class ExtendedDomainApplicationService :
     }
     public async Task<OperationResult> HandleAsync(DeleteRemoteSiteCommand command, CancellationToken cancellationToken = default)
     {
-        await store.DeleteAsync(RemoteSiteSecretDomain, command.SiteId, cancellationToken);
-        await store.DeleteAsync(RemoteSiteDomain, command.SiteId, cancellationToken);
+        await atomic.ApplyAsync([
+            new AtomicMutation(AtomicMutationKind.DeleteDomain, RemoteSiteSecretDomain, command.SiteId, IdempotentDelete: true),
+            new AtomicMutation(AtomicMutationKind.DeleteDomain, RemoteSiteDomain, command.SiteId, IdempotentDelete: true)
+        ], cancellationToken);
         return OperationResult.Success();
     }
     public async Task<IReadOnlyList<RemoteSiteDto>> HandleAsync(ListRemoteSitesQuery query, CancellationToken cancellationToken = default)
@@ -434,12 +450,18 @@ public sealed class ExtendedDomainApplicationService :
     private async Task<OperationResult> SaveAsync<T>(string domain, string id, T value, DateTimeOffset updatedAt, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(id)) return OperationResult.Failure($"{domain}.invalid_id", "业务 ID 不能为空。");
-        await store.UpsertAsync(domain, id, JsonSerializer.Serialize(value), updatedAt, cancellationToken);
+        await atomic.ApplyAsync([new AtomicMutation(AtomicMutationKind.UpsertDomain, domain, id, JsonSerializer.Serialize(value), updatedAt)], cancellationToken);
+        return OperationResult.Success();
+    }
+    private async Task<OperationResult> SaveAtomicAsync<T>(string domain, string id, T value, DateTimeOffset updatedAt, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return OperationResult.Failure($"{domain}.invalid_id", "业务 ID 不能为空。");
+        await atomic.ApplyAsync([new AtomicMutation(AtomicMutationKind.UpsertDomain, domain, id, JsonSerializer.Serialize(value), updatedAt)], cancellationToken);
         return OperationResult.Success();
     }
     private async Task<OperationResult> DeleteAsync(string domain, string id, CancellationToken cancellationToken)
     {
-        await store.DeleteAsync(domain, id, cancellationToken);
+        await atomic.ApplyAsync([new AtomicMutation(AtomicMutationKind.DeleteDomain, domain, id, IdempotentDelete: true)], cancellationToken);
         return OperationResult.Success();
     }
     private async Task<IReadOnlyList<T>> ListAsync<T>(string domain, CancellationToken cancellationToken)

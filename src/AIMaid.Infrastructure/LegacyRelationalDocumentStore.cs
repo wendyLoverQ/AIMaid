@@ -180,6 +180,151 @@ internal sealed class LegacyRelationalDocumentStore
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    internal async Task ApplyAsync(SqliteConnection connection, SqliteTransaction transaction, IReadOnlyList<AtomicMutation> mutations, CancellationToken cancellationToken)
+    {
+        foreach (var mutation in mutations)
+        {
+            if (mutation.Name.Equals("appearance_configuration", StringComparison.OrdinalIgnoreCase))
+            {
+                var document = JsonNode.Parse(mutation.Json ?? "{}")?.AsObject() ?? throw new InvalidDataException("外观配置 JSON 无效。");
+                foreach (var pair in new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["ThemeId"] = "appearance_theme_id", ["ContentBrightness"] = "appearance_content_brightness", ["FontFamily"] = "appearance_font_family", ["FontScale"] = "appearance_font_scale", ["CornerRadiusStyle"] = "appearance_corner_radius_style", ["Density"] = "appearance_density", ["HeaderStyle"] = "appearance_header_style", ["AnimationsEnabled"] = "appearance_animations_enabled"
+                })
+                    if (document[pair.Key] is not null) await ApplySettingMutationAsync(connection, transaction, pair.Value, document[pair.Key]!.ToJsonString().Trim('"'), mutation, cancellationToken);
+                continue;
+            }
+            if (mutation.Name.Equals("model_configuration", StringComparison.OrdinalIgnoreCase))
+            {
+                var document = JsonNode.Parse(mutation.Json ?? "{}")?.AsObject() ?? throw new InvalidDataException("模型配置 JSON 无效。");
+                foreach (var field in new[] { "Type", "Endpoint", "Model", "ApiKey", "EnableWebSearch", "Think" })
+                    if (document[field] is not null) await ApplySettingMutationAsync(connection, transaction, $"user_config:App:Model:{mutation.Id}:{field}", document[field]!.ToJsonString().Trim('"'), mutation, cancellationToken);
+                continue;
+            }
+            if (mutation.Name.Equals("model_configuration_secret", StringComparison.OrdinalIgnoreCase))
+            {
+                await ApplySettingMutationAsync(connection, transaction, mutation.Id, mutation.Kind == AtomicMutationKind.DeleteDomain ? null : RequireSecrets().Unprotect(mutation.Json ?? string.Empty), mutation, cancellationToken);
+                continue;
+            }
+            if (mutation.Name.Equals("remote_site_secret", StringComparison.OrdinalIgnoreCase))
+            {
+                await using var cookie = connection.CreateCommand(); cookie.Transaction = transaction;
+                cookie.CommandText = mutation.Kind == AtomicMutationKind.DeleteDomain
+                    ? "UPDATE RemoteSiteConfigs SET CookieContent='' WHERE Id=$id"
+                    : "UPDATE RemoteSiteConfigs SET CookieContent=$value WHERE Id=$id";
+                cookie.Parameters.AddWithValue("$id", ParsePrefixedLong(mutation.Id, "legacy_site_"));
+                if (mutation.Kind != AtomicMutationKind.DeleteDomain) cookie.Parameters.AddWithValue("$value", RequireSecrets().Unprotect(mutation.Json ?? string.Empty));
+                var affected = await cookie.ExecuteNonQueryAsync(cancellationToken);
+                if (mutation.RequireExisting && affected == 0) throw new InvalidOperationException($"远程站点不存在：{mutation.Id}。");
+                continue;
+            }
+            if (mutation.Name.Equals("vault_secret", StringComparison.OrdinalIgnoreCase) || mutation.Name.Equals("vault_history_secret", StringComparison.OrdinalIgnoreCase))
+            {
+                await ApplyVaultSecretMutationAsync(connection, transaction, mutation, cancellationToken);
+                continue;
+            }
+            if (mutation.Kind is AtomicMutationKind.UpsertSetting or AtomicMutationKind.DeleteSetting)
+            {
+                await using var command = connection.CreateCommand(); command.Transaction = transaction;
+                command.CommandText = mutation.Kind == AtomicMutationKind.UpsertSetting
+                    ? "INSERT INTO AppSettings(Key,Value,UpdatedAt) VALUES($key,$value,$updated) ON CONFLICT(Key) DO UPDATE SET Value=excluded.Value,UpdatedAt=excluded.UpdatedAt"
+                    : "DELETE FROM AppSettings WHERE Key=$key";
+                command.Parameters.AddWithValue("$key", mutation.Id);
+                if (mutation.Kind == AtomicMutationKind.UpsertSetting)
+                {
+                    command.Parameters.AddWithValue("$value", mutation.Json ?? string.Empty);
+                    command.Parameters.AddWithValue("$updated", Format(mutation.UpdatedAt ?? DateTimeOffset.Now));
+                }
+                var affected = await command.ExecuteNonQueryAsync(cancellationToken);
+                if (mutation.RequireExisting && affected == 0) throw new InvalidOperationException($"目标设置不存在：{mutation.Id}。");
+                continue;
+            }
+
+            var map = GetMap(mutation.Name);
+            var key = ParseDocumentId(map, mutation.Id);
+            await using var command2 = connection.CreateCommand(); command2.Transaction = transaction;
+            command2.CommandText = mutation.Kind == AtomicMutationKind.DeleteDomain
+                ? $"DELETE FROM {Q(map.Table)} WHERE {BuildKeyPredicate(map, key, command2)}"
+                : $"SELECT 1 FROM {Q(map.Table)} WHERE {BuildKeyPredicate(map, key, command2)} LIMIT 1";
+            if (mutation.Kind == AtomicMutationKind.DeleteDomain)
+            {
+                var affected = await command2.ExecuteNonQueryAsync(cancellationToken);
+                if (mutation.RequireExisting && affected == 0 && !mutation.IdempotentDelete) throw new InvalidOperationException($"目标文档不存在：{mutation.Name}/{mutation.Id}。");
+                continue;
+            }
+            if (mutation.Json is null) throw new ArgumentException($"原子 Upsert 缺少 JSON：{mutation.Name}/{mutation.Id}。");
+            if (await command2.ExecuteScalarAsync(cancellationToken) is not null)
+            {
+                await using var update = connection.CreateCommand(); update.Transaction = transaction;
+                var document = JsonNode.Parse(mutation.Json)?.AsObject() ?? throw new InvalidDataException("业务文档不是 JSON 对象。");
+                var columns = await ReadColumnsAsync(connection, map.Table, cancellationToken, transaction);
+                var assignments = new List<string>(); var index = 0;
+                foreach (var property in document)
+                {
+                    var column = map.WriteAliases.GetValueOrDefault(property.Key, property.Key);
+                    if (!columns.ContainsKey(column) || column.Equals(map.KeyColumn, StringComparison.OrdinalIgnoreCase)) continue;
+                    var parameter = "$v" + index++; assignments.Add($"{Q(column)}={parameter}"); update.Parameters.AddWithValue(parameter, ToDbValue(property.Value, map.BooleanColumns.Contains(column)) ?? DBNull.Value);
+                }
+                if (columns.ContainsKey("UpdatedAt")) { assignments.Add("UpdatedAt=$updated"); update.Parameters.AddWithValue("$updated", Format(mutation.UpdatedAt ?? DateTimeOffset.Now)); }
+                if (assignments.Count == 0) continue;
+                update.CommandText = $"UPDATE {Q(map.Table)} SET {string.Join(',', assignments)} WHERE {BuildKeyPredicate(map, key, update)}";
+                await update.ExecuteNonQueryAsync(cancellationToken);
+            }
+            else
+            {
+                var document = JsonNode.Parse(mutation.Json)?.AsObject() ?? throw new InvalidDataException("业务文档不是 JSON 对象。");
+                var columns = await ReadColumnsAsync(connection, map.Table, cancellationToken, transaction);
+                var values = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+                foreach (var property in document)
+                {
+                    var column = map.WriteAliases.GetValueOrDefault(property.Key, property.Key);
+                    if (!columns.ContainsKey(column) || column.Equals(map.KeyColumn, StringComparison.OrdinalIgnoreCase)) continue;
+                    values[column] = ToDbValue(property.Value, map.BooleanColumns.Contains(column));
+                }
+                if (map.IdMode == IdMode.Direct) values[map.KeyColumn] = key;
+                else if (map.IdMode == IdMode.Singleton) values[map.KeyColumn] = map.SingletonKey;
+                else if (key is long numericKey) values[map.KeyColumn] = numericKey;
+                await FillRequiredDefaultsAsync(connection, map.Table, values, mutation.UpdatedAt ?? DateTimeOffset.Now, cancellationToken, transaction);
+                await using var insert = connection.CreateCommand(); insert.Transaction = transaction;
+                var names = values.Keys.ToArray(); var parameters = names.Select((_, i) => "$v" + i).ToArray();
+                for (var i = 0; i < names.Length; i++) insert.Parameters.AddWithValue(parameters[i], values[names[i]] ?? DBNull.Value);
+                insert.CommandText = $"INSERT INTO {Q(map.Table)} ({string.Join(',', names.Select(Q))}) VALUES ({string.Join(',', parameters)})";
+                await insert.ExecuteNonQueryAsync(cancellationToken);
+            }
+        }
+    }
+
+    private async Task ApplySettingMutationAsync(SqliteConnection connection, SqliteTransaction transaction, string key, string? value, AtomicMutation mutation, CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand(); command.Transaction = transaction;
+        command.CommandText = value is null ? "DELETE FROM AppSettings WHERE Key=$key" : "INSERT INTO AppSettings(Key,Value,UpdatedAt) VALUES($key,$value,$updated) ON CONFLICT(Key) DO UPDATE SET Value=excluded.Value,UpdatedAt=excluded.UpdatedAt";
+        command.Parameters.AddWithValue("$key", key);
+        if (value is not null) { command.Parameters.AddWithValue("$value", value); command.Parameters.AddWithValue("$updated", Format(mutation.UpdatedAt ?? DateTimeOffset.Now)); }
+        var affected = await command.ExecuteNonQueryAsync(cancellationToken);
+        if (mutation.RequireExisting && affected == 0) throw new InvalidOperationException($"目标设置不存在：{key}。");
+    }
+
+    private async Task ApplyVaultSecretMutationAsync(SqliteConnection connection, SqliteTransaction transaction, AtomicMutation mutation, CancellationToken cancellationToken)
+    {
+        var isHistory = mutation.Name.Equals("vault_history_secret", StringComparison.OrdinalIgnoreCase);
+        var id = ParsePrefixedLong(mutation.Id, isHistory ? "legacy_vault_history_" : "legacy_vault_");
+        var values = mutation.Kind == AtomicMutationKind.DeleteDomain ? new JsonObject() : JsonNode.Parse(RequireSecrets().Unprotect(mutation.Json ?? string.Empty))?.AsObject() ?? throw new InvalidDataException("保险库密文 JSON 无效。");
+        await using var command = connection.CreateCommand(); command.Transaction = transaction;
+        if (isHistory)
+        {
+            command.CommandText = "UPDATE VaultItemHistories SET OldValueEncrypted=$old,NewValueEncrypted=$new WHERE Id=$id";
+            command.Parameters.AddWithValue("$old", values["OldValue"]?.GetValue<string>() ?? string.Empty); command.Parameters.AddWithValue("$new", values["NewValue"]?.GetValue<string>() ?? string.Empty);
+        }
+        else
+        {
+            command.CommandText = "UPDATE VaultItems SET PasswordEncrypted=$password,ApiKeyEncrypted=$apiKey,SecretEncrypted=$secret,PrivateKeyEncrypted=$privateKey,MnemonicEncrypted=$mnemonic WHERE Id=$id";
+            foreach (var name in new[] { "password", "apiKey", "secret", "privateKey", "mnemonic" }) command.Parameters.AddWithValue("$" + name, values[name.Equals("apiKey", StringComparison.Ordinal) ? "ApiKey" : char.ToUpperInvariant(name[0]) + name[1..]]?.GetValue<string>() ?? string.Empty);
+        }
+        command.Parameters.AddWithValue("$id", id);
+        var affected = await command.ExecuteNonQueryAsync(cancellationToken);
+        if (mutation.RequireExisting && affected == 0) throw new InvalidOperationException($"保险库密文目标不存在：{mutation.Id}。");
+    }
+
     private async Task<string> ReadJsonAsync(SqliteConnection connection, SqliteDataReader reader, DomainMap map, CancellationToken cancellationToken)
     {
         var row = new JsonObject();
@@ -504,9 +649,9 @@ internal sealed class LegacyRelationalDocumentStore
         return await command.ExecuteScalarAsync(cancellationToken) is not null;
     }
 
-    private static async Task<Dictionary<string, ColumnInfo>> ReadColumnsAsync(SqliteConnection connection, string table, CancellationToken cancellationToken)
+    private static async Task<Dictionary<string, ColumnInfo>> ReadColumnsAsync(SqliteConnection connection, string table, CancellationToken cancellationToken, SqliteTransaction? transaction = null)
     {
-        await using var command = connection.CreateCommand();
+        await using var command = connection.CreateCommand(); command.Transaction = transaction;
         command.CommandText = $"PRAGMA table_info({Q(table)})";
         var result = new Dictionary<string, ColumnInfo>(StringComparer.OrdinalIgnoreCase);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -515,9 +660,9 @@ internal sealed class LegacyRelationalDocumentStore
         return result;
     }
 
-    private static async Task FillRequiredDefaultsAsync(SqliteConnection connection, string table, IDictionary<string, object?> values, DateTimeOffset updatedAt, CancellationToken cancellationToken)
+    private static async Task FillRequiredDefaultsAsync(SqliteConnection connection, string table, IDictionary<string, object?> values, DateTimeOffset updatedAt, CancellationToken cancellationToken, SqliteTransaction? transaction = null)
     {
-        var columns = await ReadColumnsAsync(connection, table, cancellationToken);
+        var columns = await ReadColumnsAsync(connection, table, cancellationToken, transaction);
         foreach (var column in columns.Values)
         {
             if (values.ContainsKey(column.Name) || column.PrimaryKey || !column.NotNull || column.DefaultValue is not null) continue;

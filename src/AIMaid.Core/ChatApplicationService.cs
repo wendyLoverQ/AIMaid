@@ -70,7 +70,8 @@ public sealed class ChatApplicationService :
     public async Task<OperationResult> HandleAsync(UpdateChatMessageMetadataCommand command, CancellationToken cancellationToken = default)
     {
         if (command.MessageId <= 0) return OperationResult.Failure("chat.invalid_message", "消息 ID 无效。");
-        await chatStore.UpdateMetadataAsync(command.MessageId, command.MetadataJson, cancellationToken);
+        if (!await chatStore.UpdateMetadataAsync(command.MessageId, command.MetadataJson, cancellationToken))
+            return OperationResult.Failure("chat.message_not_found", "目标消息不存在。");
         return OperationResult.Success();
     }
 

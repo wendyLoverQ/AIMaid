@@ -8,7 +8,7 @@ using Microsoft.Data.Sqlite;
 
 namespace AIMaid.Infrastructure;
 
-public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsStore, ICharacterStore, IBackgroundTaskStore, IDomainDocumentStore, ILlmCallAuditStore
+public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsStore, ICharacterStore, IBackgroundTaskStore, IDomainDocumentStore, ILlmCallAuditStore, IAtomicStore
 {
     public static IReadOnlyDictionary<string, string> RelationalDomainTables => LegacyRelationalDocumentStore.DomainTables;
     private readonly string connectionString;
@@ -27,96 +27,27 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            PRAGMA journal_mode=WAL;
-            DROP TABLE IF EXISTS CoreDocuments;
-            CREATE TABLE IF NOT EXISTS AppSettings (
-                Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                Key TEXT NOT NULL UNIQUE,
-                Value TEXT NOT NULL,
-                UpdatedAt TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS ChatMessages (
-                Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ConversationId TEXT NOT NULL,
-                Role TEXT NOT NULL,
-                Content TEXT NOT NULL,
-                CharacterId TEXT NOT NULL DEFAULT '',
-                ModelName TEXT NOT NULL DEFAULT '',
-                Source TEXT NOT NULL DEFAULT 'normal_chat',
-                MetadataJson TEXT NOT NULL DEFAULT '',
-                CreatedAt TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS IX_ChatMessages_ConversationId_Id ON ChatMessages(ConversationId, Id);
-            CREATE TABLE IF NOT EXISTS VoiceRoleCards (
-                RoleId TEXT PRIMARY KEY,
-                Name TEXT NOT NULL DEFAULT '',
-                VoiceName TEXT NOT NULL DEFAULT '',
-                RoleTitle TEXT NOT NULL DEFAULT '',
-                CardPath TEXT NOT NULL DEFAULT '',
-                SourceCardJson TEXT NOT NULL DEFAULT '',
-                TemplateCardJson TEXT NOT NULL DEFAULT '',
-                CardSummary TEXT NOT NULL DEFAULT '',
-                CardSchemaVersion TEXT NOT NULL DEFAULT '',
-                TemplateCardSourceHash TEXT NOT NULL DEFAULT '',
-                TemplateCardGenerationStatus TEXT NOT NULL DEFAULT '',
-                TemplateCardGenerationMessage TEXT NOT NULL DEFAULT '',
-                TemplateCardGeneratedAt TEXT NULL,
-                TemplateCardLastAttemptAt TEXT NULL,
-                TemplateCardIterationCount INTEGER NOT NULL DEFAULT 0,
-                PreferredVoiceId TEXT NOT NULL DEFAULT '',
-                ValidationStatus TEXT NOT NULL DEFAULT 'unknown',
-                ValidationMessage TEXT NOT NULL DEFAULT '',
-                LastValidatedAt TEXT NULL,
-                AvatarPath TEXT NOT NULL DEFAULT '',
-                IsEnabled INTEGER NOT NULL DEFAULT 1,
-                UpdatedAt TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS CoreBackgroundTasks (
-                TaskId TEXT PRIMARY KEY,
-                TaskType TEXT NOT NULL,
-                State INTEGER NOT NULL,
-                Progress REAL NOT NULL,
-                Message TEXT NOT NULL,
-                ResultJson TEXT NOT NULL,
-                Error TEXT NOT NULL,
-                CreatedAt TEXT NOT NULL,
-                UpdatedAt TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS IX_CoreBackgroundTasks_Type_UpdatedAt ON CoreBackgroundTasks(TaskType, UpdatedAt DESC);
-            CREATE TABLE IF NOT EXISTS ProactiveTriggerRules (
-                Id INTEGER NOT NULL CONSTRAINT PK_ProactiveTriggerRules PRIMARY KEY AUTOINCREMENT,
-                RuleId TEXT NOT NULL,
-                Enabled INTEGER NOT NULL,
-                Event TEXT NOT NULL,
-                ConditionJson TEXT NOT NULL,
-                Priority INTEGER NOT NULL,
-                CooldownSeconds INTEGER NOT NULL,
-                DisturbanceLevel TEXT NOT NULL,
-                AllowTts INTEGER NOT NULL,
-                ActionTag TEXT NOT NULL,
-                TextTemplatesJson TEXT NOT NULL,
-                Source TEXT NOT NULL,
-                CreatedAt TEXT NOT NULL,
-                UpdatedAt TEXT NOT NULL
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS IX_ProactiveTriggerRules_RuleId ON ProactiveTriggerRules(RuleId);
-            CREATE INDEX IF NOT EXISTS IX_ProactiveTriggerRules_Event ON ProactiveTriggerRules(Event);
-            CREATE TABLE IF NOT EXISTS ProactiveTriggerStates (
-                Id INTEGER NOT NULL CONSTRAINT PK_ProactiveTriggerStates PRIMARY KEY AUTOINCREMENT,
-                RuleId TEXT NOT NULL,
-                LastTriggeredAt TEXT NULL,
-                TriggerCount INTEGER NOT NULL,
-                LastResult TEXT NOT NULL,
-                UpdatedAt TEXT NOT NULL
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS IX_ProactiveTriggerStates_RuleId ON ProactiveTriggerStates(RuleId);
-            """;
-        await command.ExecuteNonQueryAsync(cancellationToken);
-        await EnsureAppSettingsColumnsAsync(connection, cancellationToken);
-        await EnsureCharacterColumnsAsync(connection, cancellationToken);
-        await EnsureTimerRecordColumnsAsync(connection, cancellationToken);
+        await using var pragma = connection.CreateCommand();
+        pragma.CommandText = "PRAGMA journal_mode=WAL;";
+        await pragma.ExecuteNonQueryAsync(cancellationToken);
+        await SchemaBootstrapper.ApplyAsync(connection, cancellationToken);
+    }
+
+    async Task IAtomicStore.ApplyAsync(IReadOnlyList<AtomicMutation> mutations, CancellationToken cancellationToken)
+    {
+        if (mutations.Count == 0) return;
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await documents.ApplyAsync(connection, transaction, mutations, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
     }
 
     async Task<long> IChatStore.AppendAsync(ChatMessageDto message, CancellationToken cancellationToken)
@@ -139,14 +70,14 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
         return (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
     }
 
-    public async Task UpdateMetadataAsync(long messageId, string metadataJson, CancellationToken cancellationToken = default)
+    public async Task<bool> UpdateMetadataAsync(long messageId, string metadataJson, CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = "UPDATE ChatMessages SET MetadataJson=$metadata WHERE Id=$id";
         command.Parameters.AddWithValue("$metadata", metadataJson ?? string.Empty);
         command.Parameters.AddWithValue("$id", messageId);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
     }
 
     public async Task<IReadOnlyList<ChatMessageDto>> LoadRecentAsync(string conversationId, int limit, CancellationToken cancellationToken = default)

@@ -16,11 +16,10 @@
 - `ChatMessages`
 - `VoiceRoleCards`
 - `CoreBackgroundTasks`
-- `CoreDocuments`
+- 当前关系存储实际使用的扩展业务表（由 `LegacyRelationalDocumentStore` 的 Domain 映射定义）。
 
-扩展业务按稳定 Domain 存入 `CoreDocuments`，不再为每个旧 WPF 页面、缓存或日志建立一张表。
-每次迁移都会在新库 `_migration/legacy_ai_maid` 和外部 JSON 报告中记录逐表行数、目标、废弃字段
-和理由；出现未审计的新旧表时迁移会停止，不会静默漏数据。
+`CoreDocuments` 仅作为历史迁移产物保留。普通 Core 启动不会删除它；若其中仍有数据，启动会
+明确停止并要求完成兼容迁移，不会假装关系存储已经读取这些数据。
 
 ## 整表废弃
 
@@ -73,10 +72,10 @@ dotnet run --project tools/AIMaid.LegacyMigration/AIMaid.LegacyMigration.csproj 
 
 - 识别 50 张表，未出现未审计表。
 - 完整迁移 22,405 行业务数据；排除 68,876 行缓存、遥测、诊断、过期任务和废弃设置。
-- 新库约 16 MB，只包含上述 5 张物理表。
+- 新库按当前 Domain 映射建立完整关系表，启动时只执行非破坏性的建表、补列和索引升级。
 - `ChatMessages` 302 条、`VoiceRoleCards` 51 条、远程媒体索引 11,200 条均保留。
 - 7 条保险库秘密、8 条保险库历史、5 条敏感设置和 7 条站点 Cookie 均重新加密。
-- 新库中敏感 `AppSettings` 明文数量为 0。
+- 新库中敏感 `AppSettings` 明文数量为 0（历史数据迁移仍以实际报告为准）。
 - SQLite `PRAGMA integrity_check` 返回 `ok`。
 
 旧 Agent 的 `db_query`、`http_api`、`internal_service`、`internal_ui`、`process_kill`、

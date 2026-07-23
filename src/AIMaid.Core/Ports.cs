@@ -16,10 +16,32 @@ public interface IEventPublisher
 public interface IChatStore
 {
     Task<long> AppendAsync(ChatMessageDto message, CancellationToken cancellationToken = default);
-    Task UpdateMetadataAsync(long messageId, string metadataJson, CancellationToken cancellationToken = default);
+    Task<bool> UpdateMetadataAsync(long messageId, string metadataJson, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ChatMessageDto>> LoadRecentAsync(string conversationId, int limit, CancellationToken cancellationToken = default);
     Task DeleteConversationAsync(string conversationId, CancellationToken cancellationToken = default);
     Task DeleteByCharacterAsync(string characterId, CancellationToken cancellationToken = default);
+}
+
+public enum AtomicMutationKind
+{
+    UpsertDomain,
+    DeleteDomain,
+    UpsertSetting,
+    DeleteSetting
+}
+
+public sealed record AtomicMutation(
+    AtomicMutationKind Kind,
+    string Name,
+    string Id,
+    string? Json = null,
+    DateTimeOffset? UpdatedAt = null,
+    bool RequireExisting = false,
+    bool IdempotentDelete = false);
+
+public interface IAtomicStore
+{
+    Task ApplyAsync(IReadOnlyList<AtomicMutation> mutations, CancellationToken cancellationToken = default);
 }
 
 public interface IChatSearchStore
