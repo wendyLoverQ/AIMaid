@@ -47,51 +47,49 @@ export class ApplicationLifecycle {
 
     this.registerLifecycleHandlers()
     await app.whenReady()
-    this.petAssets.register()
-    this.petWindows.install()
-    this.tray.install()
-    this.ipc.install()
-    this.events.start()
     try {
+      this.petAssets.register()
+      this.petWindows.install()
+      this.tray.install()
+      this.ipc.install()
+      this.events.start()
       await this.coreProcess.start()
       await this.coreClient.start()
-    } catch (error) {
-      this.log.error('startup', 'Real Core failed to become ready', error)
-    }
-    if (this.coreClient.getStatus().state === 'ready') {
-      try {
-        await this.systemSettings.initialize()
-      } catch (error) {
-        this.log.error('startup', 'System settings initialization failed', error)
+      if (this.coreClient.getStatus().state !== 'ready') {
+        throw new Error(`Core failed to become ready: ${this.coreClient.getStatus().state}`)
       }
+      await this.systemSettings.initialize()
       this.reminders.start()
-    }
-    const requestedWindow = this.readStartupWindow()
-    const hidePet = process.argv.includes('--hide-pet')
-    if (!hidePet) this.petWindows.open()
-    await this.systemSettings.applyVisualSettings()
-    if (requestedWindow !== undefined) {
-      await this.windows.openAndWait(requestedWindow)
-      this.log.info('startup', 'Window opened from explicit startup argument', { kind: requestedWindow, hidePet })
-    }
-    if (process.argv.includes('--smoke-test') || process.env.AIMAID_SMOKE_TEST === '1') {
-      const requested = Number(process.env.AIMAID_SMOKE_TEST_MS ?? 1_000)
-      const delay = Number.isFinite(requested) ? Math.min(30_000, Math.max(1_000, requested)) : 1_000
-      if (delay >= 5_000) {
-        setTimeout(() => {
-          const controller = new AbortController()
-          void this.coreClient.invoke(randomUUID(), { type: 'system.stream', payload: { steps: 4, delayMs: 250 } }, controller.signal)
-            .catch((error: unknown) => this.log.error('smoke-test', 'Core PetWindow event test failed', error))
-        }, 2_500).unref()
+      const requestedWindow = this.readStartupWindow()
+      const hidePet = process.argv.includes('--hide-pet')
+      if (!hidePet) this.petWindows.open()
+      await this.systemSettings.applyVisualSettings()
+      if (requestedWindow !== undefined) {
+        await this.windows.openAndWait(requestedWindow)
+        this.log.info('startup', 'Window opened from explicit startup argument', { kind: requestedWindow, hidePet })
       }
-      setTimeout(() => app.quit(), delay).unref()
+      if (process.argv.includes('--smoke-test') || process.env.AIMAID_SMOKE_TEST === '1') {
+        const requested = Number(process.env.AIMAID_SMOKE_TEST_MS ?? 1_000)
+        const delay = Number.isFinite(requested) ? Math.min(30_000, Math.max(1_000, requested)) : 1_000
+        if (delay >= 5_000) {
+          setTimeout(() => {
+            const controller = new AbortController()
+            void this.coreClient.invoke(randomUUID(), { type: 'system.stream', payload: { steps: 4, delayMs: 250 } }, controller.signal)
+              .catch((error: unknown) => this.log.error('smoke-test', 'Core PetWindow event test failed', error))
+          }, 2_500).unref()
+        }
+        setTimeout(() => app.quit(), delay).unref()
+      }
+      this.log.info('startup', 'Application startup completed', {
+        durationMs: elapsedMs(startupStartedAt),
+        coreState: this.coreClient.getStatus().state,
+        requestedWindow: requestedWindow ?? null,
+        petVisible: !hidePet
+      })
+    } catch (error) {
+      await this.cleanupAndExit()
+      throw error
     }
-    this.log.info('startup', 'Application startup completed', {
-      durationMs: elapsedMs(startupStartedAt),
-      coreState: this.coreClient.getStatus().state,
-      requestedWindow: requestedWindow ?? null,
-      petVisible: !hidePet
-    })
   }
 
   private readStartupWindow(argumentsList: readonly string[] = process.argv): WindowKind | undefined {
@@ -134,23 +132,26 @@ export class ApplicationLifecycle {
   private async cleanupAndExit(): Promise<void> {
     this.cleanupStarted = true
     this.log.info('lifecycle', 'Application cleanup started')
-    await this.reminders.stop()
-    this.events.stop()
-    this.ipc.dispose()
-    this.petWindows.dispose()
-    this.tray.dispose()
-    this.petAssets.dispose()
-    this.systemSettings.dispose()
-    this.windows.destroyAll()
+    await this.cleanupStep('reminders', () => this.reminders.stop())
+    await this.cleanupStep('event router', () => this.events.stop())
+    await this.cleanupStep('IPC router', () => this.ipc.dispose())
+    await this.cleanupStep('pet window manager', () => this.petWindows.dispose())
+    await this.cleanupStep('tray', () => this.tray.dispose())
+    await this.cleanupStep('pet assets', () => this.petAssets.dispose())
+    await this.cleanupStep('system settings', () => this.systemSettings.dispose())
+    await this.cleanupStep('windows', () => this.windows.destroyAll())
+    await this.cleanupStep('Core client', () => this.coreClient.stop())
+    await this.cleanupStep('Core process', () => this.coreProcess.stop())
+    this.cleanupComplete = true
+    this.log.info('lifecycle', 'Application cleanup complete')
+    app.quit()
+  }
+
+  private async cleanupStep(name: string, action: () => void | Promise<void>): Promise<void> {
     try {
-      await this.coreClient.stop()
-      await this.coreProcess.stop()
+      await action()
     } catch (error) {
-      this.log.error('lifecycle', 'Core cleanup failed', error)
-    } finally {
-      this.cleanupComplete = true
-      this.log.info('lifecycle', 'Application cleanup complete')
-      app.quit()
+      this.log.error('lifecycle', `${name} cleanup failed`, error)
     }
   }
 }

@@ -73,5 +73,5 @@ process.on('unhandledRejection', (error) => logger.error('process', 'Unhandled r
 
 void lifecycle.run().catch((error: unknown) => {
   logger.error('startup', 'Application startup failed', error)
-  process.exitCode = 1
+  app.exit(1)
 })
