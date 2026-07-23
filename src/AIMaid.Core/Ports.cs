@@ -204,10 +204,16 @@ public sealed record RemoteToolExecutionResult(int ExitCode, string StandardOutp
 public sealed record RemoteMediaLaunchRequest(
     string Source, string? AudioSource = null, string? Title = null,
     string? UserAgent = null, string? Referer = null);
+public sealed record RemoteLiveCaptureRequest(
+    string Url, string SiteKey, string CookieText, string UserAgent, string Referer);
+public sealed record RemoteLiveCaptureResult(
+    string StreamUrl, string Title, string Author, string CoverUrl, string VideoId);
 public interface IRemoteVideoPlatform
 {
     Task<RemoteToolExecutionResult> RunToolAsync(
         string executablePath, IReadOnlyList<string> arguments,
         Action<string>? standardErrorLine = null, CancellationToken cancellationToken = default);
+    Task<RemoteLiveCaptureResult> CaptureLiveAsync(
+        RemoteLiveCaptureRequest request, CancellationToken cancellationToken = default);
     Task<int> LaunchMediaAsync(string executablePath, RemoteMediaLaunchRequest request, CancellationToken cancellationToken = default);
 }

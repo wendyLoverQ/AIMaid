@@ -10,6 +10,7 @@ namespace AIMaid.Core;
 
 public sealed partial class RemoteVideoApplicationService
 {
+    private const string DirectStreamSelectorPrefix = "aimaid-live:";
     private const string ItemDomain = "remote_video_item";
     private const string DownloadDomain = "remote_video_download";
     private const string PlayDomain = "remote_video_play";
@@ -54,6 +55,19 @@ public sealed partial class RemoteVideoApplicationService
         foreach (var link in links)
         {
             var site = await MatchSiteAsync(link, cancellationToken);
+            if (IsSpecializedLiveUrl(link))
+            {
+                var liveItem = await ResolveSpecializedLiveAsync(link, site, cancellationToken);
+                liveItem = liveItem with
+                {
+                    DownloadStatus = downloadStatuses.TryGetValue(liveItem.ItemId, out var liveStatus) ? liveStatus : "None"
+                };
+                resolvedItems[liveItem.ItemId] = liveItem;
+                await store.UpsertAsync(ItemDomain, liveItem.ItemId, JsonSerializer.Serialize(liveItem), DateTimeOffset.Now, cancellationToken);
+                resolved.Add(liveItem);
+                summaries.Add($"{HostLabel(link)}：1 项直播");
+                continue;
+            }
             var arguments = new List<string>
             {
                 "--no-config", "-J", "--skip-download", "--no-warnings", "--color", "never",
@@ -76,6 +90,8 @@ public sealed partial class RemoteVideoApplicationService
                 throw new RemoteVideoOperationException(SanitizeExternalMessage(result.StandardError, "yt-dlp 解析失败。"));
             using var document = JsonDocument.Parse(result.StandardOutput);
             var parsed = ParseResolvedItems(document.RootElement, link, site?.SiteName ?? string.Empty);
+            var hydration = await HydratePlaylistItemsAsync(parsed, settings, site, cancellationToken);
+            parsed = hydration.Items;
             foreach (var parsedItem in parsed)
             {
                 var item = parsedItem with
@@ -86,7 +102,10 @@ public sealed partial class RemoteVideoApplicationService
                 await store.UpsertAsync(ItemDomain, item.ItemId, JsonSerializer.Serialize(item), DateTimeOffset.Now, cancellationToken);
                 resolved.Add(item);
             }
-            summaries.Add($"{HostLabel(link)}：{parsed.Count} 项");
+            var hydrationText = hydration.FailedCount > 0
+                ? $"，其中 {hydration.FailedCount} 项元数据补全失败"
+                : string.Empty;
+            summaries.Add($"{HostLabel(link)}：{parsed.Count} 项{hydrationText}");
         }
         SetDiagnostic("resolve", "succeeded", $"已解析 {resolved.Count} 项（{string.Join("；", summaries)}）。");
         return new RemoteVideoResolveResultDto(resolved, lastMessage);
@@ -166,12 +185,19 @@ public sealed partial class RemoteVideoApplicationService
         }
         else
         {
-            var args = new List<string> { "--no-playlist", "--no-warnings", "-f", selector, "-g", item.OriginalUrl };
-            var result = await RunYtDlpAsync(settings, site, args, cancellationToken);
-            if (result.ExitCode != 0) throw new InvalidOperationException(SanitizeExternalMessage(result.StandardError, "播放地址解析失败。"));
-            var sources = result.StandardOutput.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            source = sources.FirstOrDefault() ?? throw new InvalidDataException("yt-dlp 未返回播放地址。");
-            audioSource = sources.Skip(1).FirstOrDefault();
+            if (TryDecodeDirectStreamSelector(selector, out var liveSource))
+            {
+                source = liveSource;
+            }
+            else
+            {
+                var args = new List<string> { "--no-config", "--no-playlist", "--no-warnings", "--color", "never", "-f", selector, "-g", item.OriginalUrl };
+                var result = await RunYtDlpAsync(settings, site, args, cancellationToken);
+                if (result.ExitCode != 0) throw new InvalidOperationException(SanitizeExternalMessage(result.StandardError, "播放地址解析失败。"));
+                var sources = result.StandardOutput.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                source = sources.FirstOrDefault() ?? throw new InvalidDataException("yt-dlp 未返回播放地址。");
+                audioSource = sources.Skip(1).FirstOrDefault();
+            }
         }
         await platform.LaunchMediaAsync(await ResolvePotPlayerPathAsync(cancellationToken),
             new RemoteMediaLaunchRequest(source, audioSource, item.Title,
@@ -443,6 +469,61 @@ public sealed partial class RemoteVideoApplicationService
         }
     }
 
+    private async Task<RemoteVideoResolvedItemDto> ResolveSpecializedLiveAsync(
+        string url,
+        RemoteSiteDto? site,
+        CancellationToken cancellationToken)
+    {
+        var siteKey = url.Contains("douyin.com", StringComparison.OrdinalIgnoreCase) ? "douyin" : "xiaohongshu";
+        var cookieText = await ReadCookieTextAsync(site, cancellationToken);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(40));
+        RemoteLiveCaptureResult capture;
+        try
+        {
+            capture = await platform.CaptureLiveAsync(new RemoteLiveCaptureRequest(
+                url,
+                siteKey,
+                cookieText,
+                ReadSiteSetting(site, "userAgent") ?? string.Empty,
+                ReadSiteSetting(site, "referer") ?? url), timeout.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new RemoteVideoOperationException("直播页面解析超过 40 秒，未捕获到可播放的签名流。");
+        }
+        var selector = EncodeDirectStreamSelector(capture.StreamUrl);
+        var format = new RemoteVideoFormatDto(
+            "live", selector,
+            capture.StreamUrl.Contains(".m3u8", StringComparison.OrdinalIgnoreCase) ? "直播流｜HLS" : "直播流｜FLV",
+            null, null, null, true, true, null);
+        var videoId = string.IsNullOrWhiteSpace(capture.VideoId) ? StableLegacyVideoId(url, string.Empty) : capture.VideoId;
+        return new RemoteVideoResolvedItemDto(
+            StableLegacyVideoId(url, videoId),
+            url,
+            string.IsNullOrWhiteSpace(capture.Title) ? $"{site?.SiteName ?? siteKey}直播" : capture.Title,
+            capture.Author,
+            site?.SiteName ?? (siteKey == "douyin" ? "抖音" : "小红书"),
+            videoId,
+            0,
+            capture.CoverUrl,
+            null,
+            true,
+            "None",
+            [format]);
+    }
+
+    private async Task<string> ReadCookieTextAsync(RemoteSiteDto? site, CancellationToken cancellationToken)
+    {
+        if (site is null) return string.Empty;
+        var protectedValue = await store.GetAsync(SiteSecretDomain, site.SiteId, cancellationToken);
+        if (string.IsNullOrWhiteSpace(protectedValue)) return string.Empty;
+        var plaintext = secrets.Unprotect(protectedValue);
+        return string.IsNullOrWhiteSpace(plaintext)
+            ? string.Empty
+            : NormalizeCookie(plaintext, site.DomainPattern);
+    }
+
     private async Task<string?> CreateCookieFileAsync(RemoteSiteDto? site, string cacheRoot, CancellationToken cancellationToken)
     {
         if (site is null) return null;
@@ -672,6 +753,54 @@ public sealed partial class RemoteVideoApplicationService
         return elements.Select(element => ParseItem(element, originalUrl, siteName)).ToArray();
     }
 
+    private async Task<PlaylistHydrationResult> HydratePlaylistItemsAsync(
+        IReadOnlyList<RemoteVideoResolvedItemDto> items,
+        RemoteVideoSettingsDto settings,
+        RemoteSiteDto? site,
+        CancellationToken cancellationToken)
+    {
+        if (items.Count <= 1 || !items.Any(NeedsMetadataHydration))
+            return new PlaylistHydrationResult(items, 0);
+        using var gate = new SemaphoreSlim(4, 4);
+        var failed = 0;
+        var tasks = items.Select(async item =>
+        {
+            if (!NeedsMetadataHydration(item)) return item;
+            await gate.WaitAsync(cancellationToken);
+            try
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeout.CancelAfter(TimeSpan.FromSeconds(30));
+                var result = await RunYtDlpAsync(settings, site,
+                    ["--no-config", "-J", "--skip-download", "--no-playlist", "--no-warnings", "--color", "never", item.OriginalUrl],
+                    timeout.Token);
+                if (result.ExitCode != 0) throw new InvalidOperationException();
+                using var document = JsonDocument.Parse(result.StandardOutput);
+                return ParseItem(document.RootElement, item.OriginalUrl, item.SiteName) with
+                {
+                    ItemId = item.ItemId,
+                    DownloadStatus = item.DownloadStatus
+                };
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                Interlocked.Increment(ref failed);
+                return item;
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }).ToArray();
+        return new PlaylistHydrationResult(await Task.WhenAll(tasks), failed);
+    }
+
+    private static bool NeedsMetadataHydration(RemoteVideoResolvedItemDto item)
+        => string.IsNullOrWhiteSpace(item.ThumbnailUrl) ||
+           string.IsNullOrWhiteSpace(item.Author) ||
+           item.Title.Equals("未命名视频", StringComparison.Ordinal) ||
+           item.DurationSeconds <= 0;
+
     private static RemoteVideoResolvedItemDto ParseItem(JsonElement element, string fallbackUrl, string siteName)
     {
         var videoId = ReadString(element, "id");
@@ -736,6 +865,33 @@ public sealed partial class RemoteVideoApplicationService
             ? "bestvideo*+bestaudio/best" : fallback;
     }
 
+    private static bool IsSpecializedLiveUrl(string url)
+        => Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+           (uri.Host.Equals("live.douyin.com", StringComparison.OrdinalIgnoreCase) ||
+            (uri.Host.EndsWith("xiaohongshu.com", StringComparison.OrdinalIgnoreCase) &&
+             uri.AbsolutePath.Contains("/livestream/", StringComparison.OrdinalIgnoreCase)));
+
+    private static string EncodeDirectStreamSelector(string streamUrl)
+        => DirectStreamSelectorPrefix + Convert.ToBase64String(Encoding.UTF8.GetBytes(streamUrl))
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    private static bool TryDecodeDirectStreamSelector(string selector, out string streamUrl)
+    {
+        streamUrl = string.Empty;
+        if (!selector.StartsWith(DirectStreamSelectorPrefix, StringComparison.Ordinal)) return false;
+        var value = selector[DirectStreamSelectorPrefix.Length..].Replace('-', '+').Replace('_', '/');
+        value = value.PadRight(value.Length + (4 - value.Length % 4) % 4, '=');
+        try
+        {
+            streamUrl = Encoding.UTF8.GetString(Convert.FromBase64String(value));
+            return Uri.TryCreate(streamUrl, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https";
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+
     private static string StableLegacyVideoId(string originalUrl, string videoId)
     {
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(originalUrl + "\n" + videoId));
@@ -750,6 +906,10 @@ public sealed partial class RemoteVideoApplicationService
         if (value >= 0) value = -value - 1;
         return prefix + value.ToString(CultureInfo.InvariantCulture);
     }
+
+    private sealed record PlaylistHydrationResult(
+        IReadOnlyList<RemoteVideoResolvedItemDto> Items,
+        int FailedCount);
 
     private static string NormalizeOutputTemplate(string template)
         => template.Replace("{site}", "%(extractor)s", StringComparison.OrdinalIgnoreCase)

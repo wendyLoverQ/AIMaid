@@ -5,6 +5,10 @@ namespace AIMaid.Platform.Windows;
 
 public sealed class WindowsRemoteVideoPlatform : IRemoteVideoPlatform
 {
+    public Task<RemoteLiveCaptureResult> CaptureLiveAsync(
+        RemoteLiveCaptureRequest request, CancellationToken cancellationToken = default)
+        => WindowsRemoteLiveCapture.CaptureAsync(request, cancellationToken);
+
     public async Task<RemoteToolExecutionResult> RunToolAsync(
         string executablePath, IReadOnlyList<string> arguments,
         Action<string>? standardErrorLine = null, CancellationToken cancellationToken = default)
