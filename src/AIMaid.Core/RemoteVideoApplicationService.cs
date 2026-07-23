@@ -68,6 +68,24 @@ public sealed partial class RemoteVideoApplicationService
                 summaries.Add($"{HostLabel(link)}：1 项直播");
                 continue;
             }
+            if (IsSpecializedCreatorUrl(link))
+            {
+                var creatorItems = await ResolveSpecializedCreatorAsync(link, site, cancellationToken);
+                foreach (var creatorItem in creatorItems)
+                {
+                    var item = creatorItem with
+                    {
+                        DownloadStatus = downloadStatuses.TryGetValue(creatorItem.ItemId, out var creatorStatus)
+                            ? creatorStatus
+                            : "None"
+                    };
+                    resolvedItems[item.ItemId] = item;
+                    await store.UpsertAsync(ItemDomain, item.ItemId, JsonSerializer.Serialize(item), DateTimeOffset.Now, cancellationToken);
+                    resolved.Add(item);
+                }
+                summaries.Add($"{HostLabel(link)}：{creatorItems.Count} 项博主作品");
+                continue;
+            }
             var arguments = new List<string>
             {
                 "--no-config", "-J", "--skip-download", "--no-warnings", "--color", "never",
@@ -513,6 +531,50 @@ public sealed partial class RemoteVideoApplicationService
             [format]);
     }
 
+    private async Task<IReadOnlyList<RemoteVideoResolvedItemDto>> ResolveSpecializedCreatorAsync(
+        string url,
+        RemoteSiteDto? site,
+        CancellationToken cancellationToken)
+    {
+        var siteKey = url.Contains("douyin.com", StringComparison.OrdinalIgnoreCase) ? "douyin" : "xiaohongshu";
+        var cookieText = await ReadCookieTextAsync(site, cancellationToken);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(50));
+        RemoteCreatorCaptureResult capture;
+        try
+        {
+            capture = await platform.CaptureCreatorAsync(new RemoteCreatorCaptureRequest(
+                url,
+                siteKey,
+                cookieText,
+                ReadSiteSetting(site, "userAgent") ?? string.Empty,
+                ReadSiteSetting(site, "referer") ?? url), timeout.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new RemoteVideoOperationException("博主主页解析超过 50 秒，未捕获到公开作品列表。");
+        }
+        if (capture.Items.Count == 0)
+            throw new RemoteVideoOperationException("博主主页没有捕获到公开的视频作品，页面可能需要重新登录验证。");
+        var siteName = site?.SiteName ?? (siteKey == "douyin" ? "抖音" : "小红书");
+        var format = new RemoteVideoFormatDto(
+            "auto", "bestvideo*+bestaudio/best", "自动｜最高画质",
+            null, null, null, true, true, null);
+        return capture.Items.Select(item => new RemoteVideoResolvedItemDto(
+            StableLegacyVideoId(item.Url, item.VideoId),
+            item.Url,
+            string.IsNullOrWhiteSpace(item.Title) ? "未命名视频" : item.Title,
+            item.Author,
+            siteName,
+            item.VideoId,
+            item.DurationSeconds,
+            item.CoverUrl,
+            item.PublishedAtUnix is > 0 ? DateTimeOffset.FromUnixTimeSeconds(item.PublishedAtUnix.Value) : null,
+            false,
+            "None",
+            [format])).ToArray();
+    }
+
     private async Task<string> ReadCookieTextAsync(RemoteSiteDto? site, CancellationToken cancellationToken)
     {
         if (site is null) return string.Empty;
@@ -872,6 +934,13 @@ public sealed partial class RemoteVideoApplicationService
            (uri.Host.Equals("live.douyin.com", StringComparison.OrdinalIgnoreCase) ||
             (uri.Host.EndsWith("xiaohongshu.com", StringComparison.OrdinalIgnoreCase) &&
              uri.AbsolutePath.Contains("/livestream/", StringComparison.OrdinalIgnoreCase)));
+
+    private static bool IsSpecializedCreatorUrl(string url)
+        => Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+           ((uri.Host.EndsWith("douyin.com", StringComparison.OrdinalIgnoreCase) &&
+             uri.AbsolutePath.Contains("/user/", StringComparison.OrdinalIgnoreCase)) ||
+            (uri.Host.EndsWith("xiaohongshu.com", StringComparison.OrdinalIgnoreCase) &&
+             uri.AbsolutePath.Contains("/user/profile/", StringComparison.OrdinalIgnoreCase)));
 
     private static string EncodeDirectStreamSelector(string streamUrl)
         => DirectStreamSelectorPrefix + Convert.ToBase64String(Encoding.UTF8.GetBytes(streamUrl))

@@ -9,6 +9,10 @@ public sealed class WindowsRemoteVideoPlatform : IRemoteVideoPlatform
         RemoteLiveCaptureRequest request, CancellationToken cancellationToken = default)
         => WindowsRemoteLiveCapture.CaptureAsync(request, cancellationToken);
 
+    public Task<RemoteCreatorCaptureResult> CaptureCreatorAsync(
+        RemoteCreatorCaptureRequest request, CancellationToken cancellationToken = default)
+        => WindowsRemoteCreatorCapture.CaptureAsync(request, cancellationToken);
+
     public async Task<RemoteToolExecutionResult> RunToolAsync(
         string executablePath, IReadOnlyList<string> arguments,
         Action<string>? standardErrorLine = null, CancellationToken cancellationToken = default)

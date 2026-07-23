@@ -208,6 +208,13 @@ public sealed record RemoteLiveCaptureRequest(
     string Url, string SiteKey, string CookieText, string UserAgent, string Referer);
 public sealed record RemoteLiveCaptureResult(
     string StreamUrl, string Title, string Author, string CoverUrl, string VideoId);
+public sealed record RemoteCreatorCaptureRequest(
+    string Url, string SiteKey, string CookieText, string UserAgent, string Referer);
+public sealed record RemoteCreatorCaptureItem(
+    string VideoId, string Url, string Title, string Author, string CoverUrl,
+    int DurationSeconds, long? PublishedAtUnix);
+public sealed record RemoteCreatorCaptureResult(
+    IReadOnlyList<RemoteCreatorCaptureItem> Items, bool HasMore);
 public interface IRemoteVideoPlatform
 {
     Task<RemoteToolExecutionResult> RunToolAsync(
@@ -215,5 +222,7 @@ public interface IRemoteVideoPlatform
         Action<string>? standardErrorLine = null, CancellationToken cancellationToken = default);
     Task<RemoteLiveCaptureResult> CaptureLiveAsync(
         RemoteLiveCaptureRequest request, CancellationToken cancellationToken = default);
+    Task<RemoteCreatorCaptureResult> CaptureCreatorAsync(
+        RemoteCreatorCaptureRequest request, CancellationToken cancellationToken = default);
     Task<int> LaunchMediaAsync(string executablePath, RemoteMediaLaunchRequest request, CancellationToken cancellationToken = default);
 }
