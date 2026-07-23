@@ -12,6 +12,6 @@ export function PetMusicLyrics({ anchorX, anchorTop }: {
   useEffect(() => subscribePetMusicLyrics(setLyrics), [])
 
   if (lyrics === null) return null
-  return <MusicLyrics title={lyrics.title} current={lyrics.current} next={lyrics.next}
+  return <MusicLyrics title={lyrics.title} current={lyrics.current}
     anchorX={anchorX} anchorTop={anchorTop}/>
 }

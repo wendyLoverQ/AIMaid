@@ -89,20 +89,14 @@
   width: min(760px, calc(100% - 48px));
   gap: 6px;
   padding: 12px 24px 14px;
-  border: 1px solid color-mix(in srgb, var(--color-accent) 34%, transparent);
-  border-radius: var(--radius-lg);
   transform: translate(-50%, -100%);
   color: var(--color-text-primary);
-  background: color-mix(in srgb, var(--color-bg-surface) 82%, transparent);
-  box-shadow: 0 10px 32px rgba(15, 23, 42, 0.18);
+  background: transparent;
   text-align: center;
   pointer-events: none;
-  backdrop-filter: blur(10px);
 }
-.pet-music-lyrics__current,
-.pet-music-lyrics__next { margin: 0; overflow-wrap: anywhere; text-shadow: 0 1px 4px rgba(255, 255, 255, 0.72); }
+.pet-music-lyrics__current { margin: 0; overflow-wrap: anywhere; text-shadow: 0 1px 4px rgba(255, 255, 255, 0.72); }
 .pet-music-lyrics__current { color: var(--color-accent); font-size: clamp(18px, 1.8vw, 26px); font-weight: var(--font-weight-semibold); line-height: 1.42; }
-.pet-music-lyrics__next { color: var(--color-text-secondary); font-size: clamp(14px, 1.25vw, 18px); line-height: 1.4; }
 .ui-pet-panel { position: absolute; left: 50%; top: 50%; width: 560px; height: 980px; overflow: visible; transform: translate(-50%, -50%); transform-origin: center; }
 .ui-pet-item { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .ui-pet-item > .ui-transparent-canvas { overflow: visible; }
