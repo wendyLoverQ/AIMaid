@@ -92,7 +92,7 @@ export type CoreRequest =
   | { type: 'video.tag.create'; payload: { tag: string } }
   | { type: 'video.tag.rename'; payload: { oldTag: string; newTag: string } }
   | { type: 'video.tag.delete'; payload: { tag: string } }
-  | { type: 'video.tag.set'; payload: { videoIds: string[]; tags: string } }
+  | { type: 'video.tag.set'; payload: { videoIds: string[]; tags: string; mode?: 'replace' | 'merge' } }
   | { type: 'video.remove_records'; payload: { videoIds: string[] } }
   | { type: 'video.delete_local_files'; payload: { videoIds: string[] } }
   | { type: 'video.play'; payload: { videoIds: string[]; startVideoId: string } }
@@ -373,7 +373,8 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
     case 'video.tag.rename':
       return isNonEmptyString(value.payload.oldTag) && isNonEmptyString(value.payload.newTag)
     case 'video.tag.set':
-      return isVideoIds(value.payload.videoIds) && typeof value.payload.tags === 'string'
+      return isVideoIds(value.payload.videoIds) && typeof value.payload.tags === 'string' &&
+        (value.payload.mode === undefined || value.payload.mode === 'replace' || value.payload.mode === 'merge')
     case 'video.dependencies':
       return Object.keys(value.payload).length === 0
     case 'subtitle.list':

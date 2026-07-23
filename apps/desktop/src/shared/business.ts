@@ -148,6 +148,8 @@ export interface VideoItemDto {
   fileSize: number
   lastPlayedAt: string | null
   remark: string
+  coverStatus: 'Pending' | 'Ready' | 'Failed'
+  isFileMissing: boolean
 }
 
 export interface VideoAlbumDto {
@@ -161,7 +163,8 @@ export interface VideoAlbumDto {
 }
 
 export interface VideoLibrarySnapshotDto { items: VideoItemDto[]; albums: VideoAlbumDto[]; tags: string[] }
-export interface VideoImportResultDto { importedCount: number; items: VideoItemDto[] }
+export interface VideoImportFileResultDto { status: 'New' | 'Updated' | 'Existing'; item: VideoItemDto; coverError?: string | null }
+export interface VideoImportResultDto { importedCount: number; items: VideoItemDto[]; updatedCount: number; existingCount: number; failedCount: number; coverFailedCount: number }
 export interface VideoDependencyStatusDto {
   potPlayerBridgePath: string; potPlayerBridgeAvailable: boolean
   potPlayerPath: string; potPlayerAvailable: boolean

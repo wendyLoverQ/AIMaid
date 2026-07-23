@@ -145,13 +145,18 @@ public sealed record VideoItemDto(
     string CoverPath, string Tags, string SubtitlePath, bool IsFavorite,
     DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, string? AlbumId = null,
     int DurationSeconds = 0, int LastPositionSeconds = 0, bool IsCompleted = false,
-    long FileSize = 0, DateTimeOffset? LastPlayedAt = null, string Remark = "");
+    long FileSize = 0, DateTimeOffset? LastPlayedAt = null, string Remark = "",
+    string CoverStatus = "Pending", bool IsFileMissing = false);
 public sealed record VideoAlbumDto(
     string AlbumId, string Name, string Description, string CoverPath, int SortOrder,
     DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
 public sealed record VideoLibrarySnapshotDto(
     IReadOnlyList<VideoItemDto> Items, IReadOnlyList<VideoAlbumDto> Albums, IReadOnlyList<string> Tags);
-public sealed record VideoImportResultDto(int ImportedCount, IReadOnlyList<VideoItemDto> Items);
+public sealed record VideoImportFileResultDto(
+    string Status, VideoItemDto Item, string? CoverError = null);
+public sealed record VideoImportResultDto(
+    int ImportedCount, IReadOnlyList<VideoItemDto> Items,
+    int UpdatedCount = 0, int ExistingCount = 0, int FailedCount = 0, int CoverFailedCount = 0);
 public sealed record VideoDependencyStatusDto(
     string PotPlayerBridgePath, bool PotPlayerBridgeAvailable,
     string PotPlayerPath, bool PotPlayerAvailable,
@@ -165,7 +170,7 @@ public sealed record RemoteSiteDto(
 public sealed record RemoteSiteDetailDto(RemoteSiteDto Site);
 public sealed record SaveVideoItemCommand(VideoItemDto Video) : ICommand<OperationResult>;
 public sealed record ListVideosQuery(bool FavoritesOnly = false) : IQuery<VideoLibrarySnapshotDto>;
-public sealed record ImportVideoFileCommand(string FilePath, string? AlbumId = null) : ICommand<OperationResult<VideoItemDto>>;
+public sealed record ImportVideoFileCommand(string FilePath, string? AlbumId = null) : ICommand<OperationResult<VideoImportFileResultDto>>;
 public sealed record ImportVideoFolderCommand(string FolderPath, bool Recursive, string? AlbumId = null) : ICommand<OperationResult<VideoImportResultDto>>;
 public sealed record RefreshVideoMetadataCommand(IReadOnlyList<string> VideoIds) : ICommand<OperationResult<VideoImportResultDto>>;
 public sealed record ToggleVideoFavoriteCommand(string VideoId) : ICommand<OperationResult>;
@@ -179,7 +184,7 @@ public sealed record MoveVideosToAlbumCommand(IReadOnlyList<string> VideoIds, st
 public sealed record CreateVideoTagCommand(string Tag) : ICommand<OperationResult>;
 public sealed record RenameVideoTagCommand(string OldTag, string NewTag) : ICommand<OperationResult>;
 public sealed record DeleteVideoTagCommand(string Tag) : ICommand<OperationResult>;
-public sealed record SetVideoTagsCommand(IReadOnlyList<string> VideoIds, string Tags) : ICommand<OperationResult>;
+public sealed record SetVideoTagsCommand(IReadOnlyList<string> VideoIds, string Tags, string Mode = "replace") : ICommand<OperationResult>;
 public sealed record RemoveVideoRecordsCommand(IReadOnlyList<string> VideoIds) : ICommand<OperationResult>;
 public sealed record DeleteVideoLocalFilesCommand(IReadOnlyList<string> VideoIds) : ICommand<OperationResult>;
 public sealed record PlayVideosCommand(IReadOnlyList<string> VideoIds, string StartVideoId) : ICommand<OperationResult<int>>;

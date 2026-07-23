@@ -86,6 +86,15 @@ export function VideoLibraryPage(): React.JSX.Element {
         setStatus(message ?? `已加载 ${snapshot.items.length} 个视频。`);
     }
     useEffect(() => { void load(); }, []);
+    useEffect(() => {
+        const refresh = (): void => { void load(); };
+        window.addEventListener('focus', refresh);
+        document.addEventListener('visibilitychange', refresh);
+        return () => {
+            window.removeEventListener('focus', refresh);
+            document.removeEventListener('visibilitychange', refresh);
+        };
+    }, []);
     const visible = useMemo(() => {
         const keyword = query.trim().toLocaleLowerCase();
         const filtered = items.filter((item) => {
@@ -97,7 +106,7 @@ export function VideoLibraryPage(): React.JSX.Element {
                 return false;
             if (activeAlbumId === null && view === '未归档' && item.albumId != null)
                 return false;
-            if (filter === '未播放' && (item.lastPositionSeconds ?? 0) > 0)
+            if (filter === '未播放' && item.lastPlayedAt != null)
                 return false;
             if (filter === '播放中' && ((item.lastPositionSeconds ?? 0) <= 0 || item.isCompleted === true))
                 return false;
@@ -107,9 +116,9 @@ export function VideoLibraryPage(): React.JSX.Element {
                 return false;
             if (filter === '无标签' && item.tags.trim() !== '')
                 return false;
-            if (filter === '文件丢失' && (item.filePath === '' || item.sourceType !== 'Missing'))
+            if (filter === '文件丢失' && !item.isFileMissing)
                 return false;
-            if (filter === '缩略图失败' && item.coverPath !== '')
+            if (filter === '缩略图失败' && item.coverStatus !== 'Failed')
                 return false;
             if (filter === '本地文件' && item.filePath === '')
                 return false;
@@ -140,6 +149,20 @@ export function VideoLibraryPage(): React.JSX.Element {
         }
         setStatus(includeVisibleQueue ? `已用 PotPlayer 播放当前列表（${videoIds.length} 项）。` : '已用 PotPlayer 播放当前视频。');
     }
+    async function playBuiltIn(id: string): Promise<void> {
+        const item = items.find((entry) => entry.videoId === id);
+        if (item === undefined) {
+            showError('视频记录不存在。');
+            return;
+        }
+        localStorage.setItem('aimaid.video-playback', JSON.stringify(item));
+        const response = await bridge.window.open('video-player');
+        if (!response.success) {
+            showError(response.error?.message ?? '内置播放器窗口打开失败。');
+            return;
+        }
+        setStatus('已用内置播放器播放当前视频。');
+    }
     function invokeCard(id: string): void {
         if (selecting) {
             setSelectedIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
@@ -168,7 +191,7 @@ export function VideoLibraryPage(): React.JSX.Element {
         if (action === 'refresh')
             await load();
         else if (action === 'play')
-            await play(id, false);
+            await playBuiltIn(id);
         else if (action === 'select') {
             setSelecting(true);
             setSelectedIds((current) => current.includes(id) ? current : [...current, id]);
@@ -248,17 +271,26 @@ export function VideoLibraryPage(): React.JSX.Element {
         setBusy(true);
         try {
             let imported = 0;
+            let updated = 0;
+            let existing = 0;
+            let failed = 0;
+            let coverFailures = 0;
             for (const filePath of pendingFilePaths) {
                 const response = await invokeVideo('video.import_file', { filePath, albumId: targetAlbumId || null });
                 if (!response.success) {
-                    showError(response.error?.message ?? `导入失败：${filePath}`);
-                    return;
+                    failed += 1;
+                    continue;
                 }
-                imported += 1;
+                const result = isRecord(response.payload) ? response.payload : {};
+                const status = result.status;
+                if (status === 'New') imported += 1;
+                else if (status === 'Updated') updated += 1;
+                else existing += 1;
+                if (typeof result.coverError === 'string' && result.coverError !== '') coverFailures += 1;
             }
             setPendingFilePaths([]);
             setDialog(null);
-            await load(`导入完成，共添加 ${imported} 个视频。`);
+            await load(`导入完成：新增 ${imported} 个，更新 ${updated} 个，已存在 ${existing} 个${failed > 0 ? `，失败 ${failed} 个` : ''}${coverFailures > 0 ? `，封面失败 ${coverFailures} 个` : ''}。`);
         }
         finally {
             setBusy(false);
@@ -273,9 +305,13 @@ export function VideoLibraryPage(): React.JSX.Element {
                 return;
             }
             const count = readNumber(response.payload, 'importedCount');
+            const updated = readNumber(response.payload, 'updatedCount');
+            const existing = readNumber(response.payload, 'existingCount');
+            const failed = readNumber(response.payload, 'failedCount');
+            const coverFailed = readNumber(response.payload, 'coverFailedCount');
             setFolderPath('');
             setDialog(null);
-            await load(`扫描完成，共添加 ${count} 个视频。`);
+            await load(`导入完成：新增 ${count} 个，更新 ${updated} 个，已存在 ${existing} 个${failed > 0 ? `，失败 ${failed} 个` : ''}${coverFailed > 0 ? `，封面失败 ${coverFailed} 个` : ''}。`);
         }
         finally {
             setBusy(false);
@@ -389,7 +425,7 @@ export function VideoLibraryPage(): React.JSX.Element {
     <Dialog open={dialog === 'import-folder'} title="导入文件夹" onClose={closeDialog} footer={<><Button onClick={closeDialog}>取消</Button><Button variant="primary" disabled={busy || folderPath === ''} onClick={() => void importFolder()}>导入</Button></>}><Container><Container><Input label="文件夹路径" readOnly value={folderPath}/><Button onClick={() => void chooseFolder()}>浏览</Button></Container><AlbumSelector albums={albums} value={targetAlbumId} setValue={setTargetAlbumId}/><Switch label="包含子文件夹" checked={recursive} onChange={(event) => setRecursive(event.target.checked)}/></Container></Dialog>
     <TextDialog open={dialog === 'rename-video'} title="重命名显示名" label="请输入新的显示名：" value={dialogValue} setValue={setDialogValue} busy={busy} close={closeDialog} confirm={() => void run('video.set_display_name', { videoId: dialogItemId, displayName: dialogValue.trim() }, '显示名已更新。', true)}/>
     <TextDialog open={dialog === 'edit-remark'} title="编辑备注" label="备注：" value={dialogValue} setValue={setDialogValue} busy={busy} close={closeDialog} allowEmpty confirm={() => void run('video.set_remark', { videoId: dialogItemId, remark: dialogValue.trim() }, '备注已更新。', true)}/>
-    <Dialog open={dialog === 'edit-tags' || dialog === 'batch-tags'} title={dialog === 'batch-tags' ? '批量添加标签' : '添加标签'} onClose={closeDialog} footer={<><Button onClick={closeDialog}>取消</Button><Button variant="primary" disabled={busy} onClick={() => void run('video.tag.set', { videoIds: targetIds(), tags: normalizeTagText(dialogValue) }, '标签已更新。', true)}>确定</Button></>}><Container><Input label="标签" value={dialogValue} onChange={(event) => setDialogValue(event.target.value)}/><Container>{tags.map((tag) => <Pressable key={tag} onClick={() => setDialogValue(normalizeTagText([dialogValue, tag].filter(Boolean).join(',')))}>{tag}</Pressable>)}</Container></Container></Dialog>
+    <Dialog open={dialog === 'edit-tags' || dialog === 'batch-tags'} title={dialog === 'batch-tags' ? '批量添加标签' : '编辑标签'} onClose={closeDialog} footer={<><Button onClick={closeDialog}>取消</Button><Button variant="primary" disabled={busy} onClick={() => void run('video.tag.set', { videoIds: targetIds(), tags: normalizeTagText(dialogValue), mode: dialog === 'batch-tags' ? 'merge' : 'replace' }, '标签已更新。', true)}>确定</Button></>}><Container><Input label="标签" value={dialogValue} onChange={(event) => setDialogValue(event.target.value)}/><Container>{tags.map((tag) => <Pressable key={tag} onClick={() => setDialogValue(normalizeTagText([dialogValue, tag].filter(Boolean).join(',')))}>{tag}</Pressable>)}</Container></Container></Dialog>
     <Dialog open={dialog === 'batch-move'} title="选择目标专辑" onClose={closeDialog} footer={<><Button onClick={closeDialog}>取消</Button><Button variant="primary" disabled={busy || targetIds().length === 0} onClick={() => void run('video.album.move', { videoIds: targetIds(), albumId: targetAlbumId || null }, '视频已移动。', true)}>确定</Button></>}><AlbumSelector albums={albums} value={targetAlbumId} setValue={setTargetAlbumId}/></Dialog>
     <ConfirmDialog open={dialog === 'remove-record'} title="删除库记录" busy={busy} close={closeDialog} confirm={() => void run('video.remove_records', { videoIds: [dialogItemId] }, '库记录已删除。', true)}><Paragraph>删除“{dialogItemName}”的库记录？<LineBreak />本地视频文件不会被删除。</Paragraph></ConfirmDialog>
     <ConfirmDialog open={dialog === 'delete-local'} title="删除本地文件" busy={busy} close={closeDialog} confirm={() => void run('video.delete_local_files', { videoIds: [dialogItemId] }, '本地文件已移入回收站，库记录已删除。', true)}><Paragraph>确定要删除本地视频文件？<LineBreak />该文件将被移入系统回收站，同时会从视频库移除。<LineBreak /><LineBreak />{dialogItemName}</Paragraph></ConfirmDialog>
@@ -430,7 +466,7 @@ function AlbumSelector({ albums, value, setValue }: {
 }): React.JSX.Element {
     return <Select label="目标专辑" value={value} options={[{ value: '', label: '未归档' }, ...albums.map((album) => ({ value: album.albumId, label: album.name }))]} onChange={(event) => setValue(event.target.value)}/>;
 }
-function coverSource(item: VideoItemDto): string { if (item.coverPath === '')
+function coverSource(item: VideoItemDto): string { if (item.coverPath === '' || item.coverStatus !== 'Ready')
     return ''; if (/^https?:/i.test(item.coverPath))
     return item.coverPath; return `file:///${item.coverPath.replaceAll('\\', '/')}`; }
 function formatDuration(seconds: number): string { const value = Math.max(0, Math.round(seconds)); return `${Math.floor(value / 60).toString().padStart(2, '0')}:${(value % 60).toString().padStart(2, '0')}`; }

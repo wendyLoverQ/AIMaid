@@ -8,13 +8,24 @@ import { Dialog } from '../../components/ui';
 import { bridge } from '../../shared/bridge';
 import { restoredPlaybackPosition, VideoProgressSession } from '../../../shared/video-progress';
 export function VideoPlayerPage(): React.JSX.Element {
-    const [item] = useState<VideoItemDto | null>(() => readPlayback());
+    const [item, setItem] = useState<VideoItemDto | null>(() => readPlayback());
     const [source, setSource] = useState('');
     const [error, setError] = useState('');
     const [progressStatus, setProgressStatus] = useState('');
     const playerRef = useRef<HTMLVideoElement | null>(null);
     const progressSessionRef = useRef<VideoProgressSession | null>(null);
     useEffect(() => {
+        const syncPlayback = (): void => setItem(readPlayback());
+        window.addEventListener('storage', syncPlayback);
+        window.addEventListener('focus', syncPlayback);
+        return () => {
+            window.removeEventListener('storage', syncPlayback);
+            window.removeEventListener('focus', syncPlayback);
+        };
+    }, []);
+    useEffect(() => {
+        setSource('');
+        setError('');
         void resolveSource(item).then((value) => {
             if (value === '') setError('这条视频记录没有可直接播放的媒体地址。');
             else setSource(value);
@@ -31,11 +42,14 @@ export function VideoPlayerPage(): React.JSX.Element {
             const player = playerRef.current;
             if (player !== null) session.flush(player.currentTime, player.duration);
         };
+        const onVisibilityChange = (): void => { if (document.visibilityState === 'hidden') flush(); };
         window.addEventListener('beforeunload', flush);
         window.addEventListener('pagehide', flush);
+        document.addEventListener('visibilitychange', onVisibilityChange);
         return () => {
             window.removeEventListener('beforeunload', flush);
             window.removeEventListener('pagehide', flush);
+            document.removeEventListener('visibilitychange', onVisibilityChange);
             const player = playerRef.current;
             session.dispose(player?.currentTime, player?.duration);
             progressSessionRef.current = null;

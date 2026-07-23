@@ -15,6 +15,7 @@ public sealed class VideoLibraryApplicationService
     private const string TagDomain = "video_tag";
     private const int MpegTsPacketSize = 188;
     private static readonly string[] VideoExtensions = [".mp4", ".mkv", ".mov", ".avi", ".wmv", ".flv", ".webm", ".m4v", ".ts", ".m2ts"];
+    private static readonly SemaphoreSlim CoverGenerationGate = new(2, 2);
     private readonly IDomainDocumentStore store;
     private readonly ISettingsStore settings;
     private readonly IExternalProgramController programs;
@@ -31,6 +32,7 @@ public sealed class VideoLibraryApplicationService
     public async Task<VideoLibrarySnapshotDto> HandleAsync(ListVideosQuery query, CancellationToken cancellationToken = default)
     {
         var items = (await ListAsync<VideoItemDto>(VideoDomain, cancellationToken))
+            .Select(NormalizeVideoItem)
             .Where(IsVisibleLibraryVideo)
             .Where(item => !query.FavoritesOnly || item.IsFavorite)
             .OrderByDescending(item => item.CreatedAt)
@@ -44,26 +46,28 @@ public sealed class VideoLibraryApplicationService
         return new VideoLibrarySnapshotDto(items, albums, tags);
     }
 
-    public async Task<OperationResult<VideoItemDto>> HandleAsync(ImportVideoFileCommand command, CancellationToken cancellationToken = default)
+    public async Task<OperationResult<VideoImportFileResultDto>> HandleAsync(ImportVideoFileCommand command, CancellationToken cancellationToken = default)
     {
         string fullPath;
         try { fullPath = Path.GetFullPath(command.FilePath); }
-        catch { return OperationResult<VideoItemDto>.Failure("video.invalid_path", "请选择支持的视频文件。"); }
+        catch { return OperationResult<VideoImportFileResultDto>.Failure("video.invalid_path", "请选择支持的视频文件。"); }
         if (!File.Exists(fullPath) || !IsVideoFile(fullPath))
-            return OperationResult<VideoItemDto>.Failure("video.unsupported_file", "请选择支持的视频文件。");
+            return OperationResult<VideoImportFileResultDto>.Failure("video.unsupported_file", "请选择支持的视频文件。");
         if (!await AlbumExistsAsync(command.AlbumId, cancellationToken))
-            return OperationResult<VideoItemDto>.Failure("video.album_not_found", "目标专辑不存在。");
+            return OperationResult<VideoImportFileResultDto>.Failure("video.album_not_found", "目标专辑不存在。");
 
         var existing = (await ListAsync<VideoItemDto>(VideoDomain, cancellationToken))
             .FirstOrDefault(item => PathsEqual(item.FilePath, fullPath));
         if (existing is not null)
         {
+            existing = NormalizeVideoItem(existing);
             if (!string.IsNullOrWhiteSpace(command.AlbumId) && existing.AlbumId != command.AlbumId)
             {
                 existing = existing with { AlbumId = command.AlbumId, UpdatedAt = DateTimeOffset.Now };
                 await SaveVideoAsync(existing, cancellationToken);
+                return OperationResult<VideoImportFileResultDto>.Success(new("Updated", existing));
             }
-            return OperationResult<VideoItemDto>.Success(existing);
+            return OperationResult<VideoImportFileResultDto>.Success(new("Existing", existing));
         }
 
         var info = new FileInfo(fullPath);
@@ -71,9 +75,17 @@ public sealed class VideoLibraryApplicationService
         var item = new VideoItemDto(
             Guid.NewGuid().ToString("N"), "LocalFile", Path.GetFileNameWithoutExtension(fullPath), fullPath, string.Empty,
             string.Empty, string.Empty, string.Empty, false, now, now, command.AlbumId,
-            await ProbeDurationAsync(fullPath, cancellationToken), 0, false, info.Length, null, string.Empty);
+            await ProbeDurationAsync(fullPath, cancellationToken), 0, false, info.Length, null, string.Empty, "Pending", false);
         await SaveVideoAsync(item, cancellationToken);
-        return OperationResult<VideoItemDto>.Success(item);
+        var cover = await GenerateCoverAsync(item, cancellationToken);
+        var updated = item with
+        {
+            CoverPath = cover.Path ?? string.Empty,
+            CoverStatus = cover.Succeeded ? "Ready" : "Failed",
+            UpdatedAt = DateTimeOffset.Now
+        };
+        await SaveVideoAsync(updated, cancellationToken);
+        return OperationResult<VideoImportFileResultDto>.Success(new("New", updated, cover.Error));
     }
 
     public async Task<OperationResult<VideoImportResultDto>> HandleAsync(ImportVideoFolderCommand command, CancellationToken cancellationToken = default)
@@ -88,16 +100,32 @@ public sealed class VideoLibraryApplicationService
 
         var option = command.Recursive ? System.IO.SearchOption.AllDirectories : System.IO.SearchOption.TopDirectoryOnly;
         var imported = new List<VideoItemDto>();
+        var newCount = 0;
+        var updatedCount = 0;
+        var existingCount = 0;
+        var failedCount = 0;
+        var coverFailedCount = 0;
         foreach (var file in Directory.EnumerateFiles(fullPath, "*.*", option).Where(IsVideoFile))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var before = (await ListAsync<VideoItemDto>(VideoDomain, cancellationToken)).FirstOrDefault(item => PathsEqual(item.FilePath, file));
             var result = await HandleAsync(new ImportVideoFileCommand(file, command.AlbumId), cancellationToken);
             if (!result.Succeeded || result.Value is null)
-                return OperationResult<VideoImportResultDto>.Failure(result.ErrorCode ?? "video.import_failed", result.ErrorMessage ?? "视频导入失败。");
-            if (before is null || before.AlbumId != result.Value.AlbumId) imported.Add(result.Value);
+            {
+                failedCount++;
+                continue;
+            }
+            imported.Add(result.Value.Item);
+            if (result.Value.Status == "New")
+            {
+                newCount++;
+                if (result.Value.Item.CoverStatus == "Failed") coverFailedCount++;
+                continue;
+            }
+            if (result.Value.Status == "Updated") updatedCount++;
+            else existingCount++;
         }
-        return OperationResult<VideoImportResultDto>.Success(new VideoImportResultDto(imported.Count, imported));
+        return OperationResult<VideoImportResultDto>.Success(new VideoImportResultDto(
+            newCount, imported, updatedCount, existingCount, failedCount, coverFailedCount));
     }
 
     public async Task<OperationResult<VideoImportResultDto>> HandleAsync(RefreshVideoMetadataCommand command, CancellationToken cancellationToken = default)
@@ -108,7 +136,14 @@ public sealed class VideoLibraryApplicationService
         foreach (var item in items.Where(item => ids.Contains(item.VideoId)))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!string.Equals(item.SourceType, "LocalFile", StringComparison.OrdinalIgnoreCase) || !File.Exists(item.FilePath)) continue;
+            if (!string.Equals(item.SourceType, "LocalFile", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!File.Exists(item.FilePath))
+            {
+                var missing = NormalizeVideoItem(item) with { CoverPath = string.Empty, CoverStatus = "Failed", UpdatedAt = DateTimeOffset.Now };
+                await SaveVideoAsync(missing, cancellationToken);
+                refreshed.Add(missing);
+                continue;
+            }
             var info = new FileInfo(item.FilePath);
             var duration = await ProbeDurationAsync(item.FilePath, cancellationToken);
             var updated = item with
@@ -116,6 +151,13 @@ public sealed class VideoLibraryApplicationService
                 Title = string.IsNullOrWhiteSpace(item.Title) ? Path.GetFileNameWithoutExtension(item.FilePath) : item.Title,
                 DurationSeconds = duration > 0 ? duration : item.DurationSeconds,
                 FileSize = info.Length,
+                UpdatedAt = DateTimeOffset.Now
+            };
+            var cover = await GenerateCoverAsync(updated, cancellationToken);
+            updated = updated with
+            {
+                CoverPath = cover.Path ?? string.Empty,
+                CoverStatus = cover.Succeeded ? "Ready" : "Failed",
                 UpdatedAt = DateTimeOffset.Now
             };
             await SaveVideoAsync(updated, cancellationToken);
@@ -156,7 +198,7 @@ public sealed class VideoLibraryApplicationService
     private static bool IsPlaybackCompleted(int positionSeconds, int durationSeconds)
     {
         if (positionSeconds <= 0 || durationSeconds <= 0) return false;
-        var completionWindowSeconds = Math.Min(20, Math.Max(2, (int)Math.Ceiling(durationSeconds * 0.05)));
+        var completionWindowSeconds = Math.Min(20d, durationSeconds * 0.05d);
         return durationSeconds - positionSeconds <= completionWindowSeconds;
     }
 
@@ -244,10 +286,14 @@ public sealed class VideoLibraryApplicationService
     public async Task<OperationResult> HandleAsync(SetVideoTagsCommand command, CancellationToken cancellationToken = default)
     {
         if (!TryValidateIds(command.VideoIds, out var ids, out var error)) return OperationResult.Failure("video.invalid_ids", error);
+        if (command.Mode is not ("replace" or "merge")) return OperationResult.Failure("video.invalid_tag_mode", "标签操作模式无效。");
         var tags = NormalizeTags(command.Tags);
         foreach (var tag in tags) await HandleAsync(new CreateVideoTagCommand(tag), cancellationToken);
         foreach (var item in (await ListAsync<VideoItemDto>(VideoDomain, cancellationToken)).Where(item => ids.Contains(item.VideoId)))
-            await SaveVideoAsync(item with { Tags = string.Join(", ", tags), UpdatedAt = DateTimeOffset.Now }, cancellationToken);
+        {
+            var nextTags = command.Mode == "merge" ? NormalizeTags(item.Tags).Concat(tags).Distinct(StringComparer.OrdinalIgnoreCase) : tags;
+            await SaveVideoAsync(item with { Tags = string.Join(", ", nextTags), UpdatedAt = DateTimeOffset.Now }, cancellationToken);
+        }
         return OperationResult.Success();
     }
 
@@ -395,6 +441,60 @@ public sealed class VideoLibraryApplicationService
     private static T Deserialize<T>(string json)
         => JsonSerializer.Deserialize<T>(json) ?? throw new InvalidDataException($"{typeof(T).Name} JSON 无效。");
 
+    private async Task<CoverGenerationResult> GenerateCoverAsync(VideoItemDto item, CancellationToken cancellationToken)
+    {
+        if (!string.Equals(item.SourceType, "LocalFile", StringComparison.OrdinalIgnoreCase) || !File.Exists(item.FilePath))
+            return new(false, null, "本地视频源文件不存在，无法生成封面。");
+
+        var ffmpeg = ResolveTool("ffmpeg.exe", Path.Combine("Tools", "ffmpeg", "bin", "ffmpeg.exe"), Path.Combine("Tools", "ffmpeg.exe"));
+        if (!File.Exists(ffmpeg)) return new(false, null, "未找到 ffmpeg，无法生成封面。");
+
+        await CoverGenerationGate.WaitAsync(cancellationToken);
+        var coverDirectory = Path.Combine(paths.CacheRoot, "VideoLibrary", "Covers");
+        var coverPath = Path.Combine(coverDirectory, $"{item.VideoId}.jpg");
+        var tempPath = Path.Combine(coverDirectory, $".{item.VideoId}.{Guid.NewGuid():N}.tmp.jpg");
+        try
+        {
+            Directory.CreateDirectory(coverDirectory);
+            using var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = ffmpeg,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                }
+            };
+            foreach (var argument in new[] { "-hide_banner", "-loglevel", "error", "-y", "-ss", "0", "-i", item.FilePath, "-frames:v", "1", "-q:v", "2", tempPath })
+                process.StartInfo.ArgumentList.Add(argument);
+            process.Start();
+            var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+            await process.WaitForExitAsync(cancellationToken);
+            var error = (await errorTask).Trim();
+            if (process.ExitCode != 0)
+                return new(false, null, string.IsNullOrWhiteSpace(error) ? $"ffmpeg 生成封面失败，退出码 {process.ExitCode}。" : error);
+            if (!File.Exists(tempPath) || new FileInfo(tempPath).Length == 0)
+                return new(false, null, "ffmpeg 未生成有效的封面文件。");
+            File.Move(tempPath, coverPath, true);
+            return new(true, coverPath, null);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return new(false, null, $"封面生成失败：{exception.Message}");
+        }
+        finally
+        {
+            if (File.Exists(tempPath)) File.Delete(tempPath);
+            CoverGenerationGate.Release();
+        }
+    }
+
     private async Task<int> ProbeDurationAsync(string filePath, CancellationToken cancellationToken)
     {
         var ffprobe = ResolveTool("ffprobe.exe", Path.Combine("Tools", "ffmpeg", "bin", "ffprobe.exe"), Path.Combine("Tools", "ffprobe.exe"));
@@ -462,6 +562,17 @@ public sealed class VideoLibraryApplicationService
     private static string TagId(string tag) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(tag.ToUpperInvariant()))).ToLowerInvariant();
     private static bool PathsEqual(string left, string right) => !string.IsNullOrWhiteSpace(left) && Path.GetFullPath(left).Equals(Path.GetFullPath(right), StringComparison.OrdinalIgnoreCase);
     private static string DisplayName(VideoItemDto item) => string.IsNullOrWhiteSpace(item.Title) ? Path.GetFileName(item.FilePath) : item.Title;
+    private static VideoItemDto NormalizeVideoItem(VideoItemDto item)
+    {
+        var isLocal = item.SourceType.Equals("LocalFile", StringComparison.OrdinalIgnoreCase);
+        var isMissing = isLocal && !string.IsNullOrWhiteSpace(item.FilePath) && !File.Exists(item.FilePath);
+        var coverStatus = item.CoverStatus is "Pending" or "Ready" or "Failed" ? item.CoverStatus : "Pending";
+        if (isLocal)
+            coverStatus = string.IsNullOrWhiteSpace(item.CoverPath) ? "Pending" : File.Exists(item.CoverPath) ? "Ready" : "Failed";
+        else if (!string.IsNullOrWhiteSpace(item.CoverPath) && coverStatus == "Pending")
+            coverStatus = "Ready";
+        return item with { CoverStatus = coverStatus, IsFileMissing = isMissing };
+    }
     private static bool IsVisibleLibraryVideo(VideoItemDto item) => !item.SourceType.Equals("LocalFile", StringComparison.OrdinalIgnoreCase) ||
         string.IsNullOrWhiteSpace(item.FilePath) || VideoExtensions.Contains(Path.GetExtension(item.FilePath).ToLowerInvariant());
     private static bool IsVideoFile(string path)
@@ -480,5 +591,6 @@ public sealed class VideoLibraryApplicationService
         catch { return false; }
     }
     private static int ReadByteAt(FileStream stream, long offset) { stream.Seek(offset, SeekOrigin.Begin); return stream.ReadByte(); }
+    private sealed record CoverGenerationResult(bool Succeeded, string? Path, string? Error);
     private sealed record VideoTagDefinitionDocument(string Name);
 }

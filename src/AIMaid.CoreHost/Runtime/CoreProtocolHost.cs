@@ -315,7 +315,9 @@ public sealed class CoreProtocolHost(
                     await HandleResultAsync(request, await videos.HandleAsync(new DeleteVideoTagCommand(ReadRequiredString(request.Payload, "tag")), source.Token), source.Token);
                     break;
                 case "video.tag.set":
-                    await HandleResultAsync(request, await videos.HandleAsync(new SetVideoTagsCommand(ReadStringArray(request.Payload, "videoIds"), ReadString(request.Payload, "tags")), source.Token), source.Token);
+                    await HandleResultAsync(request, await videos.HandleAsync(new SetVideoTagsCommand(
+                        ReadStringArray(request.Payload, "videoIds"), ReadString(request.Payload, "tags"),
+                        ReadOptionalString(request.Payload, "mode") ?? "replace"), source.Token), source.Token);
                     break;
                 case "video.remove_records":
                     await HandleResultAsync(request, await videos.HandleAsync(new RemoveVideoRecordsCommand(ReadStringArray(request.Payload, "videoIds")), source.Token), source.Token);
