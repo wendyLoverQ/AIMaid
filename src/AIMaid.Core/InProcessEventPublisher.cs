@@ -14,7 +14,7 @@ public sealed class InProcessEventPublisher : IEventPublisher
     }
 }
 
-internal static class EventIdentity
+public static class EventIdentity
 {
     public static string NewId() => $"evt_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}_{Guid.NewGuid():N}"[..38];
 }
