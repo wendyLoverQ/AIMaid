@@ -21,6 +21,7 @@ import { startPetMusicPlayback } from './pet-music-playback';
 import { playLocalAudioPaths, synthesizeAndPlayPages } from '../chat/tts-playback';
 import { playCachedAudio } from '../chat/tts-playback';
 import { usePetBubbleQueue, type PetBubbleQueue } from './usePetBubbleQueue';
+import { shouldDisplayVoiceCacheStatus } from '../../../shared/pet-voice-cache-status';
 type PetHitTest = (clientX: number, clientY: number) => boolean;
 type PetPointerClick = (event: MouseEvent) => void;
 type PetVoiceClickContext = { bodyPart: string; hitAreaName?: string; normalizedX?: number; normalizedY?: number };
@@ -40,7 +41,8 @@ export default function PetPage(): React.JSX.Element {
     const { current: bubble, speechHeld, show: showBubble, expire: expireBubble } = usePetBubbleQueue();
     const [renderScale, setRenderScale] = useState(1);
     const [liveVisualTransform, setLiveVisualTransform] = useState<PetVisualTransform>({ centerX: 0, centerY: 0, scale: 1 });
-    const [voiceMenu, setVoiceMenu] = useState({ roleName: '未选择', intimacy: '信赖 5 级' });
+    const [voiceMenu, setVoiceMenu] = useState({ roleId: '', roleName: '未选择', intimacy: '信赖 5 级' });
+    const voiceRoleIdRef = useRef('');
     const [visualizerStyle, setVisualizerStyle] = useState<MusicVisualizerStyle>('surround-bars');
     const [petRendererReady, setPetRendererReady] = useState(false);
     const readySentRef = useRef(false);
@@ -112,6 +114,7 @@ export default function PetPage(): React.JSX.Element {
     useEffect(() => {
         if (!petRendererReady)
             return;
+        void loadVoiceMenu();
         void ensureVoiceCache(false).then((value) => {
             if (value?.ready === true)
                 void playPetStartupVoice();
@@ -120,12 +123,13 @@ export default function PetPage(): React.JSX.Element {
             const envelope = isRecord(event.payload) ? event.payload : null;
             const data = envelope !== null && isRecord(envelope.data) ? envelope.data : null;
             if (event.type === 'character.changed') {
+                if (typeof data?.roleId === 'string') voiceRoleIdRef.current = data.roleId;
                 startupPlayedRef.current = false;
                 void ensureVoiceCache(true).then((value) => { if (value?.ready === true) void playPetStartupVoice(); });
                 return;
             }
             if (event.type === 'pet.voice_cache.status') {
-                if (data?.isForeground !== true) return;
+                if (data === null || !shouldDisplayVoiceCacheStatus(data, voiceRoleIdRef.current)) return;
                 const completed = typeof data.completedEntries === 'number' ? data.completedEntries : 0;
                 const total = typeof data.totalEntries === 'number' ? data.totalEntries : 9;
                 const phase = typeof data.phase === 'string' ? data.phase : 'pending';
@@ -336,19 +340,21 @@ export default function PetPage(): React.JSX.Element {
         await playLocalAudioPaths(audioPaths);
     }
     async function loadVoiceMenu(): Promise<void> {
-        setVoiceMenu({ roleName: '正在读取…', intimacy: '正在读取…' });
+        setVoiceMenu((current) => ({ ...current, roleName: '正在读取…', intimacy: '正在读取…' }));
         try {
             const response = await bridge.core.invoke({ type: 'pet.voice_menu.get', payload: {} });
             if (!response.success || response.payload === null)
                 throw new Error(response.error?.message ?? '语音状态读取失败。');
             const value = response.payload as {
+                roleId: string;
                 roleName: string;
                 intimacyLabel: string;
             };
-            setVoiceMenu({ roleName: value.roleName, intimacy: value.intimacyLabel });
+            voiceRoleIdRef.current = value.roleId;
+            setVoiceMenu({ roleId: value.roleId, roleName: value.roleName, intimacy: value.intimacyLabel });
         }
         catch (reason: unknown) {
-            setVoiceMenu({ roleName: '读取失败', intimacy: '读取失败' });
+            setVoiceMenu((current) => ({ ...current, roleName: '读取失败', intimacy: '读取失败' }));
             const message = reason instanceof Error ? reason.message : String(reason);
             showBubble(message || '语音状态读取失败。', 'error');
         }
@@ -362,10 +368,12 @@ export default function PetPage(): React.JSX.Element {
             return;
         }
         const value = response.payload as {
+            roleId: string;
             roleName: string;
             intimacyLabel: string;
         };
-        setVoiceMenu({ roleName: value.roleName, intimacy: value.intimacyLabel });
+        voiceRoleIdRef.current = value.roleId;
+        setVoiceMenu({ roleId: value.roleId, roleName: value.roleName, intimacy: value.intimacyLabel });
         showBubble(`好感度已切换为 ${value.intimacyLabel}`, 'feedback');
     }
     async function clearVoiceCache(): Promise<void> {
