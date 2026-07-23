@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using AIMaid.Contracts;
 using AIMaid.Contracts.Characters;
@@ -71,7 +72,7 @@ public sealed class TemplateCardApplicationService(
                                            conversationId, userPrompt, role.RoleId, modelName, promptHistory,
                                            SourceKey: "character_card_template_generation",
                                            StreamResponse: false), cancellationToken)) response.Append(delta);
-                        var templateJson = ValidateTemplateJson(response.ToString());
+                        var templateJson = ValidateTemplateCardJson(response.ToString());
                         role = role with {
                             TemplateCardJson = templateJson,
                             TemplateCardGeneratedAt = DateTimeOffset.Now,
@@ -144,19 +145,49 @@ public sealed class TemplateCardApplicationService(
         return string.Empty;
     }
 
-    private static string ValidateTemplateJson(string raw)
+    private static string ValidateTemplateCardJson(string rawText)
     {
-        var json = raw.Trim();
-        if (json.StartsWith("```", StringComparison.Ordinal))
+        var json = rawText?.Trim();
+        if (string.IsNullOrWhiteSpace(json))
+            throw new InvalidOperationException("模型没有返回 JSON 对象。");
+
+        JsonDocument document;
+        try
         {
-            var firstNewline = json.IndexOf('\n');
-            var lastFence = json.LastIndexOf("```", StringComparison.Ordinal);
-            if (firstNewline >= 0 && lastFence > firstNewline) json = json[(firstNewline + 1)..lastFence].Trim();
+            document = JsonDocument.Parse(json);
         }
-        using var document = JsonDocument.Parse(json);
-        if (document.RootElement.ValueKind != JsonValueKind.Object) throw new InvalidDataException("模型返回内容不是 JSON 对象。");
-        if (!document.RootElement.TryGetProperty("systemPrompt", out var prompt) || prompt.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(prompt.GetString()))
-            throw new InvalidDataException("模型返回的角色卡缺少非空 systemPrompt。");
-        return JsonSerializer.Serialize(document.RootElement, JsonConfig.Persistence);
+        catch (JsonException exception)
+        {
+            throw new InvalidOperationException("模型没有返回严格合法的 JSON 对象。", exception);
+        }
+
+        using (document)
+        {
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+                throw new InvalidOperationException("角色模板必须是 JSON 对象。");
+
+            var systemPrompt = FirstJsonString(document.RootElement, "systemPrompt", "system_prompt");
+            if (string.IsNullOrWhiteSpace(systemPrompt))
+                throw new InvalidOperationException("角色模板缺少 systemPrompt。");
+
+            return JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            });
+        }
     }
+
+    private static string FirstJsonString(JsonElement root, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (root.TryGetProperty(name, out var value) &&
+                value.ValueKind == JsonValueKind.String &&
+                !string.IsNullOrWhiteSpace(value.GetString()))
+                return value.GetString() ?? string.Empty;
+        }
+        return string.Empty;
+    }
+
 }
