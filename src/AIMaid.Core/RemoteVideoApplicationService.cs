@@ -17,6 +17,7 @@ public sealed partial class RemoteVideoApplicationService
     private const string SiteDomain = "remote_site";
     private const string SiteSecretDomain = "remote_site_secret";
     private readonly IDomainDocumentStore store;
+    private readonly ISettingsStore settingsStore;
     private readonly ISecretProtector secrets;
     private readonly IRemoteVideoPlatform platform;
     private readonly ApplicationPaths paths;
@@ -29,10 +30,11 @@ public sealed partial class RemoteVideoApplicationService
     private string lastMessage = "尚未执行远程视频操作。";
 
     public RemoteVideoApplicationService(
-        IDomainDocumentStore store, ISecretProtector secrets,
+        IDomainDocumentStore store, ISettingsStore settingsStore, ISecretProtector secrets,
         IRemoteVideoPlatform platform, ApplicationPaths paths)
     {
         this.store = store;
+        this.settingsStore = settingsStore;
         this.secrets = secrets;
         this.platform = platform;
         this.paths = paths;
@@ -51,7 +53,11 @@ public sealed partial class RemoteVideoApplicationService
         foreach (var link in links)
         {
             var site = await MatchSiteAsync(link, cancellationToken);
-            var arguments = new List<string> { "--socket-timeout", "15", "--retries", "1", "--extractor-retries", "1", "--dump-single-json", "--no-warnings", "--yes-playlist", link };
+            var arguments = new List<string>
+            {
+                "--no-config", "-J", "--skip-download", "--no-warnings", "--color", "never",
+                "--flat-playlist", "--playlist-items", "1:20", link
+            };
             using var resolveTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             resolveTimeout.CancelAfter(TimeSpan.FromSeconds(45));
             RemoteToolExecutionResult result;
@@ -139,11 +145,11 @@ public sealed partial class RemoteVideoApplicationService
             source = sources.FirstOrDefault() ?? throw new InvalidDataException("yt-dlp 未返回播放地址。");
             audioSource = sources.Skip(1).FirstOrDefault();
         }
-        await platform.LaunchMediaAsync(settings.PotPlayerPath,
+        await platform.LaunchMediaAsync(await ResolvePotPlayerPathAsync(cancellationToken),
             new RemoteMediaLaunchRequest(source, audioSource, item.Title,
                 ReadSiteSetting(site, "userAgent"), ReadSiteSetting(site, "referer")), cancellationToken);
         var history = new RemoteVideoPlayHistoryDto(
-            Guid.NewGuid().ToString("N"), item.ItemId, item.OriginalUrl, item.Title, item.Author,
+            NewLegacyId("legacy_remote_play_"), item.ItemId, item.OriginalUrl, item.Title, item.Author,
             item.SiteName, action, action == "CachePlay" ? source : string.Empty, DateTimeOffset.Now);
         await store.UpsertAsync(PlayDomain, history.HistoryId, JsonSerializer.Serialize(history), history.PlayedAt, cancellationToken);
         SetDiagnostic("play", "succeeded", $"已通过 PotPlayer 启动“{item.Title}”。");
@@ -160,7 +166,7 @@ public sealed partial class RemoteVideoApplicationService
         {
             var item = await GetItemAsync(itemId, cancellationToken);
             var task = new RemoteVideoDownloadDto(
-                Guid.NewGuid().ToString("N"), item.ItemId, item.OriginalUrl, item.Title, item.Author,
+                NewLegacyId("legacy_remote_download_"), item.ItemId, item.OriginalUrl, item.Title, item.Author,
                 item.SiteName, string.Empty, ResolveSelector(item, formatSelector, settings.DefaultQualityPreference),
                 "Queued", 0, string.Empty, string.Empty, string.Empty, 0, DateTimeOffset.Now, null, null);
             var source = new CancellationTokenSource();
@@ -228,9 +234,9 @@ public sealed partial class RemoteVideoApplicationService
         if (string.IsNullOrWhiteSpace(task.OutputPath) || !File.Exists(task.OutputPath))
             throw new FileNotFoundException("下载文件不存在或已被移动。", task.OutputPath);
         var settings = await GetSettingsAsync(cancellationToken);
-        await platform.LaunchMediaAsync(settings.PotPlayerPath, new RemoteMediaLaunchRequest(task.OutputPath, Title: task.Title), cancellationToken);
+        await platform.LaunchMediaAsync(await ResolvePotPlayerPathAsync(cancellationToken), new RemoteMediaLaunchRequest(task.OutputPath, Title: task.Title), cancellationToken);
         var history = new RemoteVideoPlayHistoryDto(
-            Guid.NewGuid().ToString("N"), task.ItemId, task.OriginalUrl, task.Title, task.Author,
+            NewLegacyId("legacy_remote_play_"), task.ItemId, task.OriginalUrl, task.Title, task.Author,
             task.SiteName, "Downloaded", task.OutputPath, DateTimeOffset.Now);
         await store.UpsertAsync(PlayDomain, history.HistoryId, JsonSerializer.Serialize(history), history.PlayedAt, cancellationToken);
         SetDiagnostic("download.play", "succeeded", $"已播放下载文件“{task.Title}”。");
@@ -249,8 +255,8 @@ public sealed partial class RemoteVideoApplicationService
         var settings = await GetSettingsAsync(cancellationToken);
         if (!string.IsNullOrWhiteSpace(history.CachePath) && File.Exists(history.CachePath))
         {
-            await platform.LaunchMediaAsync(settings.PotPlayerPath, new RemoteMediaLaunchRequest(history.CachePath, Title: history.Title), cancellationToken);
-            var replay = history with { HistoryId = Guid.NewGuid().ToString("N"), Action = "Replay", PlayedAt = DateTimeOffset.Now };
+            await platform.LaunchMediaAsync(await ResolvePotPlayerPathAsync(cancellationToken), new RemoteMediaLaunchRequest(history.CachePath, Title: history.Title), cancellationToken);
+            var replay = history with { HistoryId = NewLegacyId("legacy_remote_play_"), Action = "Replay", PlayedAt = DateTimeOffset.Now };
             await store.UpsertAsync(PlayDomain, replay.HistoryId, JsonSerializer.Serialize(replay), replay.PlayedAt, cancellationToken);
             return replay;
         }
@@ -261,11 +267,12 @@ public sealed partial class RemoteVideoApplicationService
     public async Task<RemoteVideoSettingsDto> GetSettingsAsync(CancellationToken cancellationToken = default)
     {
         var json = await store.GetAsync(SettingsDomain, "current", cancellationToken);
-        if (json is not null) return Deserialize<RemoteVideoSettingsDto>(json);
-        var settings = DefaultSettings();
+        var settings = json is null ? DefaultSettings() : Deserialize<RemoteVideoSettingsDto>(json);
+        settings = await AttachRuntimeToolPathsAsync(settings, cancellationToken);
         Directory.CreateDirectory(settings.DownloadRoot);
         Directory.CreateDirectory(settings.CacheRoot);
-        await store.UpsertAsync(SettingsDomain, "current", JsonSerializer.Serialize(settings), settings.UpdatedAt, cancellationToken);
+        if (json is null)
+            await store.UpsertAsync(SettingsDomain, "current", JsonSerializer.Serialize(settings), settings.UpdatedAt, cancellationToken);
         return settings;
     }
 
@@ -274,7 +281,7 @@ public sealed partial class RemoteVideoApplicationService
         ValidateSettings(settings);
         Directory.CreateDirectory(settings.DownloadRoot);
         Directory.CreateDirectory(settings.CacheRoot);
-        var saved = settings with { UpdatedAt = DateTimeOffset.Now };
+        var saved = await AttachRuntimeToolPathsAsync(settings with { UpdatedAt = DateTimeOffset.Now }, cancellationToken);
         await store.UpsertAsync(SettingsDomain, "current", JsonSerializer.Serialize(saved), saved.UpdatedAt, cancellationToken);
         SetDiagnostic("settings.save", "succeeded", "远程视频设置已保存。");
         return saved;
@@ -384,8 +391,10 @@ public sealed partial class RemoteVideoApplicationService
             cookiePath = await CreateCookieFileAsync(site, settings.CacheRoot, cancellationToken);
             if (cookiePath is not null) arguments.InsertRange(0, ["--cookies", cookiePath]);
             AddSiteArguments(arguments, site);
-            if (File.Exists(settings.FfmpegPath)) arguments.InsertRange(0, ["--ffmpeg-location", settings.FfmpegPath]);
-            return await platform.RunToolAsync(settings.YtDlpPath, arguments, errorLine, cancellationToken);
+            var ffmpeg = ResolveTool("ffmpeg.exe", Path.Combine("Tools", "ffmpeg", "bin", "ffmpeg.exe"), Path.Combine("Tools", "ffmpeg.exe"));
+            if (File.Exists(ffmpeg)) arguments.InsertRange(0, ["--ffmpeg-location", Path.GetDirectoryName(ffmpeg)!]);
+            var ytdlp = ResolveTool("yt-dlp.exe", Path.Combine("Tools", "yt-dlp.exe"));
+            return await platform.RunToolAsync(ytdlp, arguments, errorLine, cancellationToken);
         }
         finally
         {
@@ -467,35 +476,54 @@ public sealed partial class RemoteVideoApplicationService
 
     private RemoteVideoSettingsDto DefaultSettings()
     {
-        var toolRoot = Path.Combine(paths.ResourceRoot, "tools");
         return new RemoteVideoSettingsDto(
             paths.Data("RemoteVideos"), paths.Cache("remote-video"),
             "{site}\\{author}\\{title} [{id}].{ext}", "best",
             true, true, false, true, true, 3,
-            FindDefaultTool("yt-dlp.exe", Path.Combine(toolRoot, "yt-dlp.exe")),
-            FindDefaultTool("ffmpeg.exe", Path.Combine(toolRoot, "ffmpeg.exe")),
-            FindDefaultTool("PotPlayerMini64.exe", Path.Combine(toolRoot, "PotPlayerMini64.exe")), DateTimeOffset.Now);
+            ResolveTool("yt-dlp.exe", Path.Combine("Tools", "yt-dlp.exe")),
+            ResolveTool("ffmpeg.exe", Path.Combine("Tools", "ffmpeg", "bin", "ffmpeg.exe"), Path.Combine("Tools", "ffmpeg.exe")),
+            ResolveTool("PotPlayerMini64.exe", Path.Combine("Tools", "PotPlayerMini64.exe")), DateTimeOffset.Now);
     }
 
-    private static string FindDefaultTool(string fileName, string fallback)
+    private async Task<RemoteVideoSettingsDto> AttachRuntimeToolPathsAsync(RemoteVideoSettingsDto settings, CancellationToken cancellationToken)
+        => settings with
+        {
+            YtDlpPath = ResolveTool("yt-dlp.exe", Path.Combine("Tools", "yt-dlp.exe")),
+            FfmpegPath = ResolveTool("ffmpeg.exe", Path.Combine("Tools", "ffmpeg", "bin", "ffmpeg.exe"), Path.Combine("Tools", "ffmpeg.exe")),
+            PotPlayerPath = await ResolvePotPlayerPathAsync(cancellationToken)
+        };
+
+    private async Task<string> ResolvePotPlayerPathAsync(CancellationToken cancellationToken)
     {
-        if (File.Exists(fallback)) return Path.GetFullPath(fallback);
-        foreach (var directory in (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
+        var configured = Environment.ExpandEnvironmentVariables(await ReadSettingAsync(
+            "user_config:PotPlayerBridge:PotPlayerExePath", @"F:\软件\pot\PotPlayer\PotPlayerMini64.exe", cancellationToken));
+        return File.Exists(configured)
+            ? Path.GetFullPath(configured)
+            : ResolveTool("PotPlayerMini64.exe", Path.Combine("Tools", "PotPlayerMini64.exe"));
+    }
+
+    private async Task<string> ReadSettingAsync(string key, string fallback, CancellationToken cancellationToken)
+        => (await settingsStore.GetAsync(key, cancellationToken))?.Value ?? SettingsApplicationService.DefaultSetting(key)?.Value ?? fallback;
+
+    private string ResolveTool(string executableName, params string[] relativeCandidates)
+    {
+        foreach (var relative in relativeCandidates)
+        {
+            var candidate = Path.GetFullPath(Path.Combine(paths.ResourceRoot, relative));
+            if (File.Exists(candidate)) return candidate;
+        }
+        foreach (var root in (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
                      .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
-            try
-            {
-                var candidate = Path.Combine(directory.Trim('"'), fileName);
-                if (File.Exists(candidate)) return Path.GetFullPath(candidate);
-            }
-            catch (Exception) when (directory.Length > 0) { }
+            var candidate = Path.Combine(root.Trim('"'), executableName);
+            if (File.Exists(candidate)) return Path.GetFullPath(candidate);
         }
-        return Path.GetFullPath(fallback);
+        return Path.GetFullPath(Path.Combine(paths.ResourceRoot, relativeCandidates.FirstOrDefault() ?? executableName));
     }
 
     private static void ValidateSettings(RemoteVideoSettingsDto settings)
     {
-        string[] pathsToValidate = [settings.DownloadRoot, settings.CacheRoot, settings.YtDlpPath, settings.FfmpegPath, settings.PotPlayerPath];
+        string[] pathsToValidate = [settings.DownloadRoot, settings.CacheRoot];
         if (pathsToValidate.Any(x => string.IsNullOrWhiteSpace(x) || !Path.IsPathFullyQualified(Environment.ExpandEnvironmentVariables(x))))
             throw new ArgumentException("下载目录、缓存目录和工具路径必须是绝对路径。");
         if (string.IsNullOrWhiteSpace(settings.FileNameTemplate) || settings.FileNameTemplate.Length > 300)
@@ -586,7 +614,7 @@ public sealed partial class RemoteVideoApplicationService
         if (element.TryGetProperty("timestamp", out var timestamp) && timestamp.TryGetInt64(out var unix))
             publishedAt = DateTimeOffset.FromUnixTimeSeconds(unix);
         var liveStatus = ReadString(element, "live_status");
-        var itemId = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(originalUrl + "\n" + videoId))).ToLowerInvariant();
+        var itemId = StableLegacyVideoId(originalUrl, videoId);
         return new RemoteVideoResolvedItemDto(
             itemId, originalUrl, ReadString(element, "title", "未命名视频"),
             ReadString(element, "uploader", ReadString(element, "channel")),
@@ -631,6 +659,21 @@ public sealed partial class RemoteVideoApplicationService
         }
         return string.IsNullOrWhiteSpace(fallback) || fallback.Equals("auto", StringComparison.OrdinalIgnoreCase)
             ? "bestvideo*+bestaudio/best" : fallback;
+    }
+
+    private static string StableLegacyVideoId(string originalUrl, string videoId)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(originalUrl + "\n" + videoId));
+        var value = BitConverter.ToInt64(hash, 0);
+        if (value >= 0) value = -value - 1;
+        return $"legacy_remote_video_{value}";
+    }
+
+    private static string NewLegacyId(string prefix)
+    {
+        var value = BitConverter.ToInt64(Guid.NewGuid().ToByteArray(), 0);
+        if (value >= 0) value = -value - 1;
+        return prefix + value.ToString(CultureInfo.InvariantCulture);
     }
 
     private static string NormalizeOutputTemplate(string template)
@@ -698,11 +741,11 @@ public sealed partial class RemoteVideoApplicationService
     private static string ReadString(JsonElement element, string name, string fallback = "")
         => element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? fallback : fallback;
     private static int? ReadNullableInt(JsonElement element, string name)
-        => element.TryGetProperty(name, out var value) && value.TryGetInt32(out var parsed) ? parsed : null;
+        => element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var parsed) ? parsed : null;
     private static long? ReadNullableLong(JsonElement element, string name)
-        => element.TryGetProperty(name, out var value) && value.TryGetInt64(out var parsed) ? parsed : null;
+        => element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var parsed) ? parsed : null;
     private static double? ReadNullableDouble(JsonElement element, string name)
-        => element.TryGetProperty(name, out var value) && value.TryGetDouble(out var parsed) ? parsed : null;
+        => element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var parsed) ? parsed : null;
     private static T Deserialize<T>(string json)
         => JsonSerializer.Deserialize<T>(json) ?? throw new InvalidDataException($"{typeof(T).Name} JSON 无效。");
 

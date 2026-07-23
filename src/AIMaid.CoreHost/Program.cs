@@ -67,7 +67,7 @@ try
     var scripts = new ChatCommandLauncherApplicationService(store);
     var subtitles = new SubtitleApplicationService(paths);
     var videos = new VideoLibraryApplicationService(store, store, new WindowsProcessController(), paths);
-    var remoteVideos = new RemoteVideoApplicationService(store, secretProtector, new WindowsRemoteVideoPlatform(), paths);
+    var remoteVideos = new RemoteVideoApplicationService(store, store, secretProtector, new WindowsRemoteVideoPlatform(), paths);
     var vaultExport = new VaultExportApplicationService(store, secretProtector, new WindowsVaultArchivePlatform());
     var version = Assembly.GetExecutingAssembly()
         .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.1.0";

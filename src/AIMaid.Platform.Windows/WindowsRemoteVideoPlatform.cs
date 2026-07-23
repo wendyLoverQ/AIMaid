@@ -16,11 +16,18 @@ public sealed class WindowsRemoteVideoPlatform : IRemoteVideoPlatform
             WorkingDirectory = Path.GetDirectoryName(executable)!,
             UseShellExecute = false,
             CreateNoWindow = true,
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true
         };
+        if (Path.GetFileNameWithoutExtension(executable).Equals("yt-dlp", StringComparison.OrdinalIgnoreCase))
+        {
+            startInfo.Environment["PYTHONIOENCODING"] = "utf-8";
+            startInfo.Environment["PYTHONUTF8"] = "1";
+        }
         foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
         using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("外部视频工具启动失败。");
+        process.StandardInput.Close();
         try
         {
             var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);

@@ -111,7 +111,11 @@ internal sealed class LegacyRelationalDocumentStore
         {
             var column = map.WriteAliases.TryGetValue(property.Key, out var alias) ? alias : property.Key;
             if (!columns.ContainsKey(column) || column.Equals(map.KeyColumn, StringComparison.OrdinalIgnoreCase)) continue;
-            values[column] = ToDbValue(property.Value, map.BooleanColumns.Contains(column));
+            values[column] = map.Domain is "remote_video_download" or "remote_video_play" &&
+                             column.Equals("VideoItemId", StringComparison.OrdinalIgnoreCase) &&
+                             property.Value is JsonValue itemValue && itemValue.TryGetValue<string>(out var itemId)
+                ? ParsePrefixedLong(itemId, "legacy_remote_video_")
+                : ToDbValue(property.Value, map.BooleanColumns.Contains(column));
         }
         if (columns.ContainsKey("UpdatedAt")) values["UpdatedAt"] = Format(updatedAt);
 
@@ -204,6 +208,9 @@ internal sealed class LegacyRelationalDocumentStore
         }
         else if (map.Domain == "video" && row["AlbumId"] is JsonValue albumValue && albumValue.TryGetValue<long>(out var albumId))
             row["AlbumId"] = $"legacy_album_{albumId}";
+        else if (map.Domain is "remote_video_download" or "remote_video_play" &&
+                 row["ItemId"] is JsonValue itemValue && itemValue.TryGetValue<long>(out var itemId))
+            row["ItemId"] = $"legacy_remote_video_{itemId}";
         else if (map.Domain == "agent_tool_call")
         {
             var stderr = row["Stderr"]?.GetValue<string>() ?? string.Empty;
