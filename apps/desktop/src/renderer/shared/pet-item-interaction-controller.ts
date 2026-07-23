@@ -1,12 +1,14 @@
 import type { PetWindowUpdate } from '../../shared/pet'
 import { PET_BASE_WINDOW_HEIGHT, PET_BASE_WINDOW_WIDTH } from '../../shared/pet-geometry'
+import { easeOutCubic, PET_HOLD_GROWTH_PER_MS, PET_HOLD_RELEASE_MS } from '../../shared/pet-hold-scale'
 
 const STORAGE_KEY = 'aimaid.pet-item-state.v1'
 const MIN_SCALE = 0.25
 const WHEEL_ZOOM_IN = 1.08
 const WHEEL_ZOOM_OUT = 0.92
 const SAVE_DELAY_MS = 160
-const CLICK_MOVE_TOLERANCE = 6
+const CLICK_MOVE_TOLERANCE = 5
+const DRAG_START_DISTANCE = 8
 
 interface PersistedItemState {
   offsetX: number
@@ -36,11 +38,16 @@ export class PetItemInteractionController {
   private dragStartOffsetY = 0
   private dragging = false
   private movedDuringDrag = false
+  private pressDistance = 0
   private locked = false
   private lastPointerX = Number.NaN
   private lastPointerY = Number.NaN
   private moveFrame: number | null = null
   private saveTimer: number | null = null
+  private holdGrowFrame: number | null = null
+  private holdReleaseFrame: number | null = null
+  private holdStartedAt: number | null = null
+  private holdScale = 1
   private ignoringMouse = true
   private lastHitState: boolean | undefined
 
@@ -69,11 +76,15 @@ export class PetItemInteractionController {
     window.removeEventListener('blur', this.onBlur)
     if (this.moveFrame !== null) cancelAnimationFrame(this.moveFrame)
     if (this.saveTimer !== null) window.clearTimeout(this.saveTimer)
+    this.resetHoldScale()
   }
 
   setLocked(locked: boolean): void {
     this.locked = locked
-    if (locked) this.setIgnoring(false)
+    if (locked) {
+      this.finishDrag()
+      this.setIgnoring(false)
+    }
     else this.refreshHitTest()
   }
 
@@ -98,7 +109,9 @@ export class PetItemInteractionController {
     this.lastPointerY = event.clientY
     if (this.dragging) {
       const distance = Math.hypot(event.clientX - this.dragStartX, event.clientY - this.dragStartY)
-      if (!this.movedDuringDrag && distance < CLICK_MOVE_TOLERANCE) return
+      this.pressDistance = distance
+      if (!this.movedDuringDrag && distance <= DRAG_START_DISTANCE) return
+      if (!this.movedDuringDrag) this.stopHoldScale()
       this.movedDuringDrag = true
       this.offsetX = this.dragStartOffsetX + event.clientX - this.dragStartX
       this.offsetY = this.dragStartOffsetY + event.clientY - this.dragStartY
@@ -120,15 +133,18 @@ export class PetItemInteractionController {
     event.preventDefault()
     this.dragging = true
     this.movedDuringDrag = false
+    this.pressDistance = 0
     this.dragStartX = event.clientX
     this.dragStartY = event.clientY
     this.dragStartOffsetX = this.offsetX
     this.dragStartOffsetY = this.offsetY
+    this.startHoldScale(event.clientX, event.clientY)
     this.setIgnoring(false)
   }
 
   private readonly onMouseUp = (event: MouseEvent): void => {
-    if (this.dragging && !this.movedDuringDrag) this.options.onClick(event)
+    if (event.button !== 0) return
+    if (this.dragging && !this.movedDuringDrag && this.pressDistance < CLICK_MOVE_TOLERANCE) this.options.onClick(event)
     this.finishDrag()
   }
   private readonly onMouseLeave = (): void => {
@@ -150,12 +166,86 @@ export class PetItemInteractionController {
   }
 
   private finishDrag(): void {
+    this.stopHoldScale()
     if (this.dragging && this.movedDuringDrag) {
       this.queueSave()
     }
     this.dragging = false
     this.movedDuringDrag = false
+    this.pressDistance = 0
     this.refreshHitTest()
+  }
+
+  private startHoldScale(clientX: number, clientY: number): void {
+    if (!this.supportsHoldScale()) return
+    this.cancelHoldFrames()
+    const bounds = this.options.item.getBoundingClientRect()
+    const originX = bounds.width > 0 ? (clientX - bounds.left) / bounds.width * 100 : 50
+    const originY = bounds.height > 0 ? (clientY - bounds.top) / bounds.height * 100 : 50
+    this.options.item.style.transformOrigin = `${originX}% ${originY}%`
+    this.options.item.style.willChange = 'transform'
+    this.holdScale = 1
+    this.holdStartedAt = performance.now()
+    this.applyHoldScale()
+    this.holdGrowFrame = requestAnimationFrame(this.growHoldScale)
+  }
+
+  private readonly growHoldScale = (now: number): void => {
+    if (this.holdStartedAt === null) return
+    this.holdScale = 1 + (now - this.holdStartedAt) * PET_HOLD_GROWTH_PER_MS
+    this.applyHoldScale()
+    this.holdGrowFrame = requestAnimationFrame(this.growHoldScale)
+  }
+
+  private stopHoldScale(): void {
+    if (this.holdStartedAt === null && this.holdScale === 1) return
+    this.holdStartedAt = null
+    if (this.holdGrowFrame !== null) cancelAnimationFrame(this.holdGrowFrame)
+    this.holdGrowFrame = null
+    if (this.holdScale === 1) {
+      this.finishHoldRelease()
+      return
+    }
+    const releaseStartedAt = performance.now()
+    const releaseStartedScale = this.holdScale
+    const release = (now: number): void => {
+      const progress = Math.min(1, (now - releaseStartedAt) / PET_HOLD_RELEASE_MS)
+      this.holdScale = releaseStartedScale + (1 - releaseStartedScale) * easeOutCubic(progress)
+      this.applyHoldScale()
+      if (progress < 1) this.holdReleaseFrame = requestAnimationFrame(release)
+      else this.finishHoldRelease()
+    }
+    this.holdReleaseFrame = requestAnimationFrame(release)
+  }
+
+  private finishHoldRelease(): void {
+    this.holdReleaseFrame = null
+    this.holdScale = 1
+    this.options.item.style.transformOrigin = 'center'
+    this.options.item.style.willChange = ''
+    this.applyHoldScale()
+  }
+
+  private resetHoldScale(): void {
+    this.cancelHoldFrames()
+    this.holdStartedAt = null
+    this.finishHoldRelease()
+  }
+
+  private cancelHoldFrames(): void {
+    if (this.holdGrowFrame !== null) cancelAnimationFrame(this.holdGrowFrame)
+    if (this.holdReleaseFrame !== null) cancelAnimationFrame(this.holdReleaseFrame)
+    this.holdGrowFrame = null
+    this.holdReleaseFrame = null
+  }
+
+  private supportsHoldScale(): boolean {
+    const mode = this.options.item.closest<HTMLElement>('[data-display-mode]')?.dataset.displayMode
+    return mode === 'image' || mode === 'png-sequence'
+  }
+
+  private applyHoldScale(): void {
+    this.options.item.style.transform = `translate(-50%, -50%) scale(${this.holdScale})`
   }
 
   private queueSave(): void {
@@ -183,7 +273,7 @@ export class PetItemInteractionController {
     this.options.item.style.top = `calc(50% + ${this.offsetY}px)`
     this.options.item.style.width = `${Math.round(PET_BASE_WINDOW_WIDTH * this.scale)}px`
     this.options.item.style.height = `${Math.round(PET_BASE_WINDOW_HEIGHT * this.scale)}px`
-    this.options.item.style.transform = 'translate(-50%, -50%)'
+    this.applyHoldScale()
     this.options.onScale(this.scale)
   }
 }
