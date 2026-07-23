@@ -18,7 +18,7 @@ import {
 import { PetBubble } from './PetBubble';
 import { captureAlphaContour, PetAudioContour } from './PetAudioContour';
 import { startPetMusicPlayback } from './pet-music-playback';
-import { playLocalAudioPaths, synthesizeAndPlay } from '../chat/tts-playback';
+import { playLocalAudioPaths, synthesizeAndPlayPages } from '../chat/tts-playback';
 import { usePetBubbleQueue, type PetBubbleQueue } from './usePetBubbleQueue';
 type PetHitTest = (clientX: number, clientY: number) => boolean;
 type PetPointerClick = (event: MouseEvent) => void;
@@ -126,10 +126,12 @@ export default function PetPage(): React.JSX.Element {
         const reminder = envelope !== null && isRecord(envelope.data) ? envelope.data : null;
         if (reminder === null || typeof reminder.message !== 'string' || typeof reminder.reminderId !== 'string')
             return;
-        showBubble(reminder.message, 'reminder');
-        if (reminder.allowTts !== true)
+        if (reminder.allowTts !== true) {
+            showBubble(reminder.message, 'reminder');
             return;
-        void synthesizeAndPlay(reminder.message).catch((reason: unknown) => {
+        }
+        void synthesizeAndPlayPages(reminder.message, undefined,
+            (page) => showBubble(page, 'reminder')).catch((reason: unknown) => {
             console.error('Reminder TTS playback failed', {
                 reminderId: reminder.reminderId,
                 error: reason instanceof Error ? reason.message : String(reason)

@@ -4,7 +4,7 @@ import { Avatar, Badge, Button, ConfirmDialog, EmptyState, Inline, Input, Layout
 import { loadCharacters, setCurrentCharacter } from '../../features/characters/character-api'
 import { bridge } from '../../shared/bridge'
 import { publishPetBubble } from '../../shared/pet-bubble-channel'
-import { attachAudioMetadata, stopAudioPlayback, synthesizeAndPlay } from '../chat/tts-playback'
+import { attachAudioMetadata, stopAudioPlayback, synthesizeAndPlayPages } from '../chat/tts-playback'
 import { runAgentConversation } from '../chat/agent-conversation'
 
 export function VoiceConversationPage(): React.JSX.Element {
@@ -66,11 +66,16 @@ export function VoiceConversationPage(): React.JSX.Element {
       setMessages((current) => [...current, optimistic])
       const payload = await runAgentConversation(content, { conversationId: conversation.conversationId, characterId: roleId, source: 'voice_conversation_center' })
       const reply = payload.content.trim()
-      if (reply !== '') publishPetBubble(reply, 'speech', actionTagForVoiceStyle(payload.voiceStyle))
       await bridge.core.invoke({ type: 'voice_conversation.save', payload: { conversation: { ...conversation, preview: reply, updatedAt: new Date().toISOString() } } })
       await loadMessages(conversation.conversationId); await loadConversations(roleId, query)
       const role = roles.find((item) => item.roleId === roleId)
-      if (speech && reply !== '' && role?.preferredVoiceId !== undefined) { const path = await synthesizeAndPlay(reply, role.preferredVoiceId); if (payload.messageId > 0) await attachAudioMetadata(payload.messageId, [path], { voiceId: role.preferredVoiceId, source: 'voice_conversation_center' }) }
+      if (speech && reply !== '' && role?.preferredVoiceId !== undefined) {
+        const paths = await synthesizeAndPlayPages(reply, role.preferredVoiceId,
+          (page) => publishPetBubble(page, 'speech', actionTagForVoiceStyle(payload.voiceStyle)))
+        if (payload.messageId > 0) await attachAudioMetadata(payload.messageId, paths, { voiceId: role.preferredVoiceId, source: 'voice_conversation_center' })
+      } else if (reply !== '') {
+        publishPetBubble(reply, 'feedback', actionTagForVoiceStyle(payload.voiceStyle))
+      }
     } catch (reason) { const message = reason instanceof Error ? reason.message : String(reason); publishPetBubble(message, 'error', 'error'); toast.show(message, 'error') } finally { setSending(false) }
   }
   const transcribe = async (audio: Blob): Promise<void> => {

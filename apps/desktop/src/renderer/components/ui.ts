@@ -46,7 +46,7 @@ export { LayoutSlot } from './layout/LayoutSlot'
 export { PetBubbleSurface } from './layout/PetBubbleSurface'
 export {
   Center, Code, Divider, Fieldset, Form, Grid, Heading, Inline, KeyboardKey, MediaCanvas, MediaImage,
-  Page, PageContent, PetAudioContourCanvas, PetItemSurface, SemanticRegion, Stack, Strong, Text, TimeText, TransparentCanvas, TransparentStage,
+  Page, PageContent, PetAudioContourCanvas, PetItemSurface, PetPanelSurface, SemanticRegion, Stack, Strong, Text, TimeText, TransparentCanvas, TransparentStage,
   VisualRegion, VisuallyHidden
 } from './layout/Primitives'
 export { KeyboardKey as Keycap } from './layout/Primitives'

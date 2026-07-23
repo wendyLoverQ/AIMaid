@@ -104,6 +104,10 @@ export const PetAudioContourCanvas = forwardRef<HTMLCanvasElement, Omit<CanvasHT
   return <canvas ref={ref} className={`ui-pet-audio-contour ui-pet-audio-contour--${geometry}`} {...props} />
 })
 
+export const PetPanelSurface = forwardRef<HTMLDivElement, Omit<HTMLAttributes<HTMLDivElement>, 'className' | 'style'>>(function PetPanelSurface(props, ref) {
+  return <div ref={ref} className="ui-pet-panel" {...props} />
+})
+
 export const PetItemSurface = forwardRef<HTMLDivElement, Omit<HTMLAttributes<HTMLDivElement>, 'className' | 'style'>>(function PetItemSurface(props, ref) {
   return <div ref={ref} className="ui-pet-item" {...props} />
 })

@@ -1,25 +1,48 @@
 import { bridge } from '../../shared/bridge'
+import { paginatePetBubble } from '../../../shared/pet'
 
 let activeAudio: HTMLAudioElement | null = null
 let audioSubscription: (() => void) | null = null
 
 export async function synthesizeAndPlay(text: string, voiceId?: string): Promise<string> {
+  const path = await synthesizeSpeech(text, voiceId)
+  await playLocalAudio(path)
+  return path
+}
+
+export async function synthesizeAndPlayPages(
+  text: string,
+  voiceId: string | undefined,
+  onPageStarted: (page: string, index: number) => void
+): Promise<string[]> {
+  const pages = paginatePetBubble(text)
+  if (pages.length === 0) return []
+  const paths: string[] = []
+  for (const page of pages) paths.push(await synthesizeSpeech(page, voiceId))
+  for (const [index, path] of paths.entries()) {
+    const audio = await playLocalAudio(path, () => onPageStarted(pages[index]!, index))
+    if (audio === null) break
+    await waitForAudioEnd(audio)
+  }
+  return paths
+}
+
+async function synthesizeSpeech(text: string, voiceId?: string): Promise<string> {
   const response = await bridge.core.invoke({
     type: 'tts.speak',
     payload: { text, ...(voiceId === undefined || voiceId.trim() === '' ? {} : { voiceId }) }
   }, 120_000)
   if (!response.success || typeof response.payload !== 'string' || response.payload.trim() === '')
     throw new Error(response.error?.message ?? '语音合成失败。')
-  await playLocalAudio(response.payload)
   return response.payload
 }
 
-export async function playLocalAudio(filePath: string): Promise<void> {
+export async function playLocalAudio(filePath: string, onPlaybackStarted?: () => void): Promise<HTMLAudioElement | null> {
   ensureAudioSubscription()
   const master = await loadMasterAudio()
   if (master.muted || master.volume <= 0) {
     stopAudioPlayback()
-    return
+    return null
   }
   const registered = await bridge.media.registerLocalFile(filePath)
   if (!registered.success || registered.payload?.url === undefined)
@@ -35,23 +58,28 @@ export async function playLocalAudio(filePath: string): Promise<void> {
   audio.addEventListener('error', () => reportPlayback(false), { once: true })
   await audio.play()
   reportPlayback(true)
+  onPlaybackStarted?.()
+  return audio
 }
 
-export async function playLocalAudioPaths(paths: readonly string[]): Promise<number> {
+export async function playLocalAudioPaths(paths: readonly string[], onPlaybackStarted?: (index: number) => void): Promise<number> {
   let played = 0
-  for (const path of paths) {
+  for (const [index, path] of paths.entries()) {
     try {
-      await playLocalAudio(path)
-      const audio = activeAudio
+      const audio = await playLocalAudio(path, () => onPlaybackStarted?.(index))
       if (audio === null) continue
       played += 1
-      await new Promise<void>((resolve, reject) => {
-        audio.addEventListener('ended', () => resolve(), { once: true })
-        audio.addEventListener('error', () => reject(new Error('语音文件播放失败。')), { once: true })
-      })
+      await waitForAudioEnd(audio)
     } catch { /* old project skips missing cached files and never resynthesizes here */ }
   }
   return played
+}
+
+function waitForAudioEnd(audio: HTMLAudioElement): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    audio.addEventListener('ended', () => resolve(), { once: true })
+    audio.addEventListener('error', () => reject(new Error('语音文件播放失败。')), { once: true })
+  })
 }
 
 export function stopAudioPlayback(): void {

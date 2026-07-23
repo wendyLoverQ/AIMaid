@@ -41,6 +41,22 @@ describe('phase 4 PetWindow integration', () => {
     expect(pages.every((page) => page.length <= 78)).toBe(true)
   })
 
+  it('shows each spoken page only after its audio playback has started', () => {
+    const playback = readFileSync(resolve(import.meta.dirname, '../src/renderer/pages/chat/tts-playback.ts'), 'utf8')
+    const prompt = readFileSync(resolve(import.meta.dirname, '../src/renderer/pages/chat/PromptPage.tsx'), 'utf8')
+    const voiceConversation = readFileSync(resolve(import.meta.dirname, '../src/renderer/pages/voice-conversation/VoiceConversationPage.tsx'), 'utf8')
+    const playStarted = playback.indexOf('await audio.play()')
+    const pagePublished = playback.indexOf('onPlaybackStarted?.()')
+    expect(playStarted).toBeGreaterThan(-1)
+    expect(pagePublished).toBeGreaterThan(playStarted)
+    expect(playback).toContain('const audio = await playLocalAudio(path, () => onPageStarted(pages[index]!, index))')
+    expect(playback).toContain('await waitForAudioEnd(audio)')
+    expect(prompt).not.toContain("publishPetBubble(content, payload.suppressSpeech ? 'feedback' : 'speech'")
+    expect(prompt).toContain('synthesizeAndPlayPages(content, voiceId')
+    expect(voiceConversation).not.toContain("publishPetBubble(reply, 'speech'")
+    expect(voiceConversation).toContain('synthesizeAndPlayPages(reply, role.preferredVoiceId')
+  })
+
   it('does not use synchronous GPU pixel readback for hit testing', () => {
     const source = readFileSync(resolve(import.meta.dirname, '../src/renderer/live2d/runtime/Live2DPlayer.ts'), 'utf8')
     expect(source).not.toContain('readPixels(')

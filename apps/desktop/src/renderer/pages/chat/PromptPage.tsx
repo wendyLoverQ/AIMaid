@@ -4,7 +4,7 @@ import type { ChatCommandLauncherDto } from '../../../shared/business';
 import { loadCharacters } from '../../features/characters/character-api';
 import { bridge } from '../../shared/bridge';
 import { publishPetBubble } from '../../shared/pet-bubble-channel';
-import { attachAudioMetadata, synthesizeAndPlay } from './tts-playback';
+import { attachAudioMetadata, synthesizeAndPlayPages } from './tts-playback';
 import { runAgentConversation } from './agent-conversation';
 export interface PromptSubmission {
     text: string;
@@ -128,8 +128,7 @@ export function PromptPage(): React.JSX.Element {
             publishPetBubble('正在试听语音.....^_^', 'processing');
             try {
                 const voiceId = await currentVoiceId();
-                await synthesizeAndPlay(prompt, voiceId);
-                publishPetBubble(prompt, 'speech', 'speak');
+                await synthesizeAndPlayPages(prompt, voiceId, (page) => publishPetBubble(page, 'speech', 'speak'));
             }
             catch (reason) {
                 publishPetBubble(reason instanceof Error ? reason.message : String(reason), 'error', 'error');
@@ -164,11 +163,14 @@ export function PromptPage(): React.JSX.Element {
                 source: 'normal_chat'
             });
             const content = payload.content.trim() || 'Agent 返回了空回复。';
-            publishPetBubble(content, payload.suppressSpeech ? 'feedback' : 'speech', actionTagForVoiceStyle(payload.voiceStyle));
             if (!payload.suppressSpeech && payload.messageId > 0 && await realtimeTtsEnabled()) {
                 const voiceId = character?.preferredVoiceId || undefined;
-                const audioPath = await synthesizeAndPlay(content, voiceId);
-                await attachAudioMetadata(payload.messageId, [audioPath], { voiceId: voiceId ?? '', source: 'prompt' });
+                const audioPaths = await synthesizeAndPlayPages(content, voiceId,
+                    (page) => publishPetBubble(page, 'speech', actionTagForVoiceStyle(payload.voiceStyle)));
+                await attachAudioMetadata(payload.messageId, audioPaths, { voiceId: voiceId ?? '', source: 'prompt' });
+            }
+            else {
+                publishPetBubble(content, 'feedback', actionTagForVoiceStyle(payload.voiceStyle));
             }
         }
         catch (reason) {
