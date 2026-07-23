@@ -163,6 +163,14 @@ export function StatusPage(): React.JSX.Element {
     <WindowTitleBar title="状态面板"/>
     <PageContent scroll={false}>
       <ProductWorkspace layout="dashboard" data-product="status">
+        <ProductPanel wide title={<StatusPanelTitle icon="activity">状态摘要</StatusPanelTitle>}>
+          <StatusMetricGrid columns={4}>
+            <StatusMetric label="当前角色" value={character?.name || '--'} tone="accent" />
+            <StatusMetric label="核心服务" value="状态面板" />
+            <StatusMetric label="TTS" value={snapshot.tts === null ? '--' : snapshot.tts.online ? '正常' : '异常'} state={snapshot.tts === null ? 'unknown' : snapshot.tts.online ? 'online' : 'offline'} tone={snapshot.tts?.online ? 'success' : snapshot.tts === null ? 'neutral' : 'danger'} />
+            <StatusMetric label="语音缓存" value={snapshot.roleState === null ? '--' : `${snapshot.roleState.voiceCacheCompleted}/${snapshot.roleState.voiceCacheTotal}`} />
+          </StatusMetricGrid>
+        </ProductPanel>
         <StatusPanelGrid>
           <ProductPanel title={<StatusPanelTitle icon="user">角色</StatusPanelTitle>}>
           <StatusHero compact avatar={<Avatar source={snapshot.avatarUrl} fallback={character?.name || '—'} size="md"/>} value={character?.name || '--'} detail={<>亲密等级 {snapshot.roleState?.intimacyLevel ?? '--'} / 5 · {snapshot.roleState?.intimacyLabel ?? '--'} · 最近 {snapshot.roleState?.hasMaidState ? snapshot.roleState.maidLastInteractionText : '--'}</>}/>

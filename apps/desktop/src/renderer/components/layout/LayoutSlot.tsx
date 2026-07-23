@@ -1,15 +1,15 @@
 import type { HTMLAttributes, PropsWithChildren } from 'react'
 
 export type LayoutSlotVariant =
-  | 'workbench-sections' | 'workbench-group' | 'workbench-group__header' | 'workbench-grid' | 'workbench-card__icon' | 'workbench-card__copy' | 'vault-field-control'
+  | 'workbench-sections' | 'workbench-page-header' | 'workbench-group' | 'workbench-group workbench-group--2' | 'workbench-group workbench-group--3' | 'workbench-group workbench-group--4' | 'workbench-group__header' | 'workbench-grid' | 'workbench-grid workbench-grid--2' | 'workbench-grid workbench-grid--3' | 'workbench-grid workbench-grid--4' | 'workbench-card__icon' | 'workbench-card__copy' | 'vault-field-control'
   | 'character-page-layout' | 'character-workspace' | 'character-summary' | 'character-detail-sections' | 'character-danger'
   | 'template-card-layout' | 'template-card-summary'
   | 'character-editor-layout' | 'character-editor-placeholder'
   | 'reminder-list' | 'reminder-row__time' | 'dialog-form-section'
   | 'notebook-workspace' | 'notebook-list' | 'notebook-editor__header' | 'notebook-toolbar' | 'notebook-editor__body' | 'notebook-attachments' | 'notebook-attachment'
   | 'conversation-workspace' | 'conversation-list' | 'conversation-header' | 'conversation-messages' | 'conversation-message conversation-message--user' | 'conversation-message conversation-message--assistant' | 'conversation-composer'
-  | 'appearance-content' | 'theme-card-grid' | 'theme-card__preview' | 'theme-card__meta'
-  | 'settings-workspace' | 'settings-navigation' | 'settings-category-list' | 'settings-content' | 'settings-content__header' | 'settings-search-results'
+  | 'appearance-content' | 'appearance-workspace' | 'appearance-themes' | 'appearance-controls' | 'appearance-controls__section' | 'theme-card-grid' | 'theme-card__preview' | 'theme-card__meta'
+  | 'settings-workspace' | 'settings-navigation' | 'settings-category-list' | 'settings-content' | 'settings-content__header' | 'settings-category-header' | 'settings-display-groups' | 'settings-display-group' | 'settings-display-group__heading' | 'settings-search-results'
   | 'video-library-grid' | 'video-library-card__cover' | 'video-library-card__copy'
   | 'remote-video-hero' | 'remote-video-hero__composer'
   | 'remote-video-result-feature' | 'remote-video-result-feature__media' | 'remote-video-result-feature__copy' | 'remote-video-result-feature__actions'

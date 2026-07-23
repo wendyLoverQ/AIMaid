@@ -52,22 +52,21 @@ export function AppearanceSettingsPage(): React.JSX.Element {
   }
   return <Page>
     <WindowTitleBar title="外观设置" />
-    <PageContent><LayoutSlot variant="appearance-content">
-      <SettingsSection title="配色方案">
-        <LayoutSlot variant="theme-card-grid">{THEMES.map((item) => <ThemeCard key={item.id} item={item} selected={configuration.themeId === item.id} select={() => update({ themeId: item.id })} />)}</LayoutSlot>
+    <PageContent><LayoutSlot variant="appearance-content"><LayoutSlot variant="appearance-workspace">
+      <LayoutSlot as="aside" variant="appearance-themes"><SettingsSection title="配色方案"><LayoutSlot variant="theme-card-grid">{THEMES.map((item) => <ThemeCard key={item.id} item={item} selected={configuration.themeId === item.id} select={() => update({ themeId: item.id })} />)}</LayoutSlot></SettingsSection></LayoutSlot>
+      <LayoutSlot as="main" variant="appearance-controls">
+        <LayoutSlot as="section" variant="appearance-controls__section"><SettingsSection title="内容与字体">
         <SettingRow title="内容亮度" control={<SegmentedControl label="内容亮度" value={configuration.contentBrightness} onChange={(contentBrightness) => update({ contentBrightness })} options={[{ value: 'Soft', label: '柔和' }, { value: 'Standard', label: '标准' }, { value: 'Clear', label: '清晰' }]} />} />
-      </SettingsSection>
-      <SettingsSection title="字体">
         <SettingRow title="字体方案" control={<SegmentedControl label="字体方案" value={configuration.fontFamily} onChange={(fontFamily) => update({ fontFamily })} options={[{ value: '', label: '默认' }, { value: 'Microsoft YaHei UI', label: '微软雅黑' }]} />} />
         <SettingRow title="字号缩放" control={<SegmentedControl label="字号缩放" value={String(configuration.fontScale)} onChange={(fontScale) => update({ fontScale: Number(fontScale) })} options={[{ value: '0.9', label: '90%' }, { value: '1', label: '100%' }, { value: '1.1', label: '110%' }, { value: '1.2', label: '120%' }]} />} />
-      </SettingsSection>
-      <SettingsSection title="密度与圆角">
+        </SettingsSection></LayoutSlot>
+        <LayoutSlot as="section" variant="appearance-controls__section"><SettingsSection title="密度与圆角">
         <SettingRow title="圆角风格" control={<SegmentedControl label="圆角风格" value={configuration.cornerRadiusStyle} onChange={(cornerRadiusStyle) => update({ cornerRadiusStyle })} options={[{ value: 'Small', label: '小' }, { value: 'Medium', label: '中' }, { value: 'Large', label: '大' }]} />} />
         <SettingRow title="界面密度" control={<SegmentedControl label="界面密度" value={configuration.density} onChange={(density) => update({ density })} options={[{ value: 'Compact', label: '紧凑' }, { value: 'Standard', label: '标准' }, { value: 'Comfortable', label: '宽松' }]} />} />
-      </SettingsSection>
-      <SettingsSection title="窗口顶部"><SettingRow title="顶部样式" control={<SegmentedControl label="窗口顶部样式" value={configuration.headerStyle} onChange={(headerStyle) => update({ headerStyle })} options={[{ value: 'None', label: '不显示' }, { value: 'Subtle', label: '柔和' }, { value: 'AccentStrip', label: '主题色顶栏' }, { value: 'Filled', label: '主题色标题栏' }]} />} /></SettingsSection>
-      <SettingsSection title="动画"><SettingRow title="界面动画" control={<Switch label={configuration.animationsEnabled ? '已开启' : '已关闭'} checked={configuration.animationsEnabled} onChange={(event) => update({ animationsEnabled: event.target.checked })} />} /></SettingsSection>
-    </LayoutSlot></PageContent>
+        </SettingsSection></LayoutSlot>
+        <LayoutSlot as="section" variant="appearance-controls__section"><SettingsSection title="窗口与动画"><SettingRow title="顶部样式" control={<SegmentedControl label="窗口顶部样式" value={configuration.headerStyle} onChange={(headerStyle) => update({ headerStyle })} options={[{ value: 'None', label: '不显示' }, { value: 'Subtle', label: '柔和' }, { value: 'AccentStrip', label: '主题色顶栏' }, { value: 'Filled', label: '主题色标题栏' }]} />} /><SettingRow title="界面动画" control={<Switch label={configuration.animationsEnabled ? '已开启' : '已关闭'} checked={configuration.animationsEnabled} onChange={(event) => update({ animationsEnabled: event.target.checked })} />} /></SettingsSection></LayoutSlot>
+      </LayoutSlot>
+    </LayoutSlot></LayoutSlot></PageContent>
   </Page>
 }
 

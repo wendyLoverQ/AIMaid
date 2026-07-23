@@ -1194,6 +1194,7 @@ body.prompt-surface .ui-keyboard-key { min-width: 2.25rem; text-align: center; }
 .theme-card__preview .ui-color-palette__swatch:last-child { border-right: 0; }
 .theme-card__meta { display: flex; min-width: 0; min-height: 4.75rem; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) var(--space-4); }
 .theme-card__meta .ui-stack { min-width: 0; }
+.theme-card__meta .ui-stack { flex: 1 1 8rem; }
 .theme-card__meta .ui-badge { flex: 0 0 auto; }
 
 .settings-workspace { grid-template-columns: 15rem minmax(0, 1fr); width: min(100%, 70rem); margin-inline: auto; }
@@ -1333,4 +1334,50 @@ body.prompt-surface .ui-keyboard-key { min-width: 2.25rem; text-align: center; }
 
 @media (max-width: 32rem) {
   .workbench-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Final A page layouts: page-scoped variants only. */
+.workbench-page-header { display: grid; gap: var(--space-2); padding: var(--space-3) 0 var(--space-2); }
+.workbench-page-header .ui-heading--1 { margin: 0; font-size: var(--font-size-page-title); }
+.workbench-page-header > span { color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+.workbench-group--2 .workbench-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.workbench-group--3 .workbench-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.workbench-group--4 .workbench-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.workbench-group--4 .workbench-grid .ui-pressable { min-height: 5rem; padding: var(--space-3); }
+.workbench-group--4 .workbench-card__icon { width: 2rem; height: 2rem; }
+.workbench-group--4 .workbench-card__copy strong { font-size: var(--font-size-sm); }
+.settings-category-header { display: grid; gap: var(--space-1); padding: var(--space-2) 0 var(--space-3); }
+.settings-category-header h2 { margin: 0; }
+.settings-category-header p { margin: 0; color: var(--color-text-secondary); }
+.settings-display-groups { display: grid; gap: var(--space-4); }
+.settings-display-group { display: grid; gap: var(--space-3); padding: var(--space-4); border: var(--border-default); border-radius: var(--radius-lg); background: var(--color-bg-surface); }
+.settings-display-group__heading h4 { margin: 0; font-size: var(--font-size-subtitle); }
+.settings-display-group > .ui-section { padding: var(--space-4); background: var(--color-bg-elevated); }
+.settings-display-group > .ui-section .ui-container:has(> .ui-pressable) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.appearance-workspace { display: grid; grid-template-columns: minmax(18rem, .9fr) minmax(0, 1.1fr); gap: var(--space-6); align-items: start; }
+.appearance-themes { min-width: 0; }
+.appearance-themes .ui-settings-section { padding-top: 0; }
+.appearance-themes .theme-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: var(--space-4); }
+.appearance-controls { display: grid; gap: var(--space-3); min-width: 0; }
+.appearance-controls__section { min-width: 0; padding: 0 var(--space-4); border: var(--border-default); border-radius: var(--radius-lg); background: var(--color-bg-surface); }
+.appearance-controls__section .ui-settings-section { padding-block: var(--space-4); border-top: 0; }
+.appearance-controls__section .ui-setting-row > div:last-child { max-width: none; }
+.status-metric-grid--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+@media (max-width: 64.9375rem) {
+  .workbench-group--4 .workbench-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .appearance-workspace { grid-template-columns: minmax(15rem, .8fr) minmax(0, 1.2fr); gap: var(--space-4); }
+  .appearance-themes .theme-card-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 52rem) {
+  .appearance-workspace { grid-template-columns: minmax(0, 1fr); }
+  .appearance-themes .theme-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .status-metric-grid--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 32rem) {
+  .workbench-group--2 .workbench-grid, .workbench-group--3 .workbench-grid, .workbench-group--4 .workbench-grid { grid-template-columns: minmax(0, 1fr); }
+  .appearance-themes .theme-card-grid { grid-template-columns: minmax(0, 1fr); }
+  .status-metric-grid--4 { grid-template-columns: minmax(0, 1fr); }
 }

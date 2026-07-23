@@ -36,7 +36,7 @@ export function StatusPanelTitle({ icon, children }: PropsWithChildren<{ icon: U
   return <span className="status-panel-title"><span className="status-panel-title__icon"><UiIcon name={icon} /></span>{children}</span>
 }
 
-export function StatusMetricGrid({ children, columns = 2 }: PropsWithChildren<{ columns?: 1 | 2 | 3 }>): React.JSX.Element {
+export function StatusMetricGrid({ children, columns = 2 }: PropsWithChildren<{ columns?: 1 | 2 | 3 | 4 }>): React.JSX.Element {
   return <div className={`status-metric-grid status-metric-grid--${columns}`}>{children}</div>
 }
 
