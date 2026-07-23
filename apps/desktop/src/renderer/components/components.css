@@ -1004,6 +1004,12 @@ body:has(.tray-menu-shell) #root { min-width: 0; }
 .tray-menu-shell .ui-range { gap: var(--space-1); }
 .tray-menu-shell .ui-range__label { font-size: var(--font-size-xs); }
 .tray-menu-shell .ui-range__control { min-height: var(--space-5); }
+.tray-menu-shell .ui-range__control::-webkit-slider-runnable-track {
+  height: 8px;
+  border: var(--border-default);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--color-accent) 24%, var(--color-bg-pressed));
+}
 .ui-tray-music-player {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
