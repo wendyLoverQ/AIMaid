@@ -272,6 +272,7 @@ function ModelSettings(): React.JSX.Element {
         }
     }
     return <>
+    <SettingCard title="各业务链条模型">{business === null || models === null ? <Paragraph>正在读取业务模型…</Paragraph> : business.map((item) => <Container key={item.businessKey}><FormLabel>{item.displayName}<SmallText>{item.businessKey}</SmallText></FormLabel><Select value={item.modelKey} onChange={(event) => setBusiness((rows) => rows?.map((row) => row.businessKey === item.businessKey ? { ...row, modelKey: event.target.value } : row) ?? null)} options={models.map((model) => ({ value: model.modelKey, label: `${model.modelKey}: ${model.model}` }))}/></Container>)}<Button variant="primary" loading={busy} disabled={business === null || models === null} onClick={() => void saveBusiness()}>保存全部业务模型</Button></SettingCard>
     <SettingCard title="模型配置">
       {models === null ? <Paragraph>正在读取模型配置…</Paragraph> : models.map((item) => <Section key={item.modelKey}><Title4>模型 · {item.modelKey}</Title4>
         <Select label="类型" value={item.type} onChange={(event) => updateModel(item.modelKey, { type: event.target.value as 'local' | 'api' })} options={[{ value: 'local', label: 'local' }, { value: 'api', label: 'api' }]}/>
@@ -282,7 +283,6 @@ function ModelSettings(): React.JSX.Element {
       <Button variant="primary" loading={busy} disabled={models === null} onClick={() => void saveModels()}>保存模型配置</Button>
     </SettingCard>
     <SettingCard title="新增模型配置"><Container><Input aria-label="模型标识" value={newKey} onChange={(event) => setNewKey(event.target.value)}/><Select value={newType} onChange={(event) => setNewType(event.target.value as 'local' | 'api')} options={[{ value: 'local', label: '本地模型' }, { value: 'api', label: 'API 模型' }]}/><Button variant="primary" loading={busy} onClick={() => void addModel()}>新增模型</Button></Container></SettingCard>
-    <SettingCard title="各业务链条模型">{business === null || models === null ? <Paragraph>正在读取业务模型…</Paragraph> : business.map((item) => <Container key={item.businessKey}><FormLabel>{item.displayName}<SmallText>{item.businessKey}</SmallText></FormLabel><Select value={item.modelKey} onChange={(event) => setBusiness((rows) => rows?.map((row) => row.businessKey === item.businessKey ? { ...row, modelKey: event.target.value } : row) ?? null)} options={models.map((model) => ({ value: model.modelKey, label: `${model.modelKey}: ${model.model}` }))}/></Container>)}<Button variant="primary" loading={busy} disabled={business === null || models === null} onClick={() => void saveBusiness()}>保存全部业务模型</Button></SettingCard>
   </>;
 }
 function DecisionSettings(): React.JSX.Element { return <BooleanRuntimeSetting settingKey="ai_proactive_enabled" defaultValue title="AI 决策语音" label="启用 AI 决策语音" success={(value) => value ? 'AI 决策语音已开启。' : 'AI 决策语音已关闭。'}/>; }
