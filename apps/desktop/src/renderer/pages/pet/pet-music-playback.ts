@@ -7,12 +7,33 @@ interface MusicPlaybackState {
   url: string
   title: string
   singer: string
+  lyrics: string
   isPlaying: boolean
   isPaused: boolean
 }
 
+export interface PetMusicLyricsSnapshot {
+  readonly title: string
+  readonly singer: string
+  readonly current: string
+  readonly next: string
+}
+
+interface TimedLyricLine {
+  readonly time: number
+  readonly text: string
+}
+
 let activeAnalyser: AnalyserNode | null = null
 let activeFrequencyData: Uint8Array<ArrayBuffer> | null = null
+let activeLyricsSnapshot: PetMusicLyricsSnapshot | null = null
+const lyricsListeners = new Set<(snapshot: PetMusicLyricsSnapshot | null) => void>()
+
+export function subscribePetMusicLyrics(listener: (snapshot: PetMusicLyricsSnapshot | null) => void): () => void {
+  lyricsListeners.add(listener)
+  listener(activeLyricsSnapshot)
+  return () => { lyricsListeners.delete(listener) }
+}
 
 export function readPetMusicSpectrum(target: Uint8Array<ArrayBuffer>): boolean {
   if (activeAnalyser === null || activeFrequencyData === null) return false
@@ -33,6 +54,8 @@ export function startPetMusicPlayback(): () => void {
   let analyser: AnalyserNode | null = null
   let stopLipSync: (() => void) | null = null
   let playbackUrl = ''
+  let lyricLines: TimedLyricLine[] = []
+  let activeLyricIndex = -1
   let disposed = false
   let masterAudio = { muted: false, volume: 100 }
 
@@ -42,6 +65,9 @@ export function startPetMusicPlayback(): () => void {
     audio?.pause()
     audio = null
     playbackUrl = ''
+    lyricLines = []
+    activeLyricIndex = -1
+    publishLyrics(null)
     activeAnalyser = null
     activeFrequencyData = null
     analyser = null
@@ -71,6 +97,21 @@ export function startPetMusicPlayback(): () => void {
     element.src = state.url
     element.preload = 'auto'
     element.volume = masterAudio.volume / 100
+    lyricLines = parseTimedLyrics(state.lyrics)
+    activeLyricIndex = -1
+    const updateLyrics = (): void => {
+      const nextIndex = findCurrentLyricIndex(lyricLines, element.currentTime)
+      if (nextIndex === activeLyricIndex) return
+      activeLyricIndex = nextIndex
+      publishLyrics(nextIndex < 0 ? null : {
+        title: state.title,
+        singer: state.singer,
+        current: lyricLines[nextIndex]!.text,
+        next: lyricLines[nextIndex + 1]?.text ?? ''
+      })
+    }
+    element.addEventListener('timeupdate', updateLyrics)
+    element.addEventListener('seeked', updateLyrics)
     element.addEventListener('ended', () => { void stop() }, { once: true })
     element.addEventListener('error', () => { void stop() }, { once: true })
 
@@ -175,9 +216,49 @@ function readEventData(value: unknown): unknown {
 
 function isPlaybackState(value: unknown): value is MusicPlaybackState {
   return isRecord(value) && typeof value.url === 'string' && typeof value.title === 'string' &&
-    typeof value.singer === 'string' && typeof value.isPlaying === 'boolean' && typeof value.isPaused === 'boolean'
+    typeof value.singer === 'string' && typeof value.lyrics === 'string' &&
+    typeof value.isPlaying === 'boolean' && typeof value.isPaused === 'boolean'
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function publishLyrics(snapshot: PetMusicLyricsSnapshot | null): void {
+  activeLyricsSnapshot = snapshot
+  for (const listener of lyricsListeners) listener(snapshot)
+}
+
+function parseTimedLyrics(value: string): TimedLyricLine[] {
+  const lines: TimedLyricLine[] = []
+  const timestamp = /\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?]/g
+  for (const rawLine of value.split(/\r?\n/)) {
+    const text = rawLine.replace(timestamp, '').trim()
+    if (text === '') continue
+    timestamp.lastIndex = 0
+    for (const match of rawLine.matchAll(timestamp)) {
+      const fraction = (match[3] ?? '').padEnd(3, '0').slice(0, 3)
+      lines.push({
+        time: Number(match[1]) * 60 + Number(match[2]) + Number(fraction) / 1000,
+        text
+      })
+    }
+  }
+  return lines.sort((left, right) => left.time - right.time)
+}
+
+function findCurrentLyricIndex(lines: TimedLyricLine[], currentTime: number): number {
+  let low = 0
+  let high = lines.length - 1
+  let result = -1
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2)
+    if (lines[middle]!.time <= currentTime + 0.08) {
+      result = middle
+      low = middle + 1
+    } else {
+      high = middle - 1
+    }
+  }
+  return result
 }

@@ -4,6 +4,7 @@ public sealed record MusicPlaybackStateDto(
     string Url,
     string Title,
     string Singer,
+    string Lyrics,
     bool IsPlaying,
     bool IsPaused);
 

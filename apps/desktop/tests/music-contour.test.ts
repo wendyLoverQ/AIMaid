@@ -22,11 +22,14 @@ describe('dynamic pet music contour', () => {
     expect(movingLeft).toBeLessThan(restingLeft - 0.1)
   })
 
-  it('offers surround bars, an outline line, and bottom bars with surround bars as the default', () => {
-    expect(MUSIC_VISUALIZER_STYLE_OPTIONS.map(([value]) => value)).toEqual(['surround-bars', 'surround-line', 'bottom-wave'])
+  it('offers the five retained visualizers with the outline line as the default', () => {
+    expect(MUSIC_VISUALIZER_STYLE_OPTIONS.map(([value]) => value)).toEqual([
+      'surround-line', 'bottom-wave', 'radial-bars', 'circular-wave', 'pulse-rings'
+    ])
     expect(parseMusicVisualizerStyle('surround-line')).toBe('surround-line')
     expect(parseMusicVisualizerStyle('bottom-wave')).toBe('bottom-wave')
-    expect(parseMusicVisualizerStyle('invalid')).toBe('surround-bars')
+    expect(parseMusicVisualizerStyle('surround-bars')).toBe('surround-line')
+    expect(parseMusicVisualizerStyle('invalid')).toBe('surround-line')
   })
 })
 

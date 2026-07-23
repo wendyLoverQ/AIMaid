@@ -18,6 +18,7 @@ import {
 import { PetBubble } from './PetBubble';
 import { captureAlphaContour, PetAudioContour } from './PetAudioContour';
 import { startPetMusicPlayback } from './pet-music-playback';
+import { PetMusicLyrics } from './PetMusicLyrics';
 import { playLocalAudioPaths, synthesizeAndPlayPages } from '../chat/tts-playback';
 import { playCachedAudio } from '../chat/tts-playback';
 import { usePetBubbleQueue, type PetBubbleQueue } from './usePetBubbleQueue';
@@ -43,7 +44,7 @@ export default function PetPage(): React.JSX.Element {
     const [liveVisualTransform, setLiveVisualTransform] = useState<PetVisualTransform>({ centerX: 0, centerY: 0, scale: 1 });
     const [voiceMenu, setVoiceMenu] = useState({ roleId: '', roleName: '未选择', intimacy: '信赖 5 级' });
     const voiceRoleIdRef = useRef('');
-    const [visualizerStyle, setVisualizerStyle] = useState<MusicVisualizerStyle>('surround-bars');
+    const [visualizerStyle, setVisualizerStyle] = useState<MusicVisualizerStyle>('surround-line');
     const [petRendererReady, setPetRendererReady] = useState(false);
     const readySentRef = useRef(false);
     const startupPlayedRef = useRef(false);
@@ -558,6 +559,7 @@ export default function PetPage(): React.JSX.Element {
         presentation.mode === 'png-sequence' ? `png:${presentation.pngRole}` : `live2d:${presentation.live2dRole}`}
       visualAnchor={presentation.mode === 'live2d' ? { clientX: liveVisualTransform.centerX, clientY: liveVisualTransform.centerY } : undefined}
       visualizerStyle={visualizerStyle}/> : null}
+    <PetMusicLyrics/>
     {menu !== null && presentation !== null ? <PetContextMenu position={menu} presentation={presentation} voiceMenu={voiceMenu} execute={(action) => void execute(action)} open={open} cycleVoiceIntimacy={() => void cycleVoiceIntimacy()} clearVoiceCache={() => void clearVoiceCache()} showCurrentConversation={() => void showCurrentConversation()} close={() => setMenu(null)}/> : null}
   </TransparentStage>;
 }

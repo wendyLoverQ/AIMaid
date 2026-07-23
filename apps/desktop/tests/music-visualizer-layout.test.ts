@@ -40,7 +40,7 @@ describe('bottom music visualizer layout', () => {
 
   it('exposes all three independent background visualizers', () => {
     expect(MUSIC_VISUALIZER_STYLE_OPTIONS.slice(-3)).toEqual([
-      ['radial-bars', '背景径向柱状圆环'],
+      ['radial-bars', '背景镜像柱状圆环'],
       ['circular-wave', '背景圆形波形线'],
       ['pulse-rings', '背景同心脉冲']
     ])

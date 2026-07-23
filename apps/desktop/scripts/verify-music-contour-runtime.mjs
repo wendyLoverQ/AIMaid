@@ -126,9 +126,9 @@ try {
   const screenshotPath = resolve(outputDirectory, 'live2d-dynamic-contour.png')
   await writeFile(screenshotPath, Buffer.from(screenshot.data, 'base64'))
 
-  const styleScreenshots = { 'surround-bars': screenshotPath }
+  const styleScreenshots = { 'surround-line': screenshotPath }
   const styleMetrics = {}
-  for (const style of ['surround-line', 'bottom-wave', 'radial-bars', 'circular-wave', 'pulse-rings']) {
+  for (const style of ['bottom-wave', 'radial-bars', 'circular-wave', 'pulse-rings']) {
     const saved = await evaluate(client, `window.aimaid.core.invoke({ type: 'settings.save', payload: { values: { music_visualizer_style: '${style}' } } })`)
     if (!saved.success) throw new Error(`Visualizer style save failed: ${JSON.stringify(saved.error)}`)
     await waitFor(() => evaluate(client, `document.querySelector('.ui-pet-audio-contour')?.dataset.visualizerStyle === '${style}'`))
@@ -197,7 +197,7 @@ try {
   const settingsTarget = await waitForTarget((candidate) => candidate.url.includes('window=settings'))
   settingsClient = await connect(settingsTarget.webSocketDebuggerUrl)
   await settingsClient.send('Page.enable')
-  await waitFor(() => evaluate(settingsClient, `document.body.innerText.includes('音乐音浪样式') && document.body.innerText.includes('环绕柱条') && document.body.innerText.includes('环绕线条') && document.body.innerText.includes('底部倒置柱状') && document.body.innerText.includes('背景径向柱状圆环') && document.body.innerText.includes('背景圆形波形线') && document.body.innerText.includes('背景同心脉冲')`))
+  await waitFor(() => evaluate(settingsClient, `document.body.innerText.includes('音乐音浪样式') && !document.body.innerText.includes('环绕柱条') && document.body.innerText.includes('环绕线条') && document.body.innerText.includes('底部倒置柱状') && document.body.innerText.includes('背景镜像柱状圆环') && document.body.innerText.includes('背景圆形波形线') && document.body.innerText.includes('背景同心脉冲')`))
   const settingsScreenshot = await settingsClient.send('Page.captureScreenshot', { format: 'png', fromSurface: true })
   const settingsScreenshotPath = resolve(outputDirectory, 'settings-visualizer-styles.png')
   await writeFile(settingsScreenshotPath, Buffer.from(settingsScreenshot.data, 'base64'))

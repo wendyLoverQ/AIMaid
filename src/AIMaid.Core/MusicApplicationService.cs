@@ -10,7 +10,7 @@ public sealed class MusicApplicationService : IDisposable
     private readonly IEventPublisher events;
     private readonly ISettingsStore settings;
     private readonly object stateGate = new();
-    private MusicPlaybackStateDto state = new(string.Empty, string.Empty, string.Empty, false, false);
+    private MusicPlaybackStateDto state = new(string.Empty, string.Empty, string.Empty, string.Empty, false, false);
 
     public MusicApplicationService(IEventPublisher events, ISettingsStore settings)
     {
@@ -62,7 +62,10 @@ public sealed class MusicApplicationService : IDisposable
                     continue;
                 }
 
-                var playback = new MusicPlaybackStateDto(url, song.Title, song.Singer, true, false);
+                var lyrics = song.LyricsUrl.Length == 0
+                    ? string.Empty
+                    : await LoadLyricsAsync(song.LyricsUrl, cancellationToken);
+                var playback = new MusicPlaybackStateDto(url, song.Title, song.Singer, lyrics, true, false);
                 lock (stateGate) state = playback;
                 await events.PublishAsync(new MusicPlaybackRequestedEvent(
                     EventIdentity.NewId(), DateTimeOffset.Now, playback), cancellationToken);
@@ -80,7 +83,7 @@ public sealed class MusicApplicationService : IDisposable
 
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
-        lock (stateGate) state = new MusicPlaybackStateDto(string.Empty, string.Empty, string.Empty, false, false);
+        lock (stateGate) state = new MusicPlaybackStateDto(string.Empty, string.Empty, string.Empty, string.Empty, false, false);
         await events.PublishAsync(new MusicPlaybackStoppedEvent(
             EventIdentity.NewId(), DateTimeOffset.Now), cancellationToken);
     }
@@ -113,13 +116,14 @@ public sealed class MusicApplicationService : IDisposable
         var first = document.RootElement.EnumerateArray().FirstOrDefault();
         if (first.ValueKind != JsonValueKind.Object) return null;
         var streamUrl = ReadString(first, "url");
+        var lyricsUrl = ReadString(first, "lrc");
         var title = ReadString(first, "title", "name");
         var singer = ReadString(first, "author", "artist");
         if (!Uri.TryCreate(streamUrl, UriKind.Absolute, out var parsed)) return null;
         var secureStreamUrl = parsed.Scheme == Uri.UriSchemeHttps
             ? parsed.AbsoluteUri
             : new UriBuilder(parsed) { Scheme = Uri.UriSchemeHttps, Port = -1 }.Uri.AbsoluteUri;
-        return new MusicSong(secureStreamUrl, title, singer);
+        return new MusicSong(secureStreamUrl, title, singer, ToSecureAbsoluteUrl(lyricsUrl));
     }
 
     private async Task<MusicSong?> SearchGdStudioFirstAsync(string songName, CancellationToken cancellationToken)
@@ -135,6 +139,7 @@ public sealed class MusicApplicationService : IDisposable
         if (first.ValueKind != JsonValueKind.Object) return null;
         var id = ReadString(first, "url_id", "id");
         if (id.Length == 0) return null;
+        var lyricId = ReadString(first, "lyric_id");
         var title = ReadString(first, "name", "title");
         var singer = first.TryGetProperty("artist", out var artists) && artists.ValueKind == JsonValueKind.Array
             ? string.Join(", ", artists.EnumerateArray().Select(item => item.GetString()).Where(item => !string.IsNullOrWhiteSpace(item)))
@@ -148,8 +153,34 @@ public sealed class MusicApplicationService : IDisposable
         using var urlDocument = JsonDocument.Parse(await urlResponse.Content.ReadAsStringAsync(cancellationToken));
         var streamUrl = ReadString(urlDocument.RootElement, "url");
         return Uri.TryCreate(streamUrl, UriKind.Absolute, out var parsed) && parsed.Scheme == Uri.UriSchemeHttps
-            ? new MusicSong(parsed.AbsoluteUri, title, singer)
+            ? new MusicSong(
+                parsed.AbsoluteUri,
+                title,
+                singer,
+                lyricId.Length == 0
+                    ? string.Empty
+                    : $"https://music-api.gdstudio.xyz/api.php?types=lyric&source=netease&id={Uri.EscapeDataString(lyricId)}")
             : null;
+    }
+
+    private async Task<string> LoadLyricsAsync(string lyricsUrl, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, lyricsUrl);
+        request.Headers.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!body.TrimStart().StartsWith('{')) return body;
+        using var document = JsonDocument.Parse(body);
+        return ReadString(document.RootElement, "lyric", "lrc");
+    }
+
+    private static string ToSecureAbsoluteUrl(string value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var parsed)) return string.Empty;
+        return parsed.Scheme == Uri.UriSchemeHttps
+            ? parsed.AbsoluteUri
+            : new UriBuilder(parsed) { Scheme = Uri.UriSchemeHttps, Port = -1 }.Uri.AbsoluteUri;
     }
 
     private static string ReadString(JsonElement element, params string[] names)
@@ -177,5 +208,5 @@ public sealed class MusicApplicationService : IDisposable
 
     public void Dispose() => httpClient.Dispose();
 
-    private sealed record MusicSong(string StreamUrl, string Title, string Singer);
+    private sealed record MusicSong(string StreamUrl, string Title, string Singer, string LyricsUrl);
 }

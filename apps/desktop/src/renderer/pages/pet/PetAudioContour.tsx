@@ -14,8 +14,6 @@ const SURROUND_PADDING = 72
 const BOTTOM_EXTENSION = 88
 const RADIAL_EXTENSION = 72
 
-type SurroundVisualizerStyle = 'surround-bars' | 'surround-line'
-
 export interface PetAudioAnchor { readonly clientX: number; readonly clientY: number }
 
 export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visualAnchor, visualizerStyle }: {
@@ -102,7 +100,7 @@ export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visua
         }
         if (visualizerStyle === 'bottom-wave' && bottomLayout !== null) drawBottomBars(context, contour, bottomLayout, spectrum, dynamics, x, y, sourceBounds.width, sourceBounds.height,
           anchor === undefined ? undefined : anchor.clientX - stageBounds.left - region.left)
-        else if (visualizerStyle === 'surround-bars' || visualizerStyle === 'surround-line') drawSurroundWave(context, contour, spectrum, dynamics, x, y, sourceBounds.width, sourceBounds.height, visualizerStyle)
+        else if (visualizerStyle === 'surround-line') drawSurroundWave(context, contour, spectrum, dynamics, x, y, sourceBounds.width, sourceBounds.height)
         else if (radialLayout !== null && isBackgroundMusicVisualizer(visualizerStyle)) drawBackgroundVisualizer(context, visualizerStyle, radialLayout, spectrum, waveform, dynamics, now,
           anchor?.clientX === undefined ? sourceBounds.left - stageBounds.left + radialLayout.normalizedCenterX * sourceBounds.width - region.left : anchor.clientX - stageBounds.left - region.left,
           anchor?.clientY === undefined ? sourceBounds.top - stageBounds.top + radialLayout.normalizedCenterY * sourceBounds.height - region.top : anchor.clientY - stageBounds.top - region.top)
@@ -232,8 +230,7 @@ function drawSurroundWave(
   offsetX: number,
   offsetY: number,
   width: number,
-  height: number,
-  style: SurroundVisualizerStyle
+  height: number
 ): void {
   const centerX = offsetX + contour.center.x * width
   const centerY = offsetY + contour.center.y * height
@@ -243,7 +240,7 @@ function drawSurroundWave(
     return { start: point, end: next, length: Math.hypot(next.x - point.x, next.y - point.y) }
   })
   const perimeter = segments.reduce((sum, segment) => sum + segment.length, 0)
-  const spacing = style === 'surround-bars' ? 10 : 7
+  const spacing = 7
   const peak = spectrumPeak(spectrum)
   const path = new Path2D()
   let segmentIndex = 0
@@ -267,22 +264,16 @@ function drawSurroundWave(
     const target = barSpectrumTarget(spectrum, peak, barIndex)
     const level = advanceBarDynamics(dynamics.get(barIndex) ?? 0, target, barIndex)
     dynamics.set(barIndex, level)
-    if (style === 'surround-bars') {
-      const length = 7 + level * 48
-      path.moveTo(x + normalX * 7, y + normalY * 7)
-      path.lineTo(x + normalX * (7 + length), y + normalY * (7 + length))
-    } else {
-      const displacement = 7 + level * 22
-      const targetX = x + normalX * displacement
-      const targetY = y + normalY * displacement
-      if (barIndex === 0) path.moveTo(targetX, targetY)
-      else path.lineTo(targetX, targetY)
-    }
+    const displacement = 7 + level * 22
+    const targetX = x + normalX * displacement
+    const targetY = y + normalY * displacement
+    if (barIndex === 0) path.moveTo(targetX, targetY)
+    else path.lineTo(targetX, targetY)
     barIndex += 1
   }
-  if (style === 'surround-line') path.closePath()
+  path.closePath()
   trimDynamics(dynamics, barIndex)
-  strokeVisualizer(context, path, style === 'surround-bars' ? 8 : 5, style === 'surround-bars' ? 4 : 2.5)
+  strokeVisualizer(context, path, 5, 2.5)
 }
 
 function drawBottomBars(
@@ -318,7 +309,7 @@ function drawBottomBars(
 
 function drawBackgroundVisualizer(
   context: CanvasRenderingContext2D,
-  style: Exclude<MusicVisualizerStyle, 'surround-bars' | 'surround-line' | 'bottom-wave'>,
+  style: Exclude<MusicVisualizerStyle, 'surround-line' | 'bottom-wave'>,
   layout: RadialVisualizerLayout,
   spectrum: Uint8Array,
   waveform: Uint8Array,
@@ -354,9 +345,9 @@ function drawRadialBars(
     const target = barSpectrumTarget(spectrum, peak, index)
     const level = advanceBarDynamics(dynamics.get(index) ?? 0, target, index)
     dynamics.set(index, level)
-    const length = 7 + level * 42
-    path.moveTo(centerX + Math.cos(angle) * radius, centerY + Math.sin(angle) * radius)
-    path.lineTo(centerX + Math.cos(angle) * (radius + length), centerY + Math.sin(angle) * (radius + length))
+    const halfLength = 5 + level * 23
+    path.moveTo(centerX + Math.cos(angle) * (radius - halfLength), centerY + Math.sin(angle) * (radius - halfLength))
+    path.lineTo(centerX + Math.cos(angle) * (radius + halfLength), centerY + Math.sin(angle) * (radius + halfLength))
   }
   trimDynamics(dynamics, count)
   strokeVisualizer(context, path, 7, 4)

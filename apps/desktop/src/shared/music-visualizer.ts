@@ -3,7 +3,6 @@ import type { AlphaContour } from './alpha-contour'
 export const MUSIC_VISUALIZER_STYLE_KEY = 'music_visualizer_style'
 
 export type MusicVisualizerStyle =
-  | 'surround-bars'
   | 'surround-line'
   | 'bottom-wave'
   | 'radial-bars'
@@ -13,17 +12,16 @@ export type MusicVisualizerStyle =
 export type BackgroundMusicVisualizerStyle = 'radial-bars' | 'circular-wave' | 'pulse-rings'
 
 export const MUSIC_VISUALIZER_STYLE_OPTIONS: ReadonlyArray<readonly [MusicVisualizerStyle, string]> = [
-  ['surround-bars', '环绕柱条'],
   ['surround-line', '环绕线条'],
   ['bottom-wave', '底部倒置柱状'],
-  ['radial-bars', '背景径向柱状圆环'],
+  ['radial-bars', '背景镜像柱状圆环'],
   ['circular-wave', '背景圆形波形线'],
   ['pulse-rings', '背景同心脉冲']
 ]
 
 export function parseMusicVisualizerStyle(value: unknown): MusicVisualizerStyle {
   return value === 'surround-line' || value === 'bottom-wave' || value === 'radial-bars' ||
-    value === 'circular-wave' || value === 'pulse-rings' ? value : 'surround-bars'
+    value === 'circular-wave' || value === 'pulse-rings' ? value : 'surround-line'
 }
 
 export function isBackgroundMusicVisualizer(style: MusicVisualizerStyle): style is BackgroundMusicVisualizerStyle {

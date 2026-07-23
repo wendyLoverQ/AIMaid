@@ -65,7 +65,7 @@ public sealed class SettingsApplicationService :
             return OperationResult.Failure("settings.invalid_language", "界面语言必须是 zh-CN、en、es 或 ja。");
         if (key == "comic_bubble_style" && value is not ("" or "normal" or "soft" or "lively" or "close"))
             return OperationResult.Failure("settings.invalid_bubble_style", "气泡主题值无效。");
-        if (key == "music_visualizer_style" && value is not ("surround-bars" or "surround-line" or "bottom-wave" or "radial-bars" or "circular-wave" or "pulse-rings"))
+        if (key == "music_visualizer_style" && value is not ("surround-line" or "bottom-wave" or "radial-bars" or "circular-wave" or "pulse-rings"))
             return OperationResult.Failure("settings.invalid_music_visualizer_style", "音乐音浪样式值无效。");
         if (key == "disturbance_mode" && value is not ("normal" or "quiet" or "focus" or "game" or "sleep"))
             return OperationResult.Failure("settings.invalid_disturbance", "勿扰模式值无效。");
@@ -118,7 +118,7 @@ public sealed class SettingsApplicationService :
     {
         ["ui_language"] = "zh-CN", ["realtime_tts_enabled"] = "True", ["ai_proactive_enabled"] = "True",
         ["master_audio_muted"] = "False", ["master_audio_volume"] = "100",
-        ["voice_cache_period_hours"] = "1", ["comic_bubble_style"] = "", ["music_visualizer_style"] = "surround-bars", ["disturbance_mode"] = "normal",
+        ["voice_cache_period_hours"] = "1", ["comic_bubble_style"] = "", ["music_visualizer_style"] = "surround-line", ["disturbance_mode"] = "normal",
         ["user_config:App:AgentEnabled"] = "True", ["user_config:App:MaxToolSteps"] = "4",
         ["user_config:App:Proxy:Address"] = "127.0.0.1:6324", ["user_config:DataSync:Enabled"] = "True",
         ["user_config:DataSync:ServerUrl"] = "http://35.78.120.126", ["user_config:DataSync:UserId"] = "0",

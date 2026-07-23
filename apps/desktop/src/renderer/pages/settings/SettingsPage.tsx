@@ -86,7 +86,7 @@ function DisplaySettings(): React.JSX.Element {
     const [presentation, setPresentation] = useState<PetPresentationSnapshot | null>(null);
     const [language, setLanguage] = useState('zh-CN');
     const [bubbleStyle, setBubbleStyle] = useState('');
-    const [visualizerStyle, setVisualizerStyle] = useState<MusicVisualizerStyle>('surround-bars');
+    const [visualizerStyle, setVisualizerStyle] = useState<MusicVisualizerStyle>('surround-line');
     const [platform, setPlatform] = useState<PlatformSettingsSnapshot | null>(null);
     useEffect(() => {
         void Promise.all([
