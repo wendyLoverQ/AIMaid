@@ -487,10 +487,22 @@ public sealed partial class RemoteVideoApplicationService
     {
         var now = DateTimeOffset.Now;
         var video = new VideoItemDto(
-            $"remote_{item.ItemId}", "Remote", item.Title, outputPath, item.OriginalUrl,
+            ToVideoLibraryId(item), "Remote", item.Title, outputPath, item.OriginalUrl,
             string.Empty, string.Empty, string.Empty, false, now, now,
             DurationSeconds: item.DurationSeconds, FileSize: new FileInfo(outputPath).Length);
         await store.UpsertAsync("video", video.VideoId, JsonSerializer.Serialize(video), now, cancellationToken);
+    }
+
+    private static string ToVideoLibraryId(RemoteVideoResolvedItemDto item)
+    {
+        const string remotePrefix = "legacy_remote_video_";
+        if (item.ItemId.StartsWith(remotePrefix, StringComparison.Ordinal) &&
+            long.TryParse(item.ItemId[remotePrefix.Length..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var legacyId))
+            return $"legacy_video_{legacyId.ToString(CultureInfo.InvariantCulture)}";
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(item.OriginalUrl + "\n" + item.VideoId));
+        var value = BitConverter.ToInt64(hash, 0);
+        if (value >= 0) value = -value - 1;
+        return $"legacy_video_{value.ToString(CultureInfo.InvariantCulture)}";
     }
 
     private async Task RemoveImportedVideoAsync(string outputPath, CancellationToken cancellationToken)
