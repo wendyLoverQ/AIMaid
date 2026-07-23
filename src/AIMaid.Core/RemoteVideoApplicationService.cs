@@ -23,6 +23,7 @@ public sealed partial class RemoteVideoApplicationService
     private readonly ApplicationPaths paths;
     private readonly ConcurrentDictionary<string, CancellationTokenSource> activeDownloads = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, RemoteVideoDownloadDto> liveDownloads = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, RemoteVideoResolvedItemDto> resolvedItems = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim downloadSlotGate = new(1, 1);
     private int runningDownloadCount;
     private string lastOperation = "none";
@@ -81,6 +82,7 @@ public sealed partial class RemoteVideoApplicationService
                 {
                     DownloadStatus = downloadStatuses.TryGetValue(parsedItem.ItemId, out var status) ? status : "None"
                 };
+                resolvedItems[item.ItemId] = item;
                 await store.UpsertAsync(ItemDomain, item.ItemId, JsonSerializer.Serialize(item), DateTimeOffset.Now, cancellationToken);
                 resolved.Add(item);
             }
@@ -96,14 +98,38 @@ public sealed partial class RemoteVideoApplicationService
     public async Task<RemoteVideoThumbnailDto> GetThumbnailAsync(string itemId, CancellationToken cancellationToken = default)
     {
         var item = await GetItemAsync(itemId, cancellationToken);
-        if (!Uri.TryCreate(item.ThumbnailUrl, UriKind.Absolute, out var thumbnailUri) || thumbnailUri.Scheme is not ("http" or "https"))
+        return await GetThumbnailByUrlAsync(item.ThumbnailUrl, item.OriginalUrl, cancellationToken);
+    }
+
+    public async Task<RemoteVideoThumbnailDto> GetDownloadThumbnailAsync(
+        string taskId, CancellationToken cancellationToken = default)
+    {
+        var task = (await ListDownloadsAsync(cancellationToken)).FirstOrDefault(x => x.TaskId == taskId)
+            ?? throw new KeyNotFoundException("下载记录不存在。");
+        return await GetThumbnailByUrlAsync(task.ThumbnailUrl, task.OriginalUrl, cancellationToken);
+    }
+
+    public async Task<RemoteVideoThumbnailDto> GetPlayThumbnailAsync(
+        string historyId, CancellationToken cancellationToken = default)
+    {
+        var json = await store.GetAsync(PlayDomain, historyId, cancellationToken)
+            ?? throw new KeyNotFoundException("播放记录不存在。");
+        var history = Deserialize<RemoteVideoPlayHistoryDto>(json);
+        return await GetThumbnailByUrlAsync(history.ThumbnailUrl, history.OriginalUrl, cancellationToken);
+    }
+
+    private async Task<RemoteVideoThumbnailDto> GetThumbnailByUrlAsync(
+        string thumbnailUrl, string originalUrl, CancellationToken cancellationToken = default)
+    {
+        if (!Uri.TryCreate(thumbnailUrl, UriKind.Absolute, out var thumbnailUri) || thumbnailUri.Scheme is not ("http" or "https"))
             throw new InvalidDataException("解析结果没有可用的远程封面地址。");
-        var site = await MatchSiteAsync(item.OriginalUrl, cancellationToken);
+        var site = await MatchSiteAsync(originalUrl, cancellationToken);
         using var handler = new HttpClientHandler { AutomaticDecompression = System.Net.DecompressionMethods.All };
         using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) };
         using var request = new HttpRequestMessage(HttpMethod.Get, thumbnailUri);
         request.Headers.UserAgent.TryParseAdd(ReadSiteSetting(site, "userAgent") ?? "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/134.0.0.0 Safari/537.36");
-        var referer = ReadSiteSetting(site, "referer") ?? item.OriginalUrl;
+        request.Headers.TryAddWithoutValidation("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8");
+        var referer = ReadSiteSetting(site, "referer") ?? originalUrl;
         if (Uri.TryCreate(referer, UriKind.Absolute, out var refererUri)) request.Headers.Referrer = refererUri;
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
@@ -150,7 +176,7 @@ public sealed partial class RemoteVideoApplicationService
                 ReadSiteSetting(site, "userAgent"), ReadSiteSetting(site, "referer")), cancellationToken);
         var history = new RemoteVideoPlayHistoryDto(
             NewLegacyId("legacy_remote_play_"), item.ItemId, item.OriginalUrl, item.Title, item.Author,
-            item.SiteName, action, action == "CachePlay" ? source : string.Empty, DateTimeOffset.Now);
+            item.SiteName, action, action == "CachePlay" ? source : string.Empty, DateTimeOffset.Now, item.ThumbnailUrl);
         await store.UpsertAsync(PlayDomain, history.HistoryId, JsonSerializer.Serialize(history), history.PlayedAt, cancellationToken);
         SetDiagnostic("play", "succeeded", $"已通过 PotPlayer 启动“{item.Title}”。");
         return history;
@@ -168,7 +194,7 @@ public sealed partial class RemoteVideoApplicationService
             var task = new RemoteVideoDownloadDto(
                 NewLegacyId("legacy_remote_download_"), item.ItemId, item.OriginalUrl, item.Title, item.Author,
                 item.SiteName, string.Empty, ResolveSelector(item, formatSelector, settings.DefaultQualityPreference),
-                "Queued", 0, string.Empty, string.Empty, string.Empty, 0, DateTimeOffset.Now, null, null);
+                "Queued", 0, string.Empty, string.Empty, string.Empty, 0, DateTimeOffset.Now, null, null, item.ThumbnailUrl);
             var source = new CancellationTokenSource();
             activeDownloads[task.TaskId] = source;
             liveDownloads[task.TaskId] = task;
@@ -211,7 +237,15 @@ public sealed partial class RemoteVideoApplicationService
             await SaveDownloadAsync(interrupted, cancellationToken);
         }
         foreach (var pair in liveDownloads) persisted[pair.Key] = pair.Value;
-        return persisted.Values.OrderByDescending(x => x.CreatedAt).Take(200).ToArray();
+        var records = persisted.Values.OrderByDescending(x => x.CreatedAt).Take(200).ToArray();
+        for (var index = 0; index < records.Length; index++)
+        {
+            if (!string.IsNullOrWhiteSpace(records[index].ThumbnailUrl)) continue;
+            var item = await TryGetItemAsync(records[index].ItemId, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(item?.ThumbnailUrl))
+                records[index] = records[index] with { ThumbnailUrl = item.ThumbnailUrl };
+        }
+        return records;
     }
 
     public async Task DeleteDownloadAsync(string taskId, CancellationToken cancellationToken = default)
@@ -237,7 +271,7 @@ public sealed partial class RemoteVideoApplicationService
         await platform.LaunchMediaAsync(await ResolvePotPlayerPathAsync(cancellationToken), new RemoteMediaLaunchRequest(task.OutputPath, Title: task.Title), cancellationToken);
         var history = new RemoteVideoPlayHistoryDto(
             NewLegacyId("legacy_remote_play_"), task.ItemId, task.OriginalUrl, task.Title, task.Author,
-            task.SiteName, "Downloaded", task.OutputPath, DateTimeOffset.Now);
+            task.SiteName, "Downloaded", task.OutputPath, DateTimeOffset.Now, task.ThumbnailUrl);
         await store.UpsertAsync(PlayDomain, history.HistoryId, JsonSerializer.Serialize(history), history.PlayedAt, cancellationToken);
         SetDiagnostic("download.play", "succeeded", $"已播放下载文件“{task.Title}”。");
         return history;
@@ -326,7 +360,10 @@ public sealed partial class RemoteVideoApplicationService
             var args = BuildDownloadArguments(item, settings, initial.Quality, settings.DownloadRoot, cacheOnly: false);
             var result = await RunYtDlpAsync(settings, site, args, source.Token, line => UpdateProgress(initial.TaskId, line));
             if (result.ExitCode != 0) throw new InvalidOperationException(SanitizeExternalMessage(result.StandardError, "下载失败。"));
-            var outputPath = FindOutputPath(result.StandardOutput) ?? string.Empty;
+            var outputPath = FindOutputPath(result.StandardOutput)
+                ?? throw new InvalidDataException("yt-dlp 未返回下载文件路径。");
+            if (!File.Exists(outputPath))
+                throw new FileNotFoundException("yt-dlp 返回的下载文件不存在。", outputPath);
             var completed = liveDownloads[initial.TaskId] with
             {
                 Status = "Completed", Progress = 100, OutputPath = outputPath,
@@ -426,9 +463,17 @@ public sealed partial class RemoteVideoApplicationService
 
     private async Task<RemoteVideoResolvedItemDto> GetItemAsync(string itemId, CancellationToken cancellationToken)
     {
+        if (resolvedItems.TryGetValue(itemId, out var resolved)) return resolved;
         var json = await store.GetAsync(ItemDomain, itemId, cancellationToken)
             ?? throw new KeyNotFoundException("远程视频解析结果不存在或已过期，请重新解析。");
         return Deserialize<RemoteVideoResolvedItemDto>(json);
+    }
+
+    private async Task<RemoteVideoResolvedItemDto?> TryGetItemAsync(string itemId, CancellationToken cancellationToken)
+    {
+        if (resolvedItems.TryGetValue(itemId, out var resolved)) return resolved;
+        var json = await store.GetAsync(ItemDomain, itemId, cancellationToken);
+        return json is null ? null : TryDeserialize<RemoteVideoResolvedItemDto>(json);
     }
 
     private async Task SaveDownloadAsync(RemoteVideoDownloadDto task, CancellationToken cancellationToken)
@@ -619,7 +664,7 @@ public sealed partial class RemoteVideoApplicationService
             itemId, originalUrl, ReadString(element, "title", "未命名视频"),
             ReadString(element, "uploader", ReadString(element, "channel")),
             string.IsNullOrWhiteSpace(siteName) ? ReadString(element, "extractor_key", HostLabel(originalUrl)) : siteName,
-            videoId, duration, ReadString(element, "thumbnail"), publishedAt,
+            videoId, duration, ReadThumbnailUrl(element), publishedAt,
             !string.IsNullOrWhiteSpace(liveStatus) && liveStatus != "not_live", "None", formats);
     }
 
@@ -653,7 +698,7 @@ public sealed partial class RemoteVideoApplicationService
     {
         if (!string.IsNullOrWhiteSpace(requested))
         {
-            var format = item.Formats.FirstOrDefault(x => x.Selector == requested || x.FormatId == requested);
+            var format = item.Formats?.FirstOrDefault(x => x.Selector == requested || x.FormatId == requested);
             if (format is not null) return format.Selector;
             throw new ArgumentException("所选清晰度不属于当前解析结果。", nameof(requested));
         }
@@ -686,6 +731,26 @@ public sealed partial class RemoteVideoApplicationService
     private static string? FindOutputPath(string output)
         => output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Reverse().FirstOrDefault(x => Path.IsPathFullyQualified(x));
+
+    private static string ReadThumbnailUrl(JsonElement element)
+    {
+        var direct = ReadString(element, "thumbnail");
+        if (Uri.TryCreate(direct, UriKind.Absolute, out var directUri) && directUri.Scheme is "http" or "https")
+            return direct;
+        if (!element.TryGetProperty("thumbnails", out var thumbnails) || thumbnails.ValueKind != JsonValueKind.Array)
+            return string.Empty;
+        return thumbnails.EnumerateArray()
+            .Where(x => x.ValueKind == JsonValueKind.Object)
+            .Select(x => new
+            {
+                Url = ReadString(x, "url"),
+                Area = (ReadNullableDouble(x, "width") ?? 0) * (ReadNullableDouble(x, "height") ?? 0)
+            })
+            .Where(x => Uri.TryCreate(x.Url, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https")
+            .OrderByDescending(x => x.Area)
+            .Select(x => x.Url)
+            .FirstOrDefault() ?? string.Empty;
+    }
 
     private static bool HostMatches(string host, string pattern)
     {

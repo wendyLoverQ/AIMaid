@@ -53,7 +53,7 @@ export type CoreRequest =
   | { type: 'remote_site.save'; payload: { site: RemoteSiteDto; plainCookie: string | null } }
   | { type: 'remote_site.delete'; payload: { siteId: string } }
   | { type: 'remote_video.resolve'; payload: { input: string } }
-  | { type: 'remote_video.thumbnail'; payload: { itemId: string } }
+  | { type: 'remote_video.thumbnail'; payload: { itemId: string } | { downloadTaskId: string } | { playHistoryId: string } }
   | { type: 'remote_video.formats'; payload: { itemId: string } }
   | { type: 'remote_video.play'; payload: { itemId: string; formatSelector?: string; mode: 'direct' | 'cache' } }
   | { type: 'remote_video.download.start'; payload: { itemIds: string[]; formatSelector?: string } }
@@ -293,6 +293,9 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
     case 'remote_video.resolve':
       return isNonEmptyString(value.payload.input) && value.payload.input.length <= 20_000
     case 'remote_video.thumbnail':
+      return isNonEmptyString(value.payload.itemId) ||
+        isNonEmptyString(value.payload.downloadTaskId) ||
+        isNonEmptyString(value.payload.playHistoryId)
     case 'remote_video.formats':
       return isNonEmptyString(value.payload.itemId)
     case 'remote_video.play':

@@ -214,10 +214,10 @@ public sealed record RemoteVideoDownloadDto(
     string TaskId, string ItemId, string OriginalUrl, string Title, string Author,
     string SiteName, string OutputPath, string Quality, string Status, double Progress,
     string Speed, string Eta, string ErrorMessage, long FileSize, DateTimeOffset CreatedAt,
-    DateTimeOffset? StartedAt, DateTimeOffset? FinishedAt);
+    DateTimeOffset? StartedAt, DateTimeOffset? FinishedAt, string ThumbnailUrl = "");
 public sealed record RemoteVideoPlayHistoryDto(
     string HistoryId, string? ItemId, string OriginalUrl, string Title, string Author,
-    string SiteName, string Action, string CachePath, DateTimeOffset PlayedAt);
+    string SiteName, string Action, string CachePath, DateTimeOffset PlayedAt, string ThumbnailUrl = "");
 public sealed record RemoteVideoSettingsDto(
     string DownloadRoot, string CacheRoot, string FileNameTemplate,
     string DefaultQualityPreference, bool DownloadThumbnail, bool DownloadInfoJson,

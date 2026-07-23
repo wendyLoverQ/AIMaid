@@ -880,7 +880,12 @@ internal sealed class LegacyRelationalDocumentStore
             M("remote_video_play","RemotePlayHistories","Id",IdMode.PrefixedInteger,"legacy_remote_play_","HistoryId",b:[],drop:["Id"],
                 read: new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase)
                 {
-                    ["VideoItemId"] = "ItemId", ["AuthorName"] = "Author", ["PlayAction"] = "Action"
+                    ["VideoItemId"] = "ItemId", ["AuthorName"] = "Author", ["PlayAction"] = "Action",
+                    ["CoverUrl"] = "ThumbnailUrl"
+                },
+                write: new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["ThumbnailUrl"] = "CoverUrl"
                 }),
             M("remote_video_settings","RemoteVideoSettings","Id",IdMode.Singleton,singleton:1,b:["DownloadThumbnail","DownloadInfoJson","DownloadSubtitles","DownloadDanmaku","OverwriteExisting","AutoImportToVideoLibrary"],drop:["Id"]),
             M("vault","VaultItems","Id",IdMode.PrefixedInteger,"legacy_vault_","ItemId",b:[],drop:["Id"],remove:["ChainType","WalletAddress","ServerAddress","ServerPort","Remark","PasswordEncrypted","ApiKeyEncrypted","SecretEncrypted","PrivateKeyEncrypted","MnemonicEncrypted"]),

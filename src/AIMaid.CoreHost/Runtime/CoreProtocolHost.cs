@@ -425,7 +425,14 @@ public sealed class CoreProtocolHost(
                     await writer.SuccessAsync(request, await remoteVideos.ResolveAsync(ReadRequiredString(request.Payload, "input"), source.Token), source.Token);
                     break;
                 case "remote_video.thumbnail":
-                    await writer.SuccessAsync(request, await remoteVideos.GetThumbnailAsync(ReadRequiredString(request.Payload, "itemId"), source.Token), source.Token);
+                    await writer.SuccessAsync(request,
+                        TryGetString(request.Payload, "itemId", out var thumbnailItemId)
+                            ? await remoteVideos.GetThumbnailAsync(thumbnailItemId, source.Token)
+                            : TryGetString(request.Payload, "downloadTaskId", out var thumbnailTaskId)
+                                ? await remoteVideos.GetDownloadThumbnailAsync(thumbnailTaskId, source.Token)
+                                : await remoteVideos.GetPlayThumbnailAsync(
+                                    ReadRequiredString(request.Payload, "playHistoryId"), source.Token),
+                        source.Token);
                     break;
                 case "remote_video.formats":
                     await writer.SuccessAsync(request, await remoteVideos.GetFormatsAsync(ReadRequiredString(request.Payload, "itemId"), source.Token), source.Token);

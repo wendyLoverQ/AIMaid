@@ -1286,12 +1286,15 @@ body.prompt-surface .ui-keyboard-key { min-width: 2.25rem; text-align: center; }
 .remote-video-result-card__copy > .ui-strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .remote-video-result-card__copy > .ui-container { display: flex; min-width: 0; align-items: center; gap: var(--space-4); color: var(--color-text-secondary); }
 .remote-video-result-card__actions, .remote-video-record-card__actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-1); }
-.remote-video-record-card { display: grid; grid-template-columns: 5.25rem minmax(0, 1fr) auto auto auto; min-width: 0; align-items: center; gap: var(--space-4); padding: var(--space-3); border: var(--border-default); border-radius: var(--radius-lg); background: var(--color-bg-elevated); }
+.remote-video-record-card { display: grid; min-width: 0; min-height: 4.5rem; align-items: center; gap: var(--space-4); padding: var(--space-3); border: var(--border-default); border-radius: var(--radius-lg); background: var(--color-bg-elevated); }
+.remote-video-record-card[data-remote-video-record-kind="download"] { grid-template-columns: 5.25rem minmax(0, 1fr) 7rem; }
+.remote-video-record-card[data-remote-video-record-kind="play"] { grid-template-columns: 5.25rem minmax(0, 1fr) 7rem 10rem; }
 .remote-video-record-card__main { display: grid; min-width: 0; gap: var(--space-2); }
-.remote-video-record-card__main > .ui-container:first-child { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .remote-video-record-card__main .ui-strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .remote-video-record-card__main > .ui-container:has(> .ui-meter) { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); }
 .remote-video-record-card__meta { display: flex; min-width: 0; align-items: center; gap: var(--space-4); color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+[data-remote-video-status] { color: var(--color-accent); font-size: var(--font-size-sm); text-align: right; white-space: nowrap; }
+[data-remote-video-status][data-tone="danger"] { color: var(--color-danger); }
 [data-remote-video-thumbnail-empty] { display: grid; width: 100%; height: 100%; place-items: center; align-content: center; gap: var(--space-1); color: var(--color-text-tertiary); }
 [data-remote-video-thumbnail-empty] .ui-icon { width: 1.5rem; height: 1.5rem; }
 
@@ -1309,7 +1312,8 @@ body.prompt-surface .ui-keyboard-key { min-width: 2.25rem; text-align: center; }
   .remote-video-result-feature { grid-template-columns: minmax(0, 1fr); }
   .remote-video-result-feature__media { min-height: 14rem; aspect-ratio: 16 / 9; }
   .remote-video-result-feature__copy [data-remote-video-facts] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .remote-video-record-card { grid-template-columns: 5.25rem minmax(0, 1fr) auto; }
+  .remote-video-record-card[data-remote-video-record-kind="download"],
+  .remote-video-record-card[data-remote-video-record-kind="play"] { grid-template-columns: 5.25rem minmax(0, 1fr) auto; }
   .remote-video-record-card > .ui-time { display: none; }
   .remote-video-record-card__actions { grid-column: 2 / -1; }
   .remote-video-navigation { align-items: stretch; flex-direction: column; }
@@ -1346,7 +1350,8 @@ body.prompt-surface .ui-keyboard-key { min-width: 2.25rem; text-align: center; }
   .remote-video-hero__composer > .ui-container, .remote-video-result-toolbar { align-items: stretch; flex-direction: column; }
   .remote-video-result-card { grid-template-columns: auto 5.25rem minmax(0, 1fr); }
   .remote-video-result-card__actions { grid-column: 2 / -1; justify-content: flex-start; }
-  .remote-video-record-card { grid-template-columns: 5.25rem minmax(0, 1fr); }
+  .remote-video-record-card[data-remote-video-record-kind="download"],
+  .remote-video-record-card[data-remote-video-record-kind="play"] { grid-template-columns: 5.25rem minmax(0, 1fr); }
   .remote-video-record-card > .ui-badge { justify-self: start; }
 }
 
