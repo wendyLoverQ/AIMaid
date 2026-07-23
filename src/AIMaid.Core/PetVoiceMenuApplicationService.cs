@@ -512,16 +512,30 @@ public sealed class PetVoiceMenuApplicationService(
         for (var attempt = 1; attempt <= 3 && result.Count < missing.Count; attempt++)
         {
             var remaining = missing.Where(plan => !result.ContainsKey(plan.Key)).ToArray();
+            var scene = remaining.Length == 1
+                ? remaining[0].TriggerId
+                : string.Join(",", remaining.Select(plan => plan.TriggerId).Distinct(StringComparer.OrdinalIgnoreCase).Take(8));
+            var style = remaining.Length == 1
+                ? remaining[0].SuggestedStyle
+                : string.Join(",", remaining.Select(plan => plan.SuggestedStyle).Distinct(StringComparer.OrdinalIgnoreCase));
             var values = new Dictionary<string, string>
             {
                 ["roleId"] = character.RoleId,
                 ["roleName"] = character.Name,
-                ["triggerType"] = "fixed_cache_batch",
-                ["scene"] = "desktop_pet",
-                ["tier"] = FormatIntimacy(intimacyLevel),
+                ["triggerType"] = remaining.Length == 1 ? remaining[0].Category : "batch",
+                ["scene"] = scene,
+                ["tier"] = $"level_{intimacyLevel}",
                 ["count"] = remaining.Length.ToString(CultureInfo.InvariantCulture),
-                ["style"] = "按触发项选择 normal/soft/lively/close",
-                ["itemsJson"] = JsonSerializer.Serialize(remaining.Select(plan => new { key = plan.Key, triggerId = plan.TriggerId, category = plan.Category, bodyPart = plan.BodyPart })),
+                ["style"] = style,
+                ["itemsJson"] = JsonSerializer.Serialize(remaining.Select(plan => new
+                {
+                    key = plan.Key,
+                    triggerId = plan.TriggerId,
+                    category = plan.Category,
+                    bodyPart = plan.BodyPart,
+                    style = plan.SuggestedStyle,
+                    seed = BuildPlanSeed(character.RoleId, cacheKey, plan)
+                })),
                 ["existingLinesJson"] = JsonSerializer.Serialize(forbidden),
                 ["acceptedLinesJson"] = JsonSerializer.Serialize(result.Values.Select(line => line.Text)),
                 ["duplicateLinesJson"] = "[]",
@@ -539,7 +553,7 @@ public sealed class PetVoiceMenuApplicationService(
                                    "生成固定触发语音缓存台词", character.RoleId,
                                    await LoadCacheModelAsync(cancellationToken), [],
                                    SourceKey: "lazy_voice_lines", TemplateValues: values,
-                                   RequireJsonResponse: true, Temperature: 0.8, MaxTokens: 2048, StreamResponse: false), cancellationToken))
+                                   RequireJsonResponse: true, StreamResponse: false), cancellationToken))
                     raw.Append(delta);
                 var generated = ParseLines(raw.ToString());
                 ValidateGeneratedBatch(generated, remaining);
@@ -971,6 +985,16 @@ public sealed class PetVoiceMenuApplicationService(
         => $"{roleId}:{intimacyLevel}:{cacheKey}:{contextHash}";
 
     private static string NextId(string prefix) => prefix + Interlocked.Increment(ref nextDocumentId).ToString(CultureInfo.InvariantCulture);
+    private static int BuildPlanSeed(string roleId, string cacheKey, PetVoiceTriggerPlan plan)
+    {
+        var value = $"{roleId}|{cacheKey}|{plan.TriggerId}|{plan.Category}|{plan.BodyPart}";
+        unchecked
+        {
+            var hash = 17;
+            foreach (var ch in value) hash = hash * 31 + ch;
+            return hash & int.MaxValue;
+        }
+    }
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     private static string HashFile(string path) => File.Exists(path) ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))) : "missing";
     private static string NormalizeFingerprint(string value)
