@@ -124,7 +124,7 @@ export function TrayMenuPage(): React.JSX.Element {
     <Button onClick={() => run('hide')}>隐藏</Button>
     <Button variant="danger" onClick={() => run('quit')}>退出</Button>
     <Divider />
-    <Text size="xs" tone="muted">v{coreVersion || '...'}</Text>
+    <Text size="xs" tone="muted">{formatTrayVersion(coreVersion)}</Text>
   </TrayMenuSurface>
 }
 
@@ -151,6 +151,11 @@ async function loadCoreVersion(): Promise<string> {
     return payload.coreVersion
   }
   throw new Error('Core 版本号不存在。')
+}
+
+function formatTrayVersion(version: string): string {
+  const match = version.match(/^(\d{4}\.\d{1,2}\.\d{1,2}\.\d+\.\d+)/u)
+  return match?.[1] ?? (version || '...')
 }
 
 function updateMusicFromEvent(event: IpcEventEnvelope, update: (state: MusicPlaybackState | null) => void): void {
