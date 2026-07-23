@@ -1,7 +1,7 @@
 import type { HTMLAttributes, PropsWithChildren } from 'react'
 
 export type LayoutSlotVariant =
-  | 'workbench-sections' | 'workbench-page-header' | 'workbench-group' | 'workbench-group workbench-group--2' | 'workbench-group workbench-group--3' | 'workbench-group workbench-group--4' | 'workbench-group__header' | 'workbench-grid' | 'workbench-grid workbench-grid--2' | 'workbench-grid workbench-grid--3' | 'workbench-grid workbench-grid--4' | 'workbench-card__icon' | 'workbench-card__copy' | 'vault-field-control'
+  | 'workbench-grid' | 'workbench-card__icon' | 'workbench-card__copy' | 'vault-field-control'
   | 'character-page-layout' | 'character-workspace' | 'character-summary' | 'character-detail-sections' | 'character-danger'
   | 'template-card-layout' | 'template-card-summary'
   | 'character-editor-layout' | 'character-editor-placeholder'

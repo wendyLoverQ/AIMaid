@@ -13,7 +13,7 @@ export const WINDOW_REGISTRY: Readonly<Record<WindowKind, WindowDefinition>> = {
     id: 'main',
     route: 'main',
     closeBehavior: 'destroy',
-    options: { width: 1280, height: 820, minWidth: 960, minHeight: 680, frame: false, resizable: true, show: false }
+    options: { width: 820, height: 520, minWidth: 720, minHeight: 460, frame: false, resizable: true, show: false }
   },
   pet: {
     id: 'pet',
