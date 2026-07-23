@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using AIMaid.Contracts;
 using AIMaid.Contracts.Characters;
@@ -408,8 +409,31 @@ public sealed class PetVoiceCatalogTests
             cancellationToken.ThrowIfCancellationRequested();
             Calls++;
             var path = Path.Combine(root, $"tts-{Calls}.wav");
-            File.WriteAllBytes(path, [1, 2, 3]);
+            WriteValidWav(path);
             return Task.FromResult(path);
+        }
+
+        private static void WriteValidWav(string path)
+        {
+            const int sampleRate = 24_000;
+            const short channels = 1;
+            const short bits = 16;
+            var data = new byte[sampleRate / 2 * channels * (bits / 8)];
+            using var stream = File.Create(path);
+            using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: false);
+            writer.Write(Encoding.ASCII.GetBytes("RIFF"));
+            writer.Write(36 + data.Length);
+            writer.Write(Encoding.ASCII.GetBytes("WAVEfmt "));
+            writer.Write(16);
+            writer.Write((short)1);
+            writer.Write(channels);
+            writer.Write(sampleRate);
+            writer.Write(sampleRate * channels * (bits / 8));
+            writer.Write((short)(channels * (bits / 8)));
+            writer.Write(bits);
+            writer.Write(Encoding.ASCII.GetBytes("data"));
+            writer.Write(data.Length);
+            writer.Write(data);
         }
     }
 

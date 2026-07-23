@@ -159,7 +159,7 @@ export default function PetPage(): React.JSX.Element {
             dragMove: () => { void bridge.pet.dragMove(); },
             dragEnd: () => { void bridge.pet.dragEnd(); },
             updateWindow: (update) => { void bridge.pet.updateWindow(update); },
-            onScale: setRenderScale,
+            onBaseScale: setRenderScale,
             onVisualTransform: setLiveVisualTransform,
             onClick: (event) => {
                 if (presentationRef.current?.mode === 'live2d') {
@@ -403,14 +403,16 @@ export default function PetPage(): React.JSX.Element {
             showBubble(value.reason === 'cache_generating' ? '启动语音正在生成…' : '启动语音缓存未就绪。', 'feedback');
             return;
         }
-        const played = await playCachedAudio(value.audioPath);
+        const playback = await playCachedAudio(value.audioPath);
         await bridge.core.invoke({ type: 'pet.voice.playback.report', payload: {
             triggerId: value.triggerId ?? 'startup.welcome', bodyPart: value.bodyPart ?? 'default', text: value.text ?? '',
-            audioPath: value.audioPath, played, reason: played ? 'cache_match' : 'play_failed', source: 'pet.startup',
+            audioPath: value.audioPath, played: playback.played, reason: playback.played ? 'cache_match' : playback.reason, source: 'pet.startup',
             generationId: value.generationId ?? '', contextHash: value.contextHash ?? '', category: value.category ?? 'startup'
         } });
-        if (!played)
+        if (!playback.played) {
+            showBubble(playback.message, 'error');
             return;
+        }
         startupPlayedRef.current = true;
         if (typeof value.text === 'string' && value.text !== '') showBubble(value.text, 'speech');
     }
@@ -439,18 +441,22 @@ export default function PetPage(): React.JSX.Element {
             }
             return;
         }
-        let played = false;
+        let playback: Awaited<ReturnType<typeof playCachedAudio>>;
         let reason = 'play_failed';
         try {
-            played = await playCachedAudio(value.audioPath);
-            reason = played ? 'cache_match' : 'suppressed_audio_busy_or_muted';
-            if (played && typeof value.text === 'string' && value.text.length > 0)
+            playback = await playCachedAudio(value.audioPath);
+            reason = playback.played ? 'cache_match' : playback.reason;
+            if (playback.played && typeof value.text === 'string' && value.text.length > 0)
                 showBubble(value.text, 'speech');
+            else if (!playback.played)
+                showBubble(playback.message, playback.reason === 'audio_busy' ? 'feedback' : 'error');
         }
         catch (error) {
             reason = error instanceof Error ? error.message : String(error);
             showBubble(`点击语音播放失败：${reason}`, 'error');
+            playback = { played: false, reason: 'play_failed', message: reason };
         }
+        const played = playback.played;
         await bridge.core.invoke({
             type: 'pet.voice.playback.report',
             payload: {

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Globalization;
+using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -532,6 +533,7 @@ public sealed class PetVoiceMenuApplicationService(
                 throw new InvalidDataException($"TTS 返回了不支持的音频扩展名：{extension}");
             var target = Path.Combine(stagingDirectory, $"{Guid.NewGuid():N}{extension}");
             File.Copy(source, target, overwrite: false);
+            ValidateAudioFile(target);
             return target;
         }
         finally { parallel.Release(); }
@@ -774,6 +776,76 @@ public sealed class PetVoiceMenuApplicationService(
             resultKeys.Any(key => !requestedKeys.Contains(key))) throw new InvalidDataException("缓存文案包含重复或未请求的槽位。");
         if (lines.Any(x => string.IsNullOrWhiteSpace(x.Text) || x.Text.Trim().Length > 300)) throw new InvalidDataException("缓存文案存在空文本或超长文本。");
     }
+
+    private static void ValidateAudioFile(string path)
+    {
+        var extension = Path.GetExtension(path).ToLowerInvariant();
+        var bytes = File.ReadAllBytes(path);
+        if (bytes.Length < 12) throw new InvalidDataException($"音频文件 {path} 过短，缺少有效格式头。");
+        switch (extension)
+        {
+            case ".wav": ValidateWav(path, bytes); break;
+            case ".mp3":
+                if (!((bytes[0] == (byte)'I' && bytes[1] == (byte)'D' && bytes[2] == (byte)'3') || HasMpegFrameSync(bytes)))
+                    throw new InvalidDataException($"音频文件 {path} 的 MP3 文件头或 MPEG frame sync 无效。");
+                break;
+            case ".ogg":
+                if (!(bytes[0] == (byte)'O' && bytes[1] == (byte)'g' && bytes[2] == (byte)'g' && bytes[3] == (byte)'S'))
+                    throw new InvalidDataException($"音频文件 {path} 缺少 OggS 文件头。");
+                break;
+            default: throw new InvalidDataException($"音频文件 {path} 的扩展名不受支持：{extension}。");
+        }
+    }
+
+    private static void ValidateWav(string path, byte[] bytes)
+    {
+        if (!Ascii(bytes, 0, "RIFF") || !Ascii(bytes, 8, "WAVE"))
+            throw new InvalidDataException($"音频文件 {path} 不是合法的 RIFF/WAVE 文件。");
+        var position = 12;
+        ushort channels = 0, bits = 0;
+        uint sampleRate = 0, byteRate = 0, dataLength = 0;
+        var hasFmt = false;
+        var hasData = false;
+        while (position + 8 <= bytes.Length)
+        {
+            var chunk = Encoding.ASCII.GetString(bytes, position, 4);
+            var length = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(position + 4, 4));
+            var contentStart = position + 8;
+            var contentEnd = (ulong)contentStart + length;
+            if (contentEnd > (ulong)bytes.Length) throw new InvalidDataException($"音频文件 {path} 的 WAV chunk 超出文件范围。");
+            if (chunk == "fmt " && length >= 16)
+            {
+                var span = bytes.AsSpan(contentStart);
+                var format = BinaryPrimitives.ReadUInt16LittleEndian(span);
+                channels = BinaryPrimitives.ReadUInt16LittleEndian(span[2..]);
+                sampleRate = BinaryPrimitives.ReadUInt32LittleEndian(span[4..]);
+                byteRate = BinaryPrimitives.ReadUInt32LittleEndian(span[8..]);
+                bits = BinaryPrimitives.ReadUInt16LittleEndian(span[14..]);
+                if (format != 1 || channels == 0 || sampleRate == 0 || byteRate == 0 || bits == 0)
+                    throw new InvalidDataException($"音频文件 {path} 的 WAV fmt 参数无效。");
+                hasFmt = true;
+            }
+            else if (chunk == "data")
+            {
+                dataLength = length;
+                hasData = dataLength > 0;
+            }
+            position = contentStart + checked((int)length) + ((length & 1) == 1 ? 1 : 0);
+        }
+        if (!hasFmt || !hasData) throw new InvalidDataException($"音频文件 {path} 的 WAV 缺少合法 fmt 或非空 data chunk。");
+        var duration = (double)dataLength / byteRate;
+        if (duration <= 0.15) throw new InvalidDataException($"音频文件 {path} 的 WAV 时长过短：{duration:0.###} 秒。");
+    }
+
+    private static bool HasMpegFrameSync(byte[] bytes)
+    {
+        for (var index = 0; index + 1 < bytes.Length; index++)
+            if (bytes[index] == 0xFF && (bytes[index + 1] & 0xE0) == 0xE0) return true;
+        return false;
+    }
+
+    private static bool Ascii(byte[] bytes, int offset, string value)
+        => offset >= 0 && offset + value.Length <= bytes.Length && Encoding.ASCII.GetString(bytes, offset, value.Length) == value;
 
     private static string? ResolveVoiceId(IReadOnlyList<RoleVoiceDto> voices, string style)
         => voices.FirstOrDefault(item => NormalizeStyle(item.Style).Equals(style, StringComparison.OrdinalIgnoreCase))?.VoiceId

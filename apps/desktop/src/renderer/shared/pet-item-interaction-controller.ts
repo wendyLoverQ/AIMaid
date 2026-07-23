@@ -24,7 +24,7 @@ export interface PetItemInteractionOptions {
   dragMove: () => void
   dragEnd: () => void
   updateWindow: (update: PetWindowUpdate) => void
-  onScale: (scale: number) => void
+  onBaseScale: (scale: number) => void
   onVisualTransform?: (transform: PetVisualTransform) => void
   onClick: (event: MouseEvent) => void
 }
@@ -120,7 +120,7 @@ export class PetItemInteractionController {
       const distance = Math.hypot(event.clientX - this.dragStartX, event.clientY - this.dragStartY)
       this.pressDistance = distance
       if (!this.movedDuringDrag && distance <= DRAG_START_DISTANCE) return
-      if (!this.movedDuringDrag) this.stopHoldScale()
+      if (!this.movedDuringDrag) this.cancelHoldScaleForDrag()
       this.movedDuringDrag = true
       this.offsetX = this.dragStartOffsetX + event.clientX - this.dragStartX
       this.offsetY = this.dragStartOffsetY + event.clientY - this.dragStartY
@@ -226,6 +226,17 @@ export class PetItemInteractionController {
     this.holdReleaseFrame = requestAnimationFrame(release)
   }
 
+  private cancelHoldScaleForDrag(): void {
+    this.cancelHoldFrames()
+    this.holdStartedAt = null
+    this.holdScale = 1
+    this.holdOriginX = 0.5
+    this.holdOriginY = 0.5
+    delete this.options.item.dataset.holdScaling
+    this.setImageBreathingEnabled(true)
+    this.applyItemTransform()
+  }
+
   private finishHoldRelease(): void {
     this.holdReleaseFrame = null
     this.holdScale = 1
@@ -287,13 +298,13 @@ export class PetItemInteractionController {
     this.options.item.style.width = `${Math.round(live2d ? baseWidth : width)}px`
     this.options.item.style.height = `${Math.round(live2d ? baseHeight : height)}px`
     this.options.item.style.transform = 'translate(-50%, -50%)'
-    const renderScale = this.scale * this.holdScale
-    this.options.onScale(renderScale)
+    const visualScale = live2d ? this.scale : this.scale * this.holdScale
+    this.options.onBaseScale(this.scale)
     this.options.onVisualTransform?.({
-      centerX: window.innerWidth / 2 + this.offsetX + originShiftX,
-      centerY: window.innerHeight / 2 + this.offsetY + originShiftY
-        + (PET_BASE_WINDOW_HEIGHT - PET_CANVAS_HEIGHT) * renderScale / 2,
-      scale: renderScale
+      centerX: window.innerWidth / 2 + this.offsetX + (live2d ? 0 : originShiftX),
+      centerY: window.innerHeight / 2 + this.offsetY + (live2d ? 0 : originShiftY)
+        + (PET_BASE_WINDOW_HEIGHT - PET_CANVAS_HEIGHT) * visualScale / 2,
+      scale: visualScale
     })
   }
 }

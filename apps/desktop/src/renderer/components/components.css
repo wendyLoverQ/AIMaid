@@ -1273,11 +1273,6 @@ body.prompt-surface .ui-keyboard-key { min-width: 2.25rem; text-align: center; }
 }
 
 @media (max-width: 52rem) {
-  .settings-workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); height: 100%; }
-  .settings-navigation { padding: 0 0 var(--space-4); border: 0; border-bottom: var(--border-default); }
-  .settings-category-list { display: flex; gap: var(--space-1); overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
-  .settings-navigation .settings-category-list .ui-pressable { flex: 0 0 auto; width: auto; min-height: var(--control-height-sm); padding-inline: var(--space-3); white-space: nowrap; }
-  .settings-category-list { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); }
   .settings-content { padding: 0; overflow: auto; }
   .settings-content__header { padding-top: var(--space-4); }
   .ui-setting-row { align-items: stretch; flex-direction: column; padding-block: var(--space-4); }
@@ -1293,7 +1288,7 @@ body.prompt-surface .ui-keyboard-key { min-width: 2.25rem; text-align: center; }
 }
 
 @media (max-width: 44.9375rem) {
-  .theme-card-grid, .character-workspace, .character-editor-layout, .notebook-workspace, .conversation-workspace, .settings-workspace, .settings-search-results { grid-template-columns: minmax(0, 1fr); }
+  .theme-card-grid, .character-workspace, .character-editor-layout, .notebook-workspace, .conversation-workspace, .settings-search-results { grid-template-columns: minmax(0, 1fr); }
   .workbench-grid { gap: var(--space-2); }
   .workbench-grid .ui-pressable { min-height: 4.25rem; gap: var(--space-3); padding: var(--space-3) var(--space-4); }
   .workbench-card__icon { width: 2.5rem; height: 2.5rem; }
