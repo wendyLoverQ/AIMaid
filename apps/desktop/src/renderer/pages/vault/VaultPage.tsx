@@ -184,7 +184,7 @@ export function VaultPage(): React.JSX.Element {
             const canCopy = secret || label === '账号' || label === '钱包地址' || label === '地址';
             return <FormLabel key={label}><InlineText>{label}</InlineText><LayoutSlot variant="vault-field-control">{multiline
                     ? <Textarea aria-label={label} rows={4} value={values[label] ?? ''} onChange={(event) => setValues((current) => ({ ...current, [label]: event.target.value }))}/>
-                    : <Input aria-label={label} type={secret ? 'password' : 'text'} value={values[label] ?? ''} onChange={(event) => setValues((current) => ({ ...current, [label]: event.target.value }))}/>}{canCopy ? <Button disabled={(values[label] ?? '') === ''} onClick={() => void copy(label)}>复制</Button> : null}</LayoutSlot></FormLabel>;
+                    : <Input aria-label={label} type="text" value={values[label] ?? ''} onChange={(event) => setValues((current) => ({ ...current, [label]: event.target.value }))}/>}{canCopy ? <Button disabled={(values[label] ?? '') === ''} onClick={() => void copy(label)}>复制</Button> : null}</LayoutSlot></FormLabel>;
         })}
         </Section>
       </ProductPanel>
