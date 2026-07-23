@@ -68,6 +68,9 @@ export class EventRouter {
   }
 
   private broadcast(event: IpcEventEnvelope): void {
+    if (event.type === 'agent.ui_action_requested' && isAgentSettingsOpenRequest(event.payload)) {
+      this.windows.open('settings', undefined, { requestId: event.requestId, trigger: 'agent' })
+    }
     for (const [contentsId, entry] of this.windowsByContents) {
       if (entry.contents.isDestroyed()) {
         this.windowsByContents.delete(contentsId)
@@ -86,4 +89,10 @@ export class EventRouter {
   private createEvent(type: IpcEventEnvelope['type'], payload: unknown): IpcEventEnvelope {
     return { requestId: randomUUID(), type, payload, success: true, error: null, timestamp: Date.now() }
   }
+}
+
+function isAgentSettingsOpenRequest(value: unknown): boolean {
+  return typeof value === 'object' && value !== null &&
+    'action' in value && value.action === 'open_window' &&
+    'target' in value && value.target === 'settings'
 }

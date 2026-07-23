@@ -32,6 +32,8 @@ public sealed record AgentApprovalRequestedEvent(
     string DisplayName, string RiskLevel, string ArgsJson, string Description = "", string ExecutorType = "") : IBusinessEvent;
 public sealed record AgentToolCallCompletedEvent(
     string EventId, DateTimeOffset OccurredAt, AgentToolCallDto ToolCall) : IBusinessEvent;
+public sealed record AgentUiActionRequestedEvent(
+    string EventId, DateTimeOffset OccurredAt, string Action, string Target) : IBusinessEvent;
 
 public sealed record ProactiveRuleDto(
     string RuleId, bool Enabled, string EventType, string ConditionJson, int Priority,

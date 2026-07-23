@@ -120,6 +120,7 @@ internal static class SchemaBootstrapper
             await ExecuteAsync(connection, transaction, "CREATE UNIQUE INDEX IF NOT EXISTS IX_AppSettings_Key ON AppSettings(Key); CREATE UNIQUE INDEX IF NOT EXISTS IX_VoiceRoleCards_RoleId ON VoiceRoleCards(RoleId); UPDATE TimerRecords SET RecordId='legacy_timer_' || Id WHERE COALESCE(RecordId,'')=''; CREATE UNIQUE INDEX IF NOT EXISTS IX_TimerRecords_RecordId ON TimerRecords(RecordId);", cancellationToken);
             if (await ExistsAsync(connection, "VoiceRoles", cancellationToken))
                 await ExecuteAsync(connection, transaction, "UPDATE VoiceRoleCards SET AvatarPath=COALESCE((SELECT AvatarPath FROM VoiceRoles WHERE VoiceRoles.RoleId=VoiceRoleCards.RoleId LIMIT 1),'') WHERE COALESCE(AvatarPath,'')='';", cancellationToken);
+            await ApplyAgentDecisionSettingsMigrationAsync(connection, transaction, cancellationToken);
             await ValidateAsync(connection, transaction, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
@@ -131,6 +132,40 @@ internal static class SchemaBootstrapper
     }
 
     private static string Decode(string value) => System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(value));
+
+    private static async Task ApplyAgentDecisionSettingsMigrationAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        const string marker = "migration:agent_decision_settings_v1";
+        await using var markerCommand = connection.CreateCommand();
+        markerCommand.Transaction = transaction;
+        markerCommand.CommandText = "SELECT 1 FROM AppSettings WHERE Key=$key LIMIT 1";
+        markerCommand.Parameters.AddWithValue("$key", marker);
+        if (await markerCommand.ExecuteScalarAsync(cancellationToken) is not null) return;
+
+        var now = DateTimeOffset.Now.ToString("O");
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            DELETE FROM AgentCapabilities WHERE CapabilityName='live2d.publish';
+            UPDATE AgentCapabilities
+            SET Description='检查 TTS 服务；服务不可用时启动服务并再次检查。',
+                ConfigJson='{"steps":[{"capabilityName":"tts.check_status","args":{},"onSuccess":"stop","onFailure":"continue"},{"capabilityName":"tts.restart","args":{},"onFailure":"stop"},{"capabilityName":"tts.check_status","args":{},"onFailure":"stop"}]}',
+                RiskLevel='high', RequireConfirm=1, Enabled=1, UpdatedAt=$now
+            WHERE CapabilityName='tts.diagnose';
+            UPDATE AgentCapabilities
+            SET Description='打开当前 AIMaid 的系统设置窗口。',
+                ConfigJson='{"windowType":"settings"}',
+                Enabled=1, UpdatedAt=$now
+            WHERE CapabilityName='app.open_settings';
+            INSERT INTO AppSettings (Key, Value, UpdatedAt) VALUES ($marker, 'applied', $now);
+            """;
+        command.Parameters.AddWithValue("$marker", marker);
+        command.Parameters.AddWithValue("$now", now);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
 
     private static async Task ValidateAsync(SqliteConnection connection, SqliteTransaction transaction, CancellationToken cancellationToken)
     {

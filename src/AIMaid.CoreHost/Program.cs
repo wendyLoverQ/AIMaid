@@ -78,7 +78,8 @@ try
         new TcpCheckAgentExecutor(),
         httpAgentExecutor,
         new InternalServiceAgentExecutor(reminders, speechClient, music),
-        new DbQueryAgentExecutor(store)
+        new DbQueryAgentExecutor(store),
+        new InternalUiAgentExecutor(events)
     ], events, aiProvider, store, store, store);
     var scripts = new ChatCommandLauncherApplicationService(store);
     var subtitles = new SubtitleApplicationService(paths);

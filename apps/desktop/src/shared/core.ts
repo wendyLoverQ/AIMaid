@@ -130,7 +130,7 @@ export type CoreRequest =
   | { type: 'character.binding.clear'; payload: { targetKey: string } }
   | { type: 'character.binding.apply'; payload: { targetKey: string } }
   | { type: 'character.template.generate'; payload: { roleId: string; continueIteration: boolean } }
-  | { type: 'agent.capabilities.list'; payload: Record<string, never> }
+  | { type: 'agent.capabilities.list'; payload: { enabledOnly?: boolean } }
   | { type: 'agent.capability.save'; payload: { capability: AgentCapabilityDto } }
   | { type: 'agent.execute'; payload: { conversationId: string; capabilityName: string; argsJson: string; approvalToken?: string } }
   | { type: 'agent.decide'; payload: { content: string; conversationId?: string; characterId?: string; saveUserMessage: boolean; toolResultJson?: string; toolStep?: number; maxSteps?: number; source?: string; continueConversation?: boolean } }
@@ -182,6 +182,7 @@ export const CORE_EVENT_TYPES = [
   'pet.voice_cache.configuration_changed',
   'agent.approval_requested',
   'agent.tool_call_completed',
+  'agent.ui_action_requested',
   'music.playback.requested',
   'music.playback.state_changed',
   'music.playback.stopped',
@@ -489,7 +490,7 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
     case 'character.template.generate':
       return isNonEmptyString(value.payload.roleId) && typeof value.payload.continueIteration === 'boolean'
     case 'agent.capabilities.list':
-      return Object.keys(value.payload).length === 0
+      return value.payload.enabledOnly === undefined || typeof value.payload.enabledOnly === 'boolean'
     case 'agent.capability.save':
       return isAgentCapability(value.payload.capability)
     case 'agent.execute':

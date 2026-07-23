@@ -160,6 +160,7 @@ public sealed class CoreProtocolHost(
         {
             ChatDeltaEvent value => (Type: "chat.delta", CorrelationId: value.ConversationId, Payload: (object)value),
             ChatCompletedEvent value => (Type: "chat.completed", CorrelationId: value.Completion.ConversationId, Payload: (object)value),
+            AgentUiActionRequestedEvent value => (Type: "agent.ui_action_requested", CorrelationId: value.EventId, Payload: (object)value),
             SettingsChangedEvent value => (Type: "settings.changed", CorrelationId: value.EventId, Payload: (object)value),
             CharacterChangedEvent value => (Type: "character.changed", CorrelationId: value.RoleId, Payload: (object)value),
             AIMaid.Contracts.PetVoice.PetVoiceCacheStatusEvent value => (Type: "pet.voice_cache.status", CorrelationId: value.GenerationId, Payload: (object)value),
@@ -616,7 +617,8 @@ public sealed class CoreProtocolHost(
                         ReadRequiredString(request.Payload, "roleId"), ReadBoolean(request.Payload, "continueIteration")), source.Token), source.Token);
                     break;
                 case "agent.capabilities.list":
-                    await writer.SuccessAsync(request, await agent.HandleAsync(new ListAgentCapabilitiesQuery(true), source.Token), source.Token);
+                    await writer.SuccessAsync(request, await agent.HandleAsync(new ListAgentCapabilitiesQuery(
+                        ReadBoolean(request.Payload, "enabledOnly")), source.Token), source.Token);
                     break;
                 case "agent.capability.save":
                     await HandleResultAsync(request, await agent.HandleAsync(new SaveAgentCapabilityCommand(

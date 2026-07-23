@@ -543,13 +543,10 @@ public sealed class AgentApplicationService :
                 capability.Description, capability.ExecutorType), cancellationToken);
             return OperationResult<AgentToolCallDto>.Failure("agent.approval_required", token);
         }
-        if (!executors.TryGetValue(capability.ExecutorType, out var executor))
-            return OperationResult<AgentToolCallDto>.Failure("agent.executor_missing", $"未注册执行器：{capability.ExecutorType}");
-
         var callId = $"legacy_tool_{Interlocked.Increment(ref nextToolCallId)}";
         var created = DateTimeOffset.Now;
         AgentExecutionResult execution;
-        try { execution = await executor.ExecuteAsync(capability, command.ArgsJson, cancellationToken); }
+        try { execution = await ExecuteCapabilityBodyAsync(capability, command.ArgsJson, requiresApproval, 0, cancellationToken); }
         catch (Exception ex) { execution = new(null, string.Empty, ex.Message); }
         var toolCall = new AgentToolCallDto(callId, command.ConversationId, capability.CapabilityName, command.ArgsJson,
             string.IsNullOrEmpty(execution.Error) ? "completed" : "failed", execution.ExitCode, execution.Output, execution.Error,
@@ -560,6 +557,75 @@ public sealed class AgentApplicationService :
         await store.UpsertAsync(ToolCallDomain, callId, JsonSerializer.Serialize(toolCall), DateTimeOffset.Now, cancellationToken);
         await events.PublishAsync(new AgentToolCallCompletedEvent(EventIdentity.NewId(), DateTimeOffset.Now, toolCall), cancellationToken);
         return OperationResult<AgentToolCallDto>.Success(toolCall);
+    }
+
+    private async Task<AgentExecutionResult> ExecuteCapabilityBodyAsync(
+        AgentCapabilityDto capability,
+        string argsJson,
+        bool workflowApproved,
+        int depth,
+        CancellationToken cancellationToken)
+    {
+        if (depth > 8)
+            return new AgentExecutionResult(null, string.Empty, "Agent 工作流嵌套超过 8 层。");
+        if (capability.ExecutorType.Equals("workflow", StringComparison.OrdinalIgnoreCase))
+            return await ExecuteWorkflowAsync(capability, workflowApproved, depth, cancellationToken);
+        if (!executors.TryGetValue(capability.ExecutorType, out var executor))
+            return new AgentExecutionResult(null, string.Empty, $"未注册执行器：{capability.ExecutorType}");
+        return await executor.ExecuteAsync(capability, argsJson, cancellationToken);
+    }
+
+    private async Task<AgentExecutionResult> ExecuteWorkflowAsync(
+        AgentCapabilityDto workflow,
+        bool workflowApproved,
+        int depth,
+        CancellationToken cancellationToken)
+    {
+        using var config = JsonDocument.Parse(workflow.ConfigJson);
+        if (!config.RootElement.TryGetProperty("steps", out var steps) || steps.ValueKind != JsonValueKind.Array)
+            return new AgentExecutionResult(null, string.Empty, "Agent 工作流未配置 steps。");
+
+        var output = new List<string>();
+        foreach (var step in steps.EnumerateArray())
+        {
+            if (!step.TryGetProperty("capabilityName", out var nameElement) ||
+                nameElement.ValueKind != JsonValueKind.String ||
+                string.IsNullOrWhiteSpace(nameElement.GetString()))
+                return new AgentExecutionResult(null, string.Join(Environment.NewLine, output), "Agent 工作流步骤缺少 capabilityName。");
+
+            var capabilityName = nameElement.GetString()!;
+            var childJson = await store.GetAsync(CapabilityDomain, capabilityName, cancellationToken);
+            if (childJson is null)
+                return new AgentExecutionResult(null, string.Join(Environment.NewLine, output), $"Agent 工作流能力不存在：{capabilityName}");
+            var child = Deserialize<AgentCapabilityDto>(childJson);
+            if (!child.Enabled)
+                return new AgentExecutionResult(null, string.Join(Environment.NewLine, output), $"Agent 工作流能力已停用：{capabilityName}");
+
+            var childNeedsApproval = child.RequireConfirm ||
+                child.RiskLevel.Equals("high", StringComparison.OrdinalIgnoreCase) ||
+                child.RiskLevel.Equals("critical", StringComparison.OrdinalIgnoreCase);
+            if (childNeedsApproval && !workflowApproved)
+                return new AgentExecutionResult(null, string.Join(Environment.NewLine, output),
+                    $"Agent 工作流包含需确认能力 {capabilityName}，工作流本身必须要求确认。");
+
+            var stepArgs = step.TryGetProperty("args", out var argsElement) && argsElement.ValueKind == JsonValueKind.Object
+                ? JsonSerializer.Serialize(argsElement, JsonConfig.Persistence)
+                : "{}";
+            var result = await ExecuteCapabilityBodyAsync(child, stepArgs, workflowApproved, depth + 1, cancellationToken);
+            var succeeded = string.IsNullOrEmpty(result.Error);
+            output.Add($"{child.DisplayName}：{(succeeded ? result.Output : result.Error)}");
+
+            var policyName = succeeded ? "onSuccess" : "onFailure";
+            var policy = step.TryGetProperty(policyName, out var policyElement) &&
+                         policyElement.ValueKind == JsonValueKind.String
+                ? policyElement.GetString() ?? "continue"
+                : succeeded ? "continue" : "stop";
+            if (policy.Equals("stop", StringComparison.OrdinalIgnoreCase))
+                return succeeded
+                    ? new AgentExecutionResult(0, string.Join(Environment.NewLine, output), string.Empty)
+                    : new AgentExecutionResult(null, string.Join(Environment.NewLine, output), result.Error);
+        }
+        return new AgentExecutionResult(0, string.Join(Environment.NewLine, output), string.Empty);
     }
 
     public async Task<OperationResult<AgentDecisionDto>> HandleAsync(DecideAgentInputCommand command, CancellationToken cancellationToken = default)

@@ -10,6 +10,7 @@ import { WindowTitleBar } from '../../components/ui';
 import { useToast } from '../../components/ui';
 import { bridge } from '../../shared/bridge';
 import { USER_CONFIGURATION_GROUPS } from './user-configuration-fields';
+import { AgentDecisionSettings } from './AgentDecisionSettings';
 import type { CharacterDto, LlmBusinessModelConfigDto, LlmSourcePromptDto, ModelConfigurationDto } from '../../../shared/business';
 import type { PetDisplayMode, PetPresentationSnapshot } from '../../../shared/presentation';
 import { HOTKEY_ACTIONS } from '../../../shared/system-settings';
@@ -17,12 +18,13 @@ import type { HotkeyAction, PlatformSettingsSnapshot } from '../../../shared/sys
 import { MUSIC_VISUALIZER_STYLE_KEY, MUSIC_VISUALIZER_STYLE_OPTIONS, parseMusicVisualizerStyle } from '../../../shared/music-visualizer';
 import type { MusicVisualizerStyle } from '../../../shared/music-visualizer';
 import type { CryptoProviderConfigurationDto, DisturbanceSettingsDto } from '../../../shared/business';
-const CATEGORIES = ['显示与窗口', 'AI 模型', 'AI 决策', '语音 / TTS', '缓存与性能', '快捷键', '网络与服务', '高级 / 诊断'] as const;
+const CATEGORIES = ['显示与窗口', 'AI 模型', 'AI 主动', 'Agent 决策', '语音 / TTS', '缓存与性能', '快捷键', '网络与服务', '高级 / 诊断'] as const;
 type Category = (typeof CATEGORIES)[number];
 const SEARCH_INDEX: Readonly<Record<Category, string>> = {
     '显示与窗口': '语言 显示模式 Live2D 模型 轮播时间 图库目录 开机自启动 气泡主题 音浪 样式 环绕 柱条 线条 底部',
     'AI 模型': '模型列表 编辑 新增模型 业务链 映射 API 密钥 endpoint',
-    'AI 决策': '主动决策 语音 勿扰 模式',
+    'AI 主动': 'AI 主动决策 主动语音 勿扰 模式',
+    'Agent 决策': 'Agent 工具 能力 启用 确认 风险 结果策略 执行配置',
     '语音 / TTS': '实时 TTS 角色语音 播报',
     '缓存与性能': '语音缓存 周期 性能',
     '快捷键': '页面 功能 快捷键 录制 热键',
@@ -57,7 +59,8 @@ function SettingsCategory({ category, search }: {
         switch (category) {
             case '显示与窗口': return <DisplaySettings />;
             case 'AI 模型': return <ModelSettings />;
-            case 'AI 决策': return <DecisionSettings />;
+            case 'AI 主动': return <DecisionSettings />;
+            case 'Agent 决策': return <AgentDecisionSettings />;
             case '语音 / TTS': return <VoiceSettings />;
             case '缓存与性能': return <CacheSettings />;
             case '快捷键': return <HotkeySettings />;
@@ -73,7 +76,8 @@ function categoryDescription(category: Category): string {
     return ({
         '显示与窗口': '调整桌宠显示、背景和窗口行为。',
         'AI 模型': '管理模型来源与业务映射。',
-        'AI 决策': '调整主动决策与勿扰模式。',
+        'AI 主动': '调整 AI 主动触发、主动播报与勿扰行为。',
+        'Agent 决策': '查看并配置 Agent 可以调用的工具能力。',
         '语音 / TTS': '管理角色语音与播报设置。',
         '缓存与性能': '调整语音缓存与性能相关选项。',
         '快捷键': '查看并设置页面与功能快捷键。',
