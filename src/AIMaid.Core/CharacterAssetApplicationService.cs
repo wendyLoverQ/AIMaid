@@ -1,3 +1,5 @@
+using System.Buffers.Binary;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Security.Cryptography;
@@ -89,7 +91,7 @@ public sealed class CharacterAssetApplicationService(
         for (var index = 0; index < normalized.Length; index++)
         {
             var item = normalized[index] with { RoleId = command.RoleId, Style = NormalizeStyle(normalized[index].Style), IsDefault = index == 0, IsEnabled = true, UpdatedAt = DateTimeOffset.Now };
-            var id = $"{command.RoleId}:{item.Style}";
+            var id = StableLegacyId("legacy_role_voice_", $"{command.RoleId}:{item.Style}");
             await store.UpsertAsync(RoleVoiceDomain, id, JsonSerializer.Serialize(item), item.UpdatedAt, cancellationToken);
         }
         return OperationResult.Success();
@@ -173,5 +175,11 @@ public sealed class CharacterAssetApplicationService(
         try { return Path.GetFullPath(value.Trim()); }
         catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException) { return string.Empty; }
     }
-    private static string BindingId(string targetKey) => $"image_{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(targetKey))).ToLowerInvariant()}";
+    private static string BindingId(string targetKey) => StableLegacyId("legacy_voice_binding_", targetKey);
+    private static string StableLegacyId(string prefix, string semanticKey)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(semanticKey));
+        var numericId = BinaryPrimitives.ReadUInt64BigEndian(hash) & long.MaxValue;
+        return prefix + numericId.ToString(CultureInfo.InvariantCulture);
+    }
 }

@@ -383,6 +383,20 @@ describe('real C# Core integration', () => {
     await client.invoke('request-character-save', { type: 'character.save', payload: { character } }, new AbortController().signal)
     const characters = await client.invoke('request-character-list', { type: 'character.list', payload: {} }, new AbortController().signal) as Array<{ roleId: string }>
     expect(characters.some((item) => item.roleId === character.roleId)).toBe(true)
+    const bindingTarget = join(tempRoot, 'binding-target.png')
+    const savedBinding = await client.invoke('request-character-binding-set', {
+      type: 'character.binding.set', payload: { targetKey: bindingTarget, roleId: character.roleId }
+    }, new AbortController().signal)
+    expect(savedBinding).toMatchObject({ targetType: 'image', targetKey: resolve(bindingTarget), roleId: character.roleId })
+    await expect(client.invoke('request-character-binding-get', {
+      type: 'character.binding.get', payload: { targetKey: bindingTarget }
+    }, new AbortController().signal)).resolves.toMatchObject({ roleId: character.roleId })
+    await client.invoke('request-character-binding-clear', {
+      type: 'character.binding.clear', payload: { targetKey: bindingTarget }
+    }, new AbortController().signal)
+    await expect(client.invoke('request-character-binding-get-after-clear', {
+      type: 'character.binding.get', payload: { targetKey: bindingTarget }
+    }, new AbortController().signal)).resolves.toBeNull()
     const conversation = { conversationId: 'character-delete-chat', voiceRoleId: character.roleId, title: '角色会话', preview: '', createdAt: now, updatedAt: now }
     await client.invoke('request-character-conversation-save', {
       type: 'voice_conversation.save', payload: { conversation }
