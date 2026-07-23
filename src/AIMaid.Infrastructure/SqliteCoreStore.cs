@@ -426,7 +426,7 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
         command.Parameters.AddWithValue("$systemPrompt", record.SystemPrompt);
         command.Parameters.AddWithValue("$userPrompt", record.UserPrompt);
         command.Parameters.AddWithValue("$requestJson", record.RequestJson);
-        command.Parameters.AddWithValue("$updatedAt", Format(DateTimeOffset.Now));
+        command.Parameters.AddWithValue("$updatedAt", Format(record.UpdatedAt));
         var result = await command.ExecuteScalarAsync(cancellationToken);
         return (long)result!;
     }

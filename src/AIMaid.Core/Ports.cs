@@ -144,6 +144,7 @@ public sealed record LlmCallAuditRecord(
     int CompletionTokens,
     int TotalTokens,
     DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt,
     DateTimeOffset? CompletedAt = null);
 
 public sealed record LlmCallAuditCompletion(

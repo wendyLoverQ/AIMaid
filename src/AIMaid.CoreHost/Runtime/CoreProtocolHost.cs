@@ -56,7 +56,7 @@ public sealed class CoreProtocolHost(
         "reminder.list", "reminder.save", "reminder.delete", "reminder.set_enabled", "reminder.set_allow_tts", "reminder.process_due",
         "character.list", "character.set_current", "character.save", "character.delete", "character.voice_assets", "character.voice_asset.add", "character.avatar.import", "character.voices", "character.voices.set", "character.binding.get", "character.binding.set", "character.binding.clear", "character.template.generate",
         "agent.capabilities.list", "agent.capability.save", "agent.execute", "agent.decide",
-        "pet.voice_menu.get", "pet.voice_intimacy.cycle", "pet.voice_cache.clear", "music.current", "music.search_and_play", "music.toggle_pause", "music.stop", "market.symbols", "market.snapshot", "market.chart_snapshot", "market.list", "market.record", "status.resources", "status.network", "status.role", "status.tts", "status.llm_latencies", "status.server.health", "status.server.summary", "status.codex_quota", "tts.playback.set"
+        "pet.voice_menu.get", "pet.voice_intimacy.cycle", "pet.voice_cache.clear", "pet.voice_cache.ensure", "pet.voice.play", "pet.voice.playback.report", "music.current", "music.search_and_play", "music.toggle_pause", "music.stop", "market.symbols", "market.snapshot", "market.chart_snapshot", "market.list", "market.record", "status.resources", "status.network", "status.role", "status.tts", "status.llm_latencies", "status.server.health", "status.server.summary", "status.codex_quota", "tts.playback.set"
         , "notebook.list", "notebook.save", "notebook.delete", "video.list", "video.import_file", "video.import_folder", "video.refresh_metadata",
         "video.toggle_favorite", "video.set_display_name", "video.set_remark", "video.update_progress",
         "video.album.create", "video.album.rename", "video.album.delete", "video.album.move",
@@ -632,10 +632,32 @@ public sealed class CoreProtocolHost(
                     await writer.SuccessAsync(request, await petVoiceMenu.GetAsync(source.Token), source.Token);
                     break;
                 case "pet.voice_intimacy.cycle":
-                    await writer.SuccessAsync(request, await petVoiceMenu.CycleAsync(source.Token), source.Token);
+                    await HandleValueResultAsync(request, await petVoiceMenu.CycleAsync(source.Token), source.Token);
                     break;
                 case "pet.voice_cache.clear":
-                    await writer.SuccessAsync(request, await petVoiceMenu.ClearCurrentCacheAsync(source.Token), source.Token);
+                    await HandleValueResultAsync(request, await petVoiceMenu.ClearCurrentCacheAsync(source.Token), source.Token);
+                    break;
+                case "pet.voice_cache.ensure":
+                    await HandleValueResultAsync(request, await petVoiceMenu.EnsureCurrentCacheAsync(
+                        request.Payload.TryGetProperty("includeNextPeriod", out _) ? ReadBoolean(request.Payload, "includeNextPeriod") : true,
+                        source.Token), source.Token);
+                    break;
+                case "pet.voice.play":
+                    await HandleValueResultAsync(request, await petVoiceMenu.ResolvePlaybackAsync(new AIMaid.Contracts.PetVoice.PlayPetVoiceCommand(
+                        ReadOptionalString(request.Payload, "triggerId") ?? "click",
+                        ReadOptionalString(request.Payload, "bodyPart") ?? "body",
+                        ReadOptionalString(request.Payload, "source") ?? "pet.click"), source.Token), source.Token);
+                    break;
+                case "pet.voice.playback.report":
+                    await petVoiceMenu.ReportPlaybackAsync(new AIMaid.Contracts.PetVoice.ReportPetVoicePlaybackCommand(
+                        ReadRequiredString(request.Payload, "triggerId"),
+                        ReadOptionalString(request.Payload, "bodyPart") ?? "body",
+                        ReadOptionalString(request.Payload, "text") ?? "",
+                        ReadOptionalString(request.Payload, "audioPath") ?? "",
+                        ReadBoolean(request.Payload, "played"),
+                        ReadOptionalString(request.Payload, "reason") ?? "",
+                        ReadOptionalString(request.Payload, "source") ?? "pet.click"), source.Token);
+                    await writer.SuccessAsync(request, new { saved = true }, source.Token);
                     break;
                 case "music.current":
                     await writer.SuccessAsync(request, music.Current(), source.Token);

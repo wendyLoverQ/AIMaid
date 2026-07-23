@@ -12,7 +12,7 @@ public static class ProtocolConstants
         "reminder.list", "reminder.save", "reminder.delete", "reminder.set_enabled", "reminder.set_allow_tts", "reminder.process_due",
         "character.list", "character.set_current", "character.save", "character.delete", "character.voice_assets", "character.voice_asset.add", "character.avatar.import", "character.voices", "character.voices.set", "character.binding.get", "character.binding.set", "character.binding.clear", "character.template.generate",
         "agent.capabilities.list", "agent.capability.save", "agent.execute", "agent.decide",
-        "pet.voice_menu.get", "pet.voice_intimacy.cycle", "music.current", "music.search_and_play", "music.toggle_pause", "music.stop", "status.resources", "status.network", "status.role", "status.tts", "status.llm_latencies", "status.server.health", "status.server.summary", "status.codex_quota", "tts.playback.set",
+        "pet.voice_menu.get", "pet.voice_intimacy.cycle", "pet.voice_cache.clear", "pet.voice_cache.ensure", "pet.voice.play", "pet.voice.playback.report", "music.current", "music.search_and_play", "music.toggle_pause", "music.stop", "status.resources", "status.network", "status.role", "status.tts", "status.llm_latencies", "status.server.health", "status.server.summary", "status.codex_quota", "tts.playback.set",
         "notebook.list", "notebook.save", "notebook.delete", "video.list", "video.import_file", "video.import_folder", "video.refresh_metadata",
         "video.toggle_favorite", "video.set_display_name", "video.set_remark", "video.update_progress",
         "video.album.create", "video.album.rename", "video.album.delete", "video.album.move",

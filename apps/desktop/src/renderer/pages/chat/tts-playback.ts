@@ -82,6 +82,12 @@ export async function playLocalAudio(filePath: string, onPlaybackStarted?: () =>
   return audio
 }
 
+export async function playCachedAudio(filePath: string): Promise<boolean> {
+  if (activeAudio !== null) return false
+  await playLocalAudio(filePath)
+  return activeAudio !== null
+}
+
 export async function playLocalAudioPaths(paths: readonly string[], onPlaybackStarted?: (index: number) => void): Promise<number> {
   let played = 0
   for (const [index, path] of paths.entries()) {

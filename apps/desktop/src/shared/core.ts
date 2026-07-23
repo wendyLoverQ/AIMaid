@@ -8,6 +8,9 @@ export const CORE_LONG_REQUEST_TIMEOUT_MS = 120_000
 const LONG_RUNNING_CORE_REQUEST_TYPES = new Set<string>([
   'chat.send',
   'tts.speak',
+  'pet.voice_cache.ensure',
+  'pet.voice_cache.clear',
+  'pet.voice_intimacy.cycle',
   'asr.transcribe',
   'agent.execute',
   'agent.decide',
@@ -135,6 +138,9 @@ export type CoreRequest =
   | { type: 'pet.voice_menu.get'; payload: Record<string, never> }
   | { type: 'pet.voice_intimacy.cycle'; payload: Record<string, never> }
   | { type: 'pet.voice_cache.clear'; payload: Record<string, never> }
+  | { type: 'pet.voice_cache.ensure'; payload: { includeNextPeriod?: boolean } }
+  | { type: 'pet.voice.play'; payload: { triggerId?: string; bodyPart?: string; source?: string } }
+  | { type: 'pet.voice.playback.report'; payload: { triggerId: string; bodyPart?: string; text?: string; audioPath?: string; played: boolean; reason?: string; source?: string } }
   | { type: 'music.current'; payload: Record<string, never> }
   | { type: 'music.search_and_play'; payload: { songName: string } }
   | { type: 'music.toggle_pause'; payload: Record<string, never> }
@@ -430,6 +436,19 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
     case 'status.server.summary':
     case 'status.codex_quota':
       return Object.keys(value.payload).length === 0
+    case 'pet.voice_cache.ensure':
+      return value.payload.includeNextPeriod === undefined || typeof value.payload.includeNextPeriod === 'boolean'
+    case 'pet.voice.play':
+      return (value.payload.triggerId === undefined || typeof value.payload.triggerId === 'string') &&
+        (value.payload.bodyPart === undefined || typeof value.payload.bodyPart === 'string') &&
+        (value.payload.source === undefined || typeof value.payload.source === 'string')
+    case 'pet.voice.playback.report':
+      return isNonEmptyString(value.payload.triggerId) && typeof value.payload.played === 'boolean' &&
+        (value.payload.bodyPart === undefined || typeof value.payload.bodyPart === 'string') &&
+        (value.payload.text === undefined || typeof value.payload.text === 'string') &&
+        (value.payload.audioPath === undefined || typeof value.payload.audioPath === 'string') &&
+        (value.payload.reason === undefined || typeof value.payload.reason === 'string') &&
+        (value.payload.source === undefined || typeof value.payload.source === 'string')
     case 'music.search_and_play':
       return isNonEmptyString(value.payload.songName) && value.payload.songName.length <= 200
     case 'status.llm_latencies':

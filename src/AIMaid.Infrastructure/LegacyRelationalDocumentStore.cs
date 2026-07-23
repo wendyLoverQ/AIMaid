@@ -569,7 +569,7 @@ internal sealed class LegacyRelationalDocumentStore
             M("voice_role","VoiceRoles","RoleId",b:["IsEnabled"],drop:["Id","AvatarPath"]),
             M("voice_role_voice","VoiceRoleVoices","Id",IdMode.PrefixedInteger,"legacy_role_voice_",b:["IsDefault","IsEnabled"],drop:["Id"]),
             M("voice_role_binding","VoiceRoleBindings","Id",IdMode.PrefixedInteger,"legacy_voice_binding_",b:[],drop:["Id"]),
-            M("voice_role_audio_cache","VoiceRoleAudioCaches","Id",IdMode.PrefixedInteger,"legacy_voice_cache_",b:[],drop:["Id"]),
+            M("voice_role_audio_cache","VoiceRoleAudioCaches","Id",IdMode.PrefixedInteger,"legacy_voice_cache_",b:["IsEnabled"],drop:["Id"]),
             M("voice_conversation","VoiceConversations","ConversationId",b:[],drop:["Id"]),
             M("notebook","NotebookNotes","NoteId",b:["IsPinned","IsDeleted"],drop:["Id","ContentXaml","ImagePathsJson"],remove:["ContentRich"]),
             M("notebook_attachment","NotebookAttachments","Id",b:["IsDeleted"]),
@@ -611,7 +611,7 @@ internal sealed class LegacyRelationalDocumentStore
             M("proactive_audit","ProactiveBroadcastTriggerLogs","EventId",b:["Responded","Spoke"],drop:["Id"]),
             M("user_profile","UserProfiles","Id",IdMode.Singleton,singleton:1,b:[],drop:["Id"]),
             M("voice_cache_dedupe","VoiceCacheDedupeLogs","Id",IdMode.PrefixedInteger,"legacy_voice_cache_dedupe_","LogId",b:[],drop:["Id"]),
-            M("voice_trigger_log","VoiceTriggerLogs","Id",IdMode.PrefixedInteger,"legacy_voice_trigger_","LogId",b:[],drop:["Id"])
+            M("voice_trigger_log","VoiceTriggerLogs","Id",IdMode.PrefixedInteger,"legacy_voice_trigger_","LogId",b:["Played"],drop:["Id"])
         };
         return maps.ToDictionary(x => x.Domain, StringComparer.OrdinalIgnoreCase);
     }

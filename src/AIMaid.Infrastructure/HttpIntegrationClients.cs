@@ -79,7 +79,8 @@ public sealed class AiProviderHttpClient : IAiProviderClient
             PromptTokens: 0,
             CompletionTokens: 0,
             TotalTokens: 0,
-            CreatedAt: DateTimeOffset.Now), cancellationToken);
+            CreatedAt: DateTimeOffset.Now,
+            UpdatedAt: DateTimeOffset.Now), cancellationToken);
 
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, options.Endpoint)
         {
