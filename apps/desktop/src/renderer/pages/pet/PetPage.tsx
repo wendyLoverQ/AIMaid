@@ -547,7 +547,7 @@ export default function PetPage(): React.JSX.Element {
       <PetItemSurface ref={itemRef}>
         {presentation === null ? <Container>{error ?? '正在读取桌宠显示模式…'}</Container> : null}
         {presentation?.mode === 'image' ? <ImageMode canvasRef={visualCanvasRef} presentation={presentation} scale={renderScale} onAdvance={() => void execute('next-image')} onFirstFrame={revealPetWindow} registerHitTest={registerHitTest}/> : null}
-        {presentation?.mode === 'png-sequence' ? <PngSequenceMode canvasRef={visualCanvasRef} presentation={presentation} scale={renderScale} onFirstFrame={revealPetWindow} registerHitTest={registerHitTest}/> : null}
+        {presentation?.mode === 'png-sequence' ? <PngSequenceMode canvasRef={visualCanvasRef} presentation={presentation} scale={renderScale} onFirstFrame={revealPetWindow} onSequenceCompleted={() => void execute('cycle-png-role')} registerHitTest={registerHitTest}/> : null}
       </PetItemSurface>
       {presentation?.mode !== 'live2d' ? <PetBubble message={bubble} speechHeld={speechHeld} onExpired={expireBubble}/> : null}
     </PetPanelSurface>
@@ -631,15 +631,19 @@ async function loadMusicVisualizerStyle(): Promise<MusicVisualizerStyle> {
     const payload = response.payload as { settings?: Array<{ key: string; value: string }> } | null;
     return parseMusicVisualizerStyle(payload?.settings?.find((item) => item.key === MUSIC_VISUALIZER_STYLE_KEY)?.value);
 }
-function PngSequenceMode({ canvasRef, presentation, scale, onFirstFrame, registerHitTest }: {
+function PngSequenceMode({ canvasRef, presentation, scale, onFirstFrame, onSequenceCompleted, registerHitTest }: {
     canvasRef: React.RefObject<HTMLCanvasElement | null>;
     presentation: PetPresentationSnapshot;
     scale: number;
     onFirstFrame: () => void;
+    onSequenceCompleted: () => void;
     registerHitTest: (hitTest: PetHitTest | null) => void;
 }): React.JSX.Element {
     const frameRef = useRef(0);
+    const completedRef = useRef(false);
+    const onSequenceCompletedRef = useRef(onSequenceCompleted);
     const cacheRef = useRef(new Map<string, HTMLImageElement>());
+    onSequenceCompletedRef.current = onSequenceCompleted;
     useEffect(() => {
         const canvas = canvasRef.current;
         if (canvas === null)
@@ -647,11 +651,19 @@ function PngSequenceMode({ canvasRef, presentation, scale, onFirstFrame, registe
         registerHitTest((x, y) => isOpaqueCanvasPoint(canvas, x, y));
         return () => registerHitTest(null);
     }, [registerHitTest]);
-    useEffect(() => { frameRef.current = 0; cacheRef.current.clear(); }, [presentation.pngRole]);
+    useEffect(() => {
+        frameRef.current = 0;
+        completedRef.current = false;
+        cacheRef.current.clear();
+    }, [presentation.pngRole]);
     useEffect(() => {
         const canvas = canvasRef.current;
         if (canvas === null || presentation.pngFrames.length === 0)
             return;
+        if (!presentation.pngCarousel && completedRef.current) {
+            frameRef.current = 0;
+            completedRef.current = false;
+        }
         let disposed = false;
         let animationId = 0;
         let startedAt = performance.now() - frameRef.current * 1000 / presentation.pngSourceFps;
@@ -699,7 +711,18 @@ function PngSequenceMode({ canvasRef, presentation, scale, onFirstFrame, registe
                 const displayInterval = 1000 / presentation.pngFps;
                 if (now - lastDisplayTick >= displayInterval) {
                     lastDisplayTick = now - ((now - lastDisplayTick) % displayInterval);
-                    const next = Math.floor((now - startedAt) * presentation.pngSourceFps / 1000) % presentation.pngFrames.length;
+                    const rawIndex = Math.floor((now - startedAt) * presentation.pngSourceFps / 1000);
+                    if (presentation.pngCarousel && rawIndex >= presentation.pngFrames.length) {
+                        const last = presentation.pngFrames.length - 1;
+                        if (last !== frameRef.current) {
+                            frameRef.current = last;
+                            draw(last);
+                        }
+                        completedRef.current = true;
+                        onSequenceCompletedRef.current();
+                        return;
+                    }
+                    const next = rawIndex % presentation.pngFrames.length;
                     if (next !== frameRef.current) {
                         frameRef.current = next;
                         draw(next);
@@ -712,7 +735,7 @@ function PngSequenceMode({ canvasRef, presentation, scale, onFirstFrame, registe
         };
         animationId = requestAnimationFrame(render);
         return () => { disposed = true; cancelAnimationFrame(animationId); cacheRef.current.clear(); };
-    }, [onFirstFrame, presentation.paused, presentation.pngFps, presentation.pngFrames, presentation.pngRole, presentation.pngSourceFps]);
+    }, [onFirstFrame, presentation.paused, presentation.pngCarousel, presentation.pngFps, presentation.pngFrames, presentation.pngRole, presentation.pngSourceFps]);
     const backingScale = scale * Math.min(window.devicePixelRatio || 1, 2);
     const canvasWidth = Math.max(1, Math.round(PET_CANVAS_WIDTH * backingScale));
     const canvasHeight = Math.max(1, Math.round(PET_CANVAS_HEIGHT * backingScale));
