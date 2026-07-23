@@ -328,15 +328,17 @@ internal static class WindowsRemoteLiveCapture
         foreach (var response in captured)
         {
             if (string.IsNullOrWhiteSpace(response.Body)) continue;
-            var body = WebUtility.HtmlDecode(response.Body);
+            var body = RelevantEmbeddedWindow(response.Body);
             foreach (var name in names)
             {
-                var match = Regex.Match(body,
-                    $@"(?:\\?""){Regex.Escape(name)}(?:\\?"")\s*:\s*(?:\\?"")(?<value>(?:\\.|[^""\\]){{1,500}})(?:\\?"")",
+                var matches = Regex.Matches(body,
+                    $@"""{Regex.Escape(name)}""\s*:\s*""(?<value>[^""]{{1,500}})""",
                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-                if (!match.Success) continue;
-                var value = DecodeEmbeddedJsonString(match.Groups["value"].Value);
-                if (!string.IsNullOrWhiteSpace(value) && !ContainsMediaUrl(value)) return value;
+                for (var index = matches.Count - 1; index >= 0; index--)
+                {
+                    var value = DecodeEmbeddedJsonString(matches[index].Groups["value"].Value);
+                    if (IsUsefulMetadata(value)) return value;
+                }
             }
         }
         return null;
@@ -347,14 +349,34 @@ internal static class WindowsRemoteLiveCapture
         foreach (var response in captured)
         {
             if (string.IsNullOrWhiteSpace(response.Body)) continue;
-            var body = WebUtility.HtmlDecode(response.Body);
-            var match = Regex.Match(body,
-                @"https?:\\?/\\?/[^""'\\\s]+?\.(?:jpe?g|png|webp)(?:\?[^""'\\\s]*)?",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            if (match.Success) return DecodeEmbeddedJsonString(match.Value);
+            var body = RelevantEmbeddedWindow(response.Body);
+            var matches = Regex.Matches(body,
+                @"""(?:cover|room_cover|cover_url)""\s*:\s*(?:\{.{0,2500}?""url_list""\s*:\s*\[\s*)?""(?<url>https?://[^""]+\.(?:jpe?g|png|webp)(?:\?[^""]*)?)""",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline);
+            if (matches.Count > 0)
+                return DecodeEmbeddedJsonString(matches[^1].Groups["url"].Value);
         }
         return null;
     }
+
+    private static string RelevantEmbeddedWindow(string value)
+    {
+        var body = WebUtility.HtmlDecode(value).Replace("\\\"", "\"", StringComparison.Ordinal);
+        var marker = body.LastIndexOf("\"web_stream_url\"", StringComparison.OrdinalIgnoreCase);
+        if (marker < 0) marker = body.IndexOf(".m3u8", StringComparison.OrdinalIgnoreCase);
+        if (marker < 0) marker = body.IndexOf(".flv", StringComparison.OrdinalIgnoreCase);
+        if (marker < 0) return body;
+        var start = Math.Max(0, marker - 120_000);
+        var length = Math.Min(body.Length - start, marker - start + 20_000);
+        return body.Substring(start, length);
+    }
+
+    private static bool IsUsefulMetadata(string value)
+        => !string.IsNullOrWhiteSpace(value) &&
+           value.Length <= 300 &&
+           !value.Contains("$undefined", StringComparison.OrdinalIgnoreCase) &&
+           !value.StartsWith("http", StringComparison.OrdinalIgnoreCase) &&
+           !ContainsMediaUrl(value);
 
     private static string DecodeEmbeddedJsonString(string value)
     {
