@@ -8,7 +8,8 @@
 }
 [data-product="status"] {
   height: 100%;
-  grid-template-rows: minmax(0, 1fr) max-content;
+  grid-template-rows: max-content max-content;
+  align-content: start;
   gap: var(--space-3);
   padding: var(--space-4);
   overflow: hidden;
@@ -19,14 +20,17 @@
   box-shadow: var(--shadow-sm);
 }
 [data-product="status"] .ui-product-panel__header {
-  min-height: var(--control-height-lg);
-  padding: var(--space-3) var(--space-4);
+  min-height: var(--control-height-md);
+  padding: var(--space-2) var(--space-3);
   background: color-mix(in srgb, var(--color-bg-subtle) 55%, transparent);
 }
 [data-product="status"] .ui-product-panel__header h2 {
+  font-size: var(--font-size-md);
+  line-height: var(--line-height-body);
   letter-spacing: -.015em;
 }
-[data-product="status"] .ui-product-panel__body { display: grid; align-content: start; gap: var(--space-4); padding: var(--space-4); }
+[data-product="status"] .ui-product-panel__header p { font-size: var(--font-size-xs); }
+[data-product="status"] .ui-product-panel__body { display: grid; align-content: start; gap: var(--space-3); padding: var(--space-3); }
 
 /* 三列服务器卡片：在 dashboard 12 列网格里横跨整行，再拆 3 列 */
 .status-grid-3 {
@@ -37,9 +41,8 @@
   gap: var(--space-3);
 }
 .status-grid-3--main { min-height: 0; }
-.status-grid-3--main > .ui-product-panel { height: 100%; }
 .status-grid-3--summary { align-items: start; }
-.status-grid-3--summary .status-metric { padding: var(--space-3); }
+.status-grid-3--summary .status-metric { padding: var(--space-2) var(--space-3); }
 .status-grid-3--summary .status-metric > .ui-strong { font-size: var(--font-size-sm); }
 
 /* 角色摘要 */
@@ -50,7 +53,7 @@
   justify-content: space-between;
   gap: var(--space-6);
 }
-.status-hero--compact { gap: var(--space-4); justify-content: flex-start; }
+.status-hero--compact { gap: var(--space-3); justify-content: flex-start; }
 .status-hero__lead {
   display: grid;
   min-width: 0;
@@ -106,25 +109,26 @@
 .status-panel-title {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
+  font-size: var(--font-size-md);
 }
 .status-panel-title__icon {
   display: grid;
-  width: var(--control-height-sm);
-  height: var(--control-height-sm);
+  width: var(--control-height-xs);
+  height: var(--control-height-xs);
   place-items: center;
   border: var(--border-default);
   border-radius: var(--radius-md);
   color: var(--color-accent);
   background: color-mix(in srgb, var(--color-accent-subtle) 64%, var(--color-bg-surface));
 }
-.status-panel-title__icon .ui-icon { width: var(--space-6); height: var(--space-6); }
+.status-panel-title__icon .ui-icon { width: var(--space-5); height: var(--space-5); }
 
 /* AIProvider MonitorCenter 风格的 KPI 小卡，颜色仍消费 AIMaid 语义 token。 */
 .status-metric-grid {
   display: grid;
   min-width: 0;
-  gap: var(--space-3);
+  gap: var(--space-2);
   align-content: start;
 }
 .status-metric-grid--1 { grid-template-columns: minmax(0, 1fr); }
@@ -136,7 +140,7 @@
   display: grid;
   min-width: 0;
   gap: var(--space-1);
-  padding: var(--space-4);
+  padding: var(--space-3);
   border: var(--border-default);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-bg-canvas) 72%, var(--color-bg-surface));
@@ -157,8 +161,8 @@
   white-space: nowrap;
 }
 .status-metric > .ui-strong {
-  font-size: var(--font-size-lg);
-  line-height: var(--line-height-title);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-body-sm);
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
@@ -177,8 +181,8 @@
 .ui-product-panel__actions .status-dot { margin: var(--space-2); }
 
 /* 角色卡片：紧凑 hero 顶部头像 + 名字 */
-.status-hero--compact .ui-avatar { width: var(--control-height-lg); height: var(--control-height-lg); flex: 0 0 auto; }
-.status-hero--compact .status-hero__lead > .ui-strong { font-size: var(--font-size-lg); line-height: var(--line-height-title); }
+.status-hero--compact .ui-avatar { width: var(--control-height-md); height: var(--control-height-md); flex: 0 0 auto; }
+.status-hero--compact .status-hero__lead > .ui-strong { font-size: var(--font-size-md); line-height: var(--line-height-body); }
 
 /* 响应式：窄屏服务器卡片改 1 列 */
 @media (max-width: 52rem) {
