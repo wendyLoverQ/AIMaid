@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using AIMaid.Contracts;
 using AIMaid.Contracts.Chat;
 
@@ -40,19 +41,33 @@ public sealed class ChatApplicationService :
             modelName, command.Source, string.Empty, now), cancellationToken);
 
         var history = await chatStore.LoadRecentAsync(conversationId, 20, cancellationToken);
+        var promptHistory = history
+            .Where((message, index) => index != history.Count - 1 ||
+                !message.Role.Equals("user", StringComparison.OrdinalIgnoreCase) ||
+                !message.Content.Equals(command.Content, StringComparison.Ordinal))
+            .ToArray();
+        var values = new Dictionary<string, string>
+        {
+            ["userMessage"] = command.Content,
+            ["conversationSummary"] = string.Empty,
+            ["recentMessagesJson"] = JsonSerializer.Serialize(
+                promptHistory.Select(message => new { role = message.Role, content = message.Content })),
+            ["currentImagePath"] = string.Empty,
+            ["currentFolderName"] = string.Empty
+        };
         var response = new StringBuilder();
         await foreach (var delta in aiProvider.StreamChatAsync(
-                           new AiChatRequest(conversationId, command.Content, characterId, modelName, history), cancellationToken))
+                           new AiChatRequest(conversationId, command.Content, characterId, modelName, promptHistory,
+                               SourceKey: "online_chat", TemplateValues: values, StreamResponse: false), cancellationToken))
         {
             response.Append(delta);
-            // TODO(UI): Electron/React 层订阅 chat.delta，负责增量渲染、停止按钮和滚动行为。
-            await events.PublishAsync(new ChatDeltaEvent(EventIdentity.NewId(), DateTimeOffset.Now, conversationId, delta), cancellationToken);
         }
 
-        var finalText = response.ToString();
+        var finalText = ParseChatMessage(response.ToString());
         if (string.IsNullOrWhiteSpace(finalText))
             return OperationResult<ChatCompletionDto>.Failure("chat.empty_response", "AIProvider 返回了空回复。");
 
+        await events.PublishAsync(new ChatDeltaEvent(EventIdentity.NewId(), DateTimeOffset.Now, conversationId, finalText), cancellationToken);
         var messageId = await chatStore.AppendAsync(new ChatMessageDto(0, conversationId, "assistant", finalText,
             characterId, modelName, command.Source, string.Empty, DateTimeOffset.Now), cancellationToken);
         var completion = new ChatCompletionDto(conversationId, messageId, finalText, modelName);
@@ -80,6 +95,16 @@ public sealed class ChatApplicationService :
 
     public async Task<string?> HandleAsync(GetCurrentConversationQuery query, CancellationToken cancellationToken = default)
         => (await settingsStore.GetAsync(CurrentConversationKey, cancellationToken))?.Value;
+
+    private static string ParseChatMessage(string raw)
+    {
+        using var document = JsonDocument.Parse(raw.Trim());
+        if (document.RootElement.ValueKind != JsonValueKind.Object ||
+            !document.RootElement.TryGetProperty("message", out var message) ||
+            message.ValueKind != JsonValueKind.String)
+            throw new InvalidDataException("online_chat 返回内容缺少 message。");
+        return message.GetString()?.Trim() ?? string.Empty;
+    }
 
     private async Task<string> GetOrCreateConversationIdAsync(CancellationToken cancellationToken)
     {

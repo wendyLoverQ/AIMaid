@@ -41,7 +41,10 @@ public sealed record DisturbanceSettingsDto(
     string Mode, bool QuietHoursEnabled, string QuietHoursStart, string QuietHoursEnd,
     bool SuppressWhenFullscreen, int MaxProactivePerHour, DateTimeOffset UpdatedAt);
 public sealed record ProactiveContextDto(string EventType, bool IsFullscreen, DateTimeOffset Now, IReadOnlyDictionary<string, string> Values);
-public sealed record ProactiveDecisionDto(bool ShouldRespond, string RuleId, string Reason, int Priority, bool AllowTts, string ActionTag);
+public sealed record ProactiveDecisionDto(
+    bool ShouldRespond, string RuleId, string Reason, int Priority, bool AllowTts, string ActionTag,
+    string Message = "", string VoiceStyle = "", bool ShowBubble = false,
+    string MoodChange = "", int FavorabilityDelta = 0, string BroadcastSourceKeys = "");
 public sealed record EvaluateProactiveEventCommand(ProactiveContextDto Context) : ICommand<OperationResult<ProactiveDecisionDto>>;
 public sealed record SaveProactiveRuleCommand(ProactiveRuleDto Rule) : ICommand<OperationResult>;
 public sealed record ListProactiveRulesQuery : IQuery<IReadOnlyList<ProactiveRuleDto>>;
@@ -52,7 +55,7 @@ public sealed record ProactiveDecisionEvent(string EventId, DateTimeOffset Occur
 public sealed record ReminderDto(
     string ReminderId, string Title, string Message, DateTimeOffset DueAt, string Repeat,
     bool Enabled, bool AllowTts, DateTimeOffset? LastTriggeredAt, DateTimeOffset? NextDueAt,
-    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, string VoiceStyle = "");
 public sealed record SaveReminderCommand(
     string? ReminderId, string Title, string Message, DateTimeOffset DueAt,
     string Repeat, bool Enabled, bool AllowTts) : ICommand<OperationResult<ReminderDto>>;

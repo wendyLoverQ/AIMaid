@@ -68,7 +68,9 @@ public sealed class TemplateCardApplicationService(
                             new(0, conversationId, "user", userPrompt, role.RoleId, modelName, "character_card_template_generation", "", DateTimeOffset.Now)
                         };
                         await foreach (var delta in aiProvider.StreamChatAsync(new AiChatRequest(
-                                           conversationId, userPrompt, role.RoleId, modelName, promptHistory), cancellationToken)) response.Append(delta);
+                                           conversationId, userPrompt, role.RoleId, modelName, promptHistory,
+                                           SourceKey: "character_card_template_generation",
+                                           StreamResponse: false), cancellationToken)) response.Append(delta);
                         var templateJson = ValidateTemplateJson(response.ToString());
                         role = role with {
                             TemplateCardJson = templateJson,
@@ -121,54 +123,13 @@ public sealed class TemplateCardApplicationService(
     private async Task<LlmSourcePromptDto> LoadSourcePromptAsync(CancellationToken cancellationToken)
     {
         var json = await documents.GetAsync(SourcePromptDomain, "character_card_template_generation", cancellationToken);
-        if (json is not null)
-        {
-            var saved = JsonSerializer.Deserialize<LlmSourcePromptDto>(json, JsonOptions);
-            if (saved is not null && saved.IsEnabled && !IsLegacyIncompatiblePrompt(saved)) return saved;
-            if (saved is not null && saved.IsEnabled)
-            {
-                var upgraded = BuildDefaultSourcePrompt(saved.CreatedAt, DateTimeOffset.Now);
-                await documents.UpsertAsync(SourcePromptDomain, upgraded.SourceKey,
-                    JsonSerializer.Serialize(upgraded, JsonConfig.Persistence), upgraded.UpdatedAt, cancellationToken);
-                return upgraded;
-            }
-            throw new InvalidOperationException("角色卡生成 Source Prompt 已停用或无效。");
-        }
-        var now = DateTimeOffset.Now;
-        var seeded = BuildDefaultSourcePrompt(now, now);
-        await documents.UpsertAsync(SourcePromptDomain, seeded.SourceKey, JsonSerializer.Serialize(seeded, JsonConfig.Persistence), now, cancellationToken);
-        return seeded;
+        var saved = json is null ? null : JsonSerializer.Deserialize<LlmSourcePromptDto>(json, JsonOptions);
+        if (saved is null || !saved.IsEnabled ||
+            string.IsNullOrWhiteSpace(saved.SystemPromptTemplate) ||
+            string.IsNullOrWhiteSpace(saved.UserPromptTemplate))
+            throw new InvalidOperationException("角色卡生成 Source Prompt 未配置、已停用或内容为空。");
+        return saved;
     }
-
-    private static bool IsLegacyIncompatiblePrompt(LlmSourcePromptDto prompt)
-        => prompt.SystemPromptTemplate.Contains("system_prompt", StringComparison.OrdinalIgnoreCase) ||
-           prompt.SystemPromptTemplate.Contains("nsfw_guidance", StringComparison.OrdinalIgnoreCase) ||
-           !prompt.OutputSchemaJson.Contains("systemPrompt", StringComparison.Ordinal);
-
-    private static LlmSourcePromptDto BuildDefaultSourcePrompt(DateTimeOffset createdAt, DateTimeOffset updatedAt)
-        => new(
-            "character_card_template_generation", "根据原角色卡生成当前角色卡，或基于当前角色卡继续迭代",
-            """
-            你是角色卡扩写与迭代器。根据用户提供的输入角色卡 JSON 生成下一版严格合法的 JSON 对象。
-            输入为原角色卡时，从原始设定扩写；输入为当前角色卡时，在上一版基础上继续补全和优化。
-            必须保留输入角色卡的事实、关系、语气和内容边界，不得改变角色身份，不得混入其他角色。
-            不得新增或保留露骨性内容；年龄不明或未成年角色不得包含任何性内容。
-            在不与源卡冲突的前提下，补全稳定的人格、语言习惯、称呼规则、关系规则、互动策略、禁忌、场景响应和少量示例。
-            必须生成非空 systemPrompt 字段。只输出 JSON 对象，不要 Markdown、代码块、解释或前后缀。
-            【输出结构】
-            {outputSchemaJson}
-            """.Trim(),
-            """
-            【角色】
-            roleId={roleId}
-            roleName={roleName}
-            【输入类型】
-            {inputCardKind}
-            【输入角色卡 JSON】
-            {inputCardJson}
-            """.Trim(),
-            "{\"name\":\"string\",\"systemPrompt\":\"string\",\"identity\":{},\"personality\":{},\"relationToUser\":{},\"speechStyle\":{},\"interactionPolicy\":{},\"boundaries\":{},\"scenarios\":[],\"examples\":[]}",
-            true, createdAt, updatedAt);
 
     private async Task<string> LoadModelNameAsync(CancellationToken cancellationToken)
     {

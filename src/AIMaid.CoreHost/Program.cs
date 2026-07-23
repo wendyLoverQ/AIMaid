@@ -31,14 +31,12 @@ try
     using var speechClient = new SettingsBackedSpeechClient(store, store, paths);
     var speech = new SpeechApplicationService(speechClient, speechClient, events);
     var settings = new SettingsApplicationService(store, events);
-    var reminders = new ReminderApplicationService(store, events);
     var characters = new CharacterApplicationService(store, store, store, store, events, paths);
     var characterAssets = new CharacterAssetApplicationService(store, paths, store, events);
     using var music = new MusicApplicationService(events, store);
     using var market = new BinanceMarketApplicationService(store, store);
     market.StartLiquidationStream();
     using var statusPlatform = new WindowsStatusPlatform();
-    var proactive = new ProactiveApplicationService(store, store, events);
     using var statusServers = new StatusServerApplicationService();
     var codexQuota = new CodexQuotaApplicationService();
     var domains = new ExtendedDomainApplicationService(
@@ -48,6 +46,8 @@ try
         new UnconfiguredRemoteMediaResolver(),
         events);
     using var aiProvider = new SettingsBackedAiProviderClient(domains, store, store, store);
+    var reminders = new ReminderApplicationService(store, events, aiProvider);
+    var proactive = new ProactiveApplicationService(store, store, events, aiProvider);
     var chat = new ChatApplicationService(store, store, aiProvider, events);
     var templateCards = new TemplateCardApplicationService(store, store, aiProvider, events);
     await using var petVoiceMenu = new PetVoiceMenuApplicationService(store, store, store, store, events, aiProvider, speechClient, templateCards, paths);

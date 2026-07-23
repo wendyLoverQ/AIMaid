@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using AIMaid.Contracts;
 using AIMaid.Contracts.Domains;
@@ -15,11 +16,13 @@ public sealed class ReminderApplicationService :
     private const string Domain = "reminder";
     private readonly IDomainDocumentStore store;
     private readonly IEventPublisher events;
+    private readonly IAiProviderClient aiProvider;
 
-    public ReminderApplicationService(IDomainDocumentStore store, IEventPublisher events)
+    public ReminderApplicationService(IDomainDocumentStore store, IEventPublisher events, IAiProviderClient aiProvider)
     {
         this.store = store;
         this.events = events;
+        this.aiProvider = aiProvider;
     }
 
     public async Task<IReadOnlyList<ReminderDto>> HandleAsync(ListRemindersQuery query, CancellationToken cancellationToken = default)
@@ -87,16 +90,60 @@ public sealed class ReminderApplicationService :
         var due = (await HandleAsync(new ListRemindersQuery(true), cancellationToken))
             .Where(item => (item.NextDueAt ?? item.DueAt) <= command.Now &&
                 (requestedIds is null || requestedIds.Contains(item.ReminderId))).Take(5).ToArray();
+        var emitted = new List<ReminderDto>(due.Length);
         foreach (var reminder in due)
         {
+            var generated = reminder.AllowTts
+                ? await GenerateReminderLineAsync(reminder, cancellationToken)
+                : (reminder.Message, reminder.VoiceStyle);
             DateTimeOffset? next = reminder.Repeat == "daily"
                 ? NormalizeNextDue((reminder.NextDueAt ?? reminder.DueAt).AddDays(1), "daily", command.Now)
                 : null;
             var updated = reminder with { Enabled = next.HasValue, LastTriggeredAt = command.Now, NextDueAt = next, UpdatedAt = command.Now };
             await SaveAsync(updated, cancellationToken);
-            await events.PublishAsync(new ReminderDueEvent(EventIdentity.NewId(), command.Now, updated), cancellationToken);
+            var eventReminder = updated with { Message = generated.Item1, VoiceStyle = generated.Item2 };
+            emitted.Add(eventReminder);
+            await events.PublishAsync(new ReminderDueEvent(EventIdentity.NewId(), command.Now, eventReminder), cancellationToken);
         }
-        return OperationResult<IReadOnlyList<ReminderDto>>.Success(due);
+        return OperationResult<IReadOnlyList<ReminderDto>>.Success(emitted);
+    }
+
+    private async Task<(string Message, string VoiceStyle)> GenerateReminderLineAsync(
+        ReminderDto reminder,
+        CancellationToken cancellationToken)
+    {
+        var values = new Dictionary<string, string>
+        {
+            ["reminderId"] = reminder.ReminderId,
+            ["reminderTitle"] = reminder.Title,
+            ["reminderContent"] = reminder.Message,
+            ["dueTime"] = (reminder.NextDueAt ?? reminder.DueAt).ToString("yyyy-MM-dd HH:mm:ss"),
+            ["repeatRule"] = reminder.Repeat,
+            ["urgency"] = "normal",
+            ["userOriginalText"] = reminder.Message
+        };
+        var raw = new StringBuilder();
+        await foreach (var delta in aiProvider.StreamChatAsync(new AiChatRequest(
+                           $"reminder_line_{reminder.ReminderId}_{Guid.NewGuid():N}",
+                           reminder.Message,
+                           string.Empty,
+                           string.Empty,
+                           [],
+                           SourceKey: "reminder_line_generation",
+                           TemplateValues: values,
+                           StreamResponse: false), cancellationToken))
+            raw.Append(delta);
+        using var document = JsonDocument.Parse(raw.ToString().Trim());
+        if (document.RootElement.ValueKind != JsonValueKind.Object ||
+            !document.RootElement.TryGetProperty("message", out var message) ||
+            message.ValueKind != JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(message.GetString()))
+            throw new InvalidDataException("reminder_line_generation 返回内容缺少非空 message。");
+        var voiceStyle = document.RootElement.TryGetProperty("voiceStyle", out var style) &&
+                         style.ValueKind == JsonValueKind.String
+            ? style.GetString()?.Trim() ?? string.Empty
+            : string.Empty;
+        return (message.GetString()!.Trim(), voiceStyle);
     }
 
     private async Task<IReadOnlyList<ReminderDto>> ListAsync(CancellationToken cancellationToken)

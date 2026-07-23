@@ -609,7 +609,7 @@ public sealed class AgentApplicationService :
         var raw = new StringBuilder();
         await foreach (var delta in aiProvider.StreamChatAsync(new AiChatRequest(
             conversationId, command.Content, character.RoleId, string.Empty, [],
-            SourceKey: "agent_decision", TemplateValues: values, Temperature: 0.3, MaxTokens: 512, StreamResponse: false), cancellationToken))
+            SourceKey: "agent_decision", TemplateValues: values, StreamResponse: false), cancellationToken))
             raw.Append(delta);
 
         AgentDecisionDto decision;
@@ -661,7 +661,18 @@ public sealed class ProactiveApplicationService :
     private readonly IDomainDocumentStore store;
     private readonly ISettingsStore settingsStore;
     private readonly IEventPublisher events;
-    public ProactiveApplicationService(IDomainDocumentStore store, ISettingsStore settingsStore, IEventPublisher events) { this.store = store; this.settingsStore = settingsStore; this.events = events; }
+    private readonly IAiProviderClient aiProvider;
+    public ProactiveApplicationService(
+        IDomainDocumentStore store,
+        ISettingsStore settingsStore,
+        IEventPublisher events,
+        IAiProviderClient aiProvider)
+    {
+        this.store = store;
+        this.settingsStore = settingsStore;
+        this.events = events;
+        this.aiProvider = aiProvider;
+    }
 
     public async Task<OperationResult> HandleAsync(SaveProactiveRuleCommand command, CancellationToken cancellationToken = default)
     {
@@ -705,10 +716,48 @@ public sealed class ProactiveApplicationService :
             var stateJson = await store.GetAsync(StateDomain, rule.RuleId, cancellationToken);
             var last = stateJson is null ? (DateTimeOffset?)null : JsonSerializer.Deserialize<DateTimeOffset?>(stateJson);
             if (last.HasValue && command.Context.Now - last.Value < TimeSpan.FromSeconds(rule.CooldownSeconds)) continue;
+            var allowTts = rule.AllowTts && !settings.Mode.Equals("quiet", StringComparison.OrdinalIgnoreCase);
+            var values = new Dictionary<string, string>
+            {
+                ["eventType"] = command.Context.EventType,
+                ["eventPayloadJson"] = JsonSerializer.Serialize(command.Context.Values, JsonConfig.Audit),
+                ["maidStateJson"] = ReadContextJson(command.Context.Values, "maidStateJson"),
+                ["activeWindowJson"] = JsonSerializer.Serialize(new
+                {
+                    isFullscreen = command.Context.IsFullscreen,
+                    values = command.Context.Values
+                }, JsonConfig.Audit),
+                ["broadcastCandidatesJson"] = ReadContextJson(command.Context.Values, "broadcastCandidatesJson", "[]"),
+                ["recentBroadcastMessagesJson"] = ReadContextJson(command.Context.Values, "recentBroadcastMessagesJson", "[]")
+            };
+            var raw = new StringBuilder();
+            await foreach (var delta in aiProvider.StreamChatAsync(new AiChatRequest(
+                               $"maid_ai_decision_{Guid.NewGuid():N}",
+                               command.Context.EventType,
+                               string.Empty,
+                               string.Empty,
+                               [],
+                               SourceKey: "maid_ai_decision",
+                               TemplateValues: values,
+                               StreamResponse: false), cancellationToken))
+                raw.Append(delta);
+            var generated = ParseProactiveDecision(raw.ToString());
+            var result = new ProactiveDecisionDto(
+                generated.Respond,
+                rule.RuleId,
+                generated.Respond ? "matched" : "llm_declined",
+                rule.Priority,
+                allowTts && generated.Speak,
+                rule.ActionTag,
+                generated.Message,
+                generated.VoiceStyle,
+                generated.ShowBubble,
+                generated.MoodChange,
+                generated.FavorabilityDelta,
+                generated.BroadcastSourceKeys);
+            if (!result.ShouldRespond) return OperationResult<ProactiveDecisionDto>.Success(result);
             await store.UpsertAsync(StateDomain, rule.RuleId, JsonSerializer.Serialize(command.Context.Now), command.Context.Now, cancellationToken);
             await store.UpsertAsync(StateDomain, "_hourly", JsonSerializer.Serialize(hourlyState with { Count = hourlyState.Count + 1 }), command.Context.Now, cancellationToken);
-            var allowTts = rule.AllowTts && !settings.Mode.Equals("quiet", StringComparison.OrdinalIgnoreCase);
-            var result = new ProactiveDecisionDto(true, rule.RuleId, "matched", rule.Priority, allowTts, rule.ActionTag);
             await events.PublishAsync(new ProactiveDecisionEvent(EventIdentity.NewId(), DateTimeOffset.Now, result), cancellationToken);
             return OperationResult<ProactiveDecisionDto>.Success(result);
         }
@@ -716,6 +765,35 @@ public sealed class ProactiveApplicationService :
     }
     private static OperationResult<ProactiveDecisionDto> Decision(bool respond, string rule, string reason, int priority, bool tts, string action)
         => OperationResult<ProactiveDecisionDto>.Success(new(respond, rule, reason, priority, tts, action));
+    private static string ReadContextJson(IReadOnlyDictionary<string, string> values, string key, string defaultValue = "{}")
+        => values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value : defaultValue;
+    private static GeneratedProactiveDecision ParseProactiveDecision(string raw)
+    {
+        using var document = JsonDocument.Parse(raw.Trim());
+        var root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object ||
+            !root.TryGetProperty("respond", out var respond) ||
+            respond.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            throw new InvalidDataException("maid_ai_decision 返回内容缺少 respond。");
+        string ReadString(string name) =>
+            root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+                ? value.GetString()?.Trim() ?? string.Empty
+                : string.Empty;
+        bool ReadBoolean(string name) =>
+            root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
+        var favorabilityDelta = root.TryGetProperty("favorabilityDelta", out var delta) && delta.TryGetInt32(out var parsedDelta)
+            ? parsedDelta
+            : 0;
+        return new GeneratedProactiveDecision(
+            respond.GetBoolean(),
+            ReadString("message"),
+            ReadString("voiceStyle"),
+            ReadBoolean("speak"),
+            ReadBoolean("showBubble"),
+            ReadString("moodChange"),
+            favorabilityDelta,
+            ReadString("broadcastSourceKeys"));
+    }
     private static bool IsQuietHour(DateTimeOffset now, DisturbanceSettingsDto settings)
     {
         if (!TimeOnly.TryParse(settings.QuietHoursStart, out var start) || !TimeOnly.TryParse(settings.QuietHoursEnd, out var end)) return false;
@@ -739,5 +817,14 @@ public sealed class ProactiveApplicationService :
             string.Equals(actual, pair.Value, StringComparison.OrdinalIgnoreCase));
     }
     private sealed record HourlyState(DateTimeOffset WindowStart, int Count);
+    private sealed record GeneratedProactiveDecision(
+        bool Respond,
+        string Message,
+        string VoiceStyle,
+        bool Speak,
+        bool ShowBubble,
+        string MoodChange,
+        int FavorabilityDelta,
+        string BroadcastSourceKeys);
     private static T Deserialize<T>(string json) => JsonSerializer.Deserialize<T>(json) ?? throw new InvalidDataException($"{typeof(T).Name} JSON 无效。");
 }

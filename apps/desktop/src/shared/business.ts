@@ -10,6 +10,7 @@ export interface ReminderDto {
   nextDueAt: string | null
   createdAt: string
   updatedAt: string
+  voiceStyle?: string
 }
 
 export interface ReminderSavePayload {

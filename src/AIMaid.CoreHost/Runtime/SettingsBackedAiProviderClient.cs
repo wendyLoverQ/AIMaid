@@ -24,7 +24,15 @@ public sealed class SettingsBackedAiProviderClient(
         if (configuredKey.Length == 0)
         {
             var business = await domains.HandleAsync(new ListLlmBusinessModelConfigsQuery(), cancellationToken);
-            var businessKey = request.SourceKey.Equals("agent_decision", StringComparison.OrdinalIgnoreCase) ? "agent_planning" : "chat_reply";
+            var businessKey = request.SourceKey.ToLowerInvariant() switch
+            {
+                "agent_decision" => "agent_planning",
+                "lazy_voice_lines" => "lazy_voice_cache",
+                "maid_ai_decision" => "proactive_decision",
+                "reminder_line_generation" => "reminder_speech",
+                "character_card_template_generation" => "character_card_expansion",
+                _ => "chat_reply"
+            };
             configuredKey = business.FirstOrDefault(item => item.IsEnabled && item.BusinessKey.Equals(businessKey, StringComparison.OrdinalIgnoreCase))?.ModelKey ?? string.Empty;
         }
         var configuration = models.FirstOrDefault(item => item.ModelKey.Equals(configuredKey, StringComparison.OrdinalIgnoreCase))
@@ -58,7 +66,8 @@ public sealed class SettingsBackedAiProviderClient(
         if (string.IsNullOrWhiteSpace(request.SourceKey)) return request with { ModelName = modelName };
         var prompts = await domains.HandleAsync(new ListLlmSourcePromptsQuery(), cancellationToken);
         var prompt = prompts.FirstOrDefault(item => item.IsEnabled && item.SourceKey.Equals(request.SourceKey, StringComparison.OrdinalIgnoreCase));
-        if (prompt is null || string.IsNullOrWhiteSpace(prompt.SystemPromptTemplate)) return request with { ModelName = modelName };
+        if (prompt is null || string.IsNullOrWhiteSpace(prompt.SystemPromptTemplate))
+            throw new InvalidOperationException($"Source Prompt“{request.SourceKey}”未配置、已停用或 System Prompt 为空。");
         var characterId = request.CharacterId;
         if (string.IsNullOrWhiteSpace(characterId))
             characterId = (await settings.GetAsync("voice_current_role_id", cancellationToken))?.Value ?? string.Empty;
@@ -88,7 +97,14 @@ public sealed class SettingsBackedAiProviderClient(
         history.AddRange(request.History);
         history.Add(new ChatMessageDto(0, request.ConversationId, "user", user, characterId, modelName,
             $"source_prompt:{request.SourceKey}", string.Empty, DateTimeOffset.Now));
-        return request with { ModelName = modelName, CharacterId = characterId, Content = user, History = history, RequireJsonResponse = true };
+        return request with
+        {
+            ModelName = modelName,
+            CharacterId = characterId,
+            Content = user,
+            History = history,
+            RequireJsonResponse = request.RequireJsonResponse || !string.IsNullOrWhiteSpace(prompt.OutputSchemaJson)
+        };
     }
 
     private static string Render(string template, IReadOnlyDictionary<string, string> values)
