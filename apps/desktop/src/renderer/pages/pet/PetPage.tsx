@@ -225,7 +225,8 @@ export default function PetPage(): React.JSX.Element {
             showBubble(reminder.message, 'reminder');
             return;
         }
-        void synthesizeAndPlayPages(reminder.message, reminder.voiceStyle,
+        const voiceStyle = typeof reminder.voiceStyle === 'string' ? reminder.voiceStyle : undefined;
+        void synthesizeAndPlayPages(reminder.message, voiceStyle,
             (page) => showBubble(page, 'reminder')).catch((reason: unknown) => {
             console.error('Reminder TTS playback failed', {
                 reminderId: reminder.reminderId,
