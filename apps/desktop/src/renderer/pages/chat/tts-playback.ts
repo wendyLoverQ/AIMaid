@@ -5,7 +5,8 @@ import { paginatePetBubble } from '../../../shared/pet'
 let activeAudio: HTMLAudioElement | null = null
 let activeAudioContext: AudioContext | null = null
 let activeAudioObjectUrl: string | null = null
-let finishActiveAudio: (() => void) | null = null
+type AudioFinishReason = 'ended' | 'failed' | 'stopped' | 'replaced'
+let finishActiveAudio: ((reason: AudioFinishReason) => void) | null = null
 let stopActiveLipSync: (() => void) | null = null
 let audioSubscription: (() => void) | null = null
 const CACHED_AUDIO_MIN_DURATION_SECONDS = 0.15
@@ -15,7 +16,7 @@ type PendingPlayback = { source: CachedAudioSource; cancel: () => void }
 let pendingPlayback: PendingPlayback | null = null
 
 export type CachedAudioPlaybackResult =
-  | { played: true; durationSeconds: number; finished: Promise<void> }
+  | { played: true; durationSeconds: number; finished: Promise<AudioFinishReason> }
   | { played: false; reason: 'audio_loading' | 'audio_busy' | 'master_muted' | 'volume_zero' | 'file_unreadable' | 'decode_failed' | 'unsupported_format' | 'zero_duration' | 'play_failed'; message: string }
 
 class CachedAudioError extends Error {
@@ -98,9 +99,9 @@ export async function playLocalAudio(filePath: string, onPlaybackStarted?: () =>
   }
   pendingPlayback = pending
   audio.addEventListener('ended', () => {
-    releaseAudio(audio)
+    releaseAudio(audio, 'ended')
   }, { once: true })
-  audio.addEventListener('error', () => releaseAudio(audio), { once: true })
+  audio.addEventListener('error', () => releaseAudio(audio, 'failed'), { once: true })
   try {
     if (cancelled) throw new CachedAudioError('audio_loading', '语音加载已取消。')
     context = new AudioContext()
@@ -172,7 +173,7 @@ function waitForAudioProgress(audio: HTMLAudioElement): Promise<void> {
 
 export async function playCachedAudio(filePath: string, source: CachedAudioSource = 'click'): Promise<CachedAudioPlaybackResult> {
   if (activeAudio !== null) {
-    if (source === 'click') stopAudioPlayback()
+    if (source === 'click') stopAudioPlayback('replaced')
     else return { played: false, reason: 'audio_busy', message: '当前正在播放其他语音。' }
   }
   if (pendingPlayback !== null) {
@@ -184,7 +185,7 @@ export async function playCachedAudio(filePath: string, source: CachedAudioSourc
   try {
     const audio = await playLocalAudio(filePath, undefined, { requireReady: true, source })
     if (audio === null) return { played: false, reason: 'play_failed', message: '语音未进入播放状态。' }
-    const finished = new Promise<void>((resolve) => { finishActiveAudio = resolve })
+    const finished = new Promise<AudioFinishReason>((resolve) => { finishActiveAudio = resolve })
     return { played: true, durationSeconds: audio.duration, finished }
   } catch (error) {
     if (error instanceof CachedAudioError) return { played: false, reason: error.reason, message: error.message }
@@ -251,16 +252,16 @@ function cancelPendingPlayback(): void {
   pending?.cancel()
 }
 
-export function stopAudioPlayback(): void {
+export function stopAudioPlayback(reason: AudioFinishReason = 'stopped'): void {
   cancelPendingPlayback()
   if (activeAudio !== null) {
     const audio = activeAudio
     audio.pause()
-    releaseAudio(audio)
+    releaseAudio(audio, reason)
   }
 }
 
-function releaseAudio(audio: HTMLAudioElement): void {
+function releaseAudio(audio: HTMLAudioElement, reason: AudioFinishReason): void {
   if (activeAudio !== audio) return
   activeAudio = null
   stopActiveLipSync?.()
@@ -270,7 +271,7 @@ function releaseAudio(audio: HTMLAudioElement): void {
   const objectUrl = activeAudioObjectUrl
   activeAudioObjectUrl = null
   if (objectUrl !== null) URL.revokeObjectURL(objectUrl)
-  finishActiveAudio?.()
+  finishActiveAudio?.(reason)
   finishActiveAudio = null
   void context?.close().catch((error: unknown) => console.error('[TTSPlayback] audio context close failed', error))
   reportPlayback(false)

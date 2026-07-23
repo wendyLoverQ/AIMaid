@@ -47,6 +47,7 @@ export default function PetPage(): React.JSX.Element {
     const [petRendererReady, setPetRendererReady] = useState(false);
     const readySentRef = useRef(false);
     const startupPlayedRef = useRef(false);
+    const voiceBubbleNonceRef = useRef('');
     const forcedVoiceRefreshPathsRef = useRef(new Set<string>());
     const voiceCacheEnsureRef = useRef<Promise<Record<string, unknown> | null> | null>(null);
     const voiceCacheEnsureRoleRef = useRef('');
@@ -436,14 +437,23 @@ export default function PetPage(): React.JSX.Element {
         if (!playback.played) {
             if (playback.reason === 'audio_loading') return;
             console.error('[PetVoice] startup playback failed', playback.reason, playback.message);
+            if (voiceBubbleNonceRef.current !== '') {
+                expireBubble(voiceBubbleNonceRef.current);
+                voiceBubbleNonceRef.current = '';
+            }
             refreshBadVoiceCache(value.audioPath, playback.reason);
             return;
         }
         startupPlayedRef.current = true;
         if (typeof value.text === 'string' && value.text !== '') {
             const bubbleNonce = crypto.randomUUID();
+            voiceBubbleNonceRef.current = bubbleNonce;
             showBubble(value.text, 'speech', bubbleNonce);
-            void playback.finished.then(() => expireBubble(bubbleNonce));
+            void playback.finished.then((finishReason) => {
+                if (finishReason === 'replaced' || voiceBubbleNonceRef.current !== bubbleNonce) return;
+                voiceBubbleNonceRef.current = '';
+                expireBubble(bubbleNonce);
+            });
         }
     }
     const playPetClickVoice = useCallback(async (context: PetVoiceClickContext): Promise<void> => {
@@ -478,15 +488,29 @@ export default function PetPage(): React.JSX.Element {
             reason = playback.played ? 'cache_match' : playback.reason;
             if (playback.played && typeof value.text === 'string' && value.text.length > 0) {
                 const bubbleNonce = crypto.randomUUID();
+                voiceBubbleNonceRef.current = bubbleNonce;
                 showBubble(value.text, 'speech', bubbleNonce);
-                void playback.finished.then(() => expireBubble(bubbleNonce));
+                void playback.finished.then((finishReason) => {
+                    if (finishReason === 'replaced' || voiceBubbleNonceRef.current !== bubbleNonce) return;
+                    voiceBubbleNonceRef.current = '';
+                    expireBubble(bubbleNonce);
+                });
             }
-            else if (!playback.played)
+            else if (!playback.played) {
                 console.error('[PetVoice] click playback failed', playback.reason, playback.message);
+                if (voiceBubbleNonceRef.current !== '') {
+                    expireBubble(voiceBubbleNonceRef.current);
+                    voiceBubbleNonceRef.current = '';
+                }
+            }
         }
         catch (error) {
             reason = error instanceof Error ? error.message : String(error);
             console.error('[PetVoice] click playback threw', error);
+            if (voiceBubbleNonceRef.current !== '') {
+                expireBubble(voiceBubbleNonceRef.current);
+                voiceBubbleNonceRef.current = '';
+            }
             playback = { played: false, reason: 'play_failed', message: reason };
         }
         const played = playback.played;
