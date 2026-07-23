@@ -225,8 +225,9 @@ internal static class WindowsRemoteLiveCapture
         cookieText = Regex.Replace(cookieText, @"\\+t", "\t", RegexOptions.CultureInvariant);
         foreach (var line in cookieText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
         {
-            if (line.StartsWith('#')) continue;
+            if (line.StartsWith('#') && !line.StartsWith("#HttpOnly_", StringComparison.OrdinalIgnoreCase)) continue;
             var parts = line.Split('\t');
+            if (parts.Length < 7) parts = Regex.Split(line.Trim(), @"\s+", RegexOptions.CultureInvariant);
             if (parts.Length < 7 || string.IsNullOrWhiteSpace(parts[5])) continue;
             try
             {

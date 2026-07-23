@@ -1075,7 +1075,8 @@ public sealed partial class RemoteVideoApplicationService
     {
         value = Regex.Replace(value, @"\\+(?:r\\+)?n", "\n", RegexOptions.CultureInvariant);
         value = Regex.Replace(value, @"\\+t", "\t", RegexOptions.CultureInvariant);
-        if (value.Contains("# Netscape HTTP Cookie File", StringComparison.OrdinalIgnoreCase) || value.Contains('\t')) return value;
+        if (value.Contains("# Netscape HTTP Cookie File", StringComparison.OrdinalIgnoreCase) || value.Contains('\t'))
+            return NormalizeNetscapeCookieText(value);
         var domain = "." + domainPattern.Trim().TrimStart('*').TrimStart('.');
         var builder = new StringBuilder("# Netscape HTTP Cookie File" + Environment.NewLine);
         foreach (var part in value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
@@ -1084,6 +1085,23 @@ public sealed partial class RemoteVideoApplicationService
             if (separator <= 0) continue;
             builder.Append(domain).Append("\tTRUE\t/\tFALSE\t0\t")
                 .Append(part[..separator].Trim()).Append('\t').AppendLine(part[(separator + 1)..].Trim());
+        }
+        return builder.ToString();
+    }
+
+    private static string NormalizeNetscapeCookieText(string value)
+    {
+        var builder = new StringBuilder("# Netscape HTTP Cookie File" + Environment.NewLine);
+        foreach (var line in value.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (line.StartsWith('#') && !line.StartsWith("#HttpOnly_", StringComparison.OrdinalIgnoreCase)) continue;
+            var fields = line.Split('\t');
+            if (fields.Length < 7)
+                fields = Regex.Split(line.Trim(), @"\s+", RegexOptions.CultureInvariant);
+            if (fields.Length < 7) continue;
+            builder.Append(string.Join('\t', fields.Take(6)))
+                .Append('\t')
+                .AppendLine(string.Join(' ', fields.Skip(6)));
         }
         return builder.ToString();
     }
