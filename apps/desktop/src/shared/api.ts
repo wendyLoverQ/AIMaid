@@ -1,6 +1,6 @@
 import type { CoreEventType, CoreRequest, CoreStatus } from './core'
 import type { IpcEventEnvelope, IpcResponseEnvelope } from './ipc'
-import type { PetAssetManifest, PetLifecycleEvent, PetPerformanceMetrics, PetRuntimeSnapshot, PetWindowUpdate } from './pet'
+import type { PetAssetManifest, PetLifecycleEvent, PetLipSyncFrame, PetPerformanceMetrics, PetRuntimeSnapshot, PetWindowUpdate } from './pet'
 import type { PetPresentationApi } from './presentation'
 import type { WindowKind } from './windows'
 import type { HotkeyAction, PlatformSettingsSnapshot } from './system-settings'
@@ -49,6 +49,8 @@ export interface AIMaidApi {
     reportMetrics: (metrics: PetPerformanceMetrics) => Promise<IpcResponseEnvelope>
     runtimeStatus: () => Promise<IpcResponseEnvelope<PetRuntimeSnapshot>>
     onLifecycle: (listener: (event: PetLifecycleEvent) => void) => Unsubscribe
+    publishLipSync: (frame: PetLipSyncFrame) => void
+    onLipSync: (listener: (frame: PetLipSyncFrame) => void) => Unsubscribe
     presentation: PetPresentationApi
   }
   readonly dialog?: {

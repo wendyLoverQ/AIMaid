@@ -4,7 +4,8 @@ export const IPC_CHANNELS = {
   invoke: 'aimaid:invoke',
   send: 'aimaid:send',
   event: 'aimaid:event',
-  petLifecycle: 'aimaid:pet-lifecycle'
+  petLifecycle: 'aimaid:pet-lifecycle',
+  petLipSync: 'aimaid:pet-lip-sync'
 } as const
 
 export const IPC_REQUEST_TYPES = [
@@ -54,7 +55,7 @@ export const IPC_REQUEST_TYPES = [
 ] as const
 
 export type IpcRequestType = (typeof IPC_REQUEST_TYPES)[number]
-export type IpcNotificationType = 'request.cancel' | 'event.subscribe' | 'event.unsubscribe'
+export type IpcNotificationType = 'request.cancel' | 'event.subscribe' | 'event.unsubscribe' | 'pet.lipSync.sample'
 
 export interface IpcError {
   code: string
@@ -113,7 +114,7 @@ export function isIpcNotificationEnvelope(value: unknown): value is IpcNotificat
   return (
     isRecord(value) &&
     typeof value.requestId === 'string' &&
-    (value.type === 'request.cancel' || value.type === 'event.subscribe' || value.type === 'event.unsubscribe') &&
+    (value.type === 'request.cancel' || value.type === 'event.subscribe' || value.type === 'event.unsubscribe' || value.type === 'pet.lipSync.sample') &&
     typeof value.timestamp === 'number'
   )
 }

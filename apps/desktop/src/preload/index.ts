@@ -13,7 +13,7 @@ import type {
 } from '../shared/ipc'
 import { isWindowKind } from '../shared/windows'
 import type { WindowKind } from '../shared/windows'
-import type { PetAssetManifest, PetLifecycleEvent, PetPerformanceMetrics, PetRuntimeSnapshot, PetWindowUpdate } from '../shared/pet'
+import type { PetAssetManifest, PetLifecycleEvent, PetLipSyncFrame, PetPerformanceMetrics, PetRuntimeSnapshot, PetWindowUpdate } from '../shared/pet'
 import type { PetPresentationAction, PetPresentationSnapshot } from '../shared/presentation'
 import type { AgentConfirmationRequest } from '../shared/business'
 import type { HotkeyAction, PlatformSettingsSnapshot } from '../shared/system-settings'
@@ -168,7 +168,8 @@ const agentConfirmationApi: AIMaidApi['agentConfirmation'] = canRequest(windowKi
     })
   : undefined
 
-const petApi: AIMaidApi['pet'] = windowKind === 'pet' || canRequest(windowKind, 'pet.presentation.get') || canRequest(windowKind, 'pet.runtime.get')
+const petApi: AIMaidApi['pet'] = windowKind === 'pet' || windowKind === 'chat' || windowKind === 'voice-conversation' ||
+  canRequest(windowKind, 'pet.presentation.get') || canRequest(windowKind, 'pet.runtime.get')
   ? Object.freeze({
       ready: () => invoke('pet.ready', {}),
       getAssetManifest: (modelId: string) => invoke<PetAssetManifest>('pet.getAssetManifest', { modelId }),
@@ -179,6 +180,17 @@ const petApi: AIMaidApi['pet'] = windowKind === 'pet' || canRequest(windowKind, 
       updateWindow: (update: PetWindowUpdate) => invoke('pet.updateWindow', update),
       reportMetrics: (metrics: PetPerformanceMetrics) => invoke('pet.reportMetrics', metrics),
       runtimeStatus: () => invoke<PetRuntimeSnapshot>('pet.runtime.get', {}),
+      publishLipSync: (frame: PetLipSyncFrame): void => sendNotification(createRequestId(), 'pet.lipSync.sample', frame),
+      onLipSync: (listener: (frame: PetLipSyncFrame) => void): Unsubscribe => {
+        const handler = (_event: Electron.IpcRendererEvent, frame: PetLipSyncFrame): void => listener(frame)
+        ipcRenderer.on(IPC_CHANNELS.petLipSync, handler)
+        const unsubscribe = (): void => {
+          ipcRenderer.off(IPC_CHANNELS.petLipSync, handler)
+          subscriptions.delete(unsubscribe)
+        }
+        subscriptions.add(unsubscribe)
+        return unsubscribe
+      },
       presentation: Object.freeze({
         get: () => invoke<PetPresentationSnapshot>('pet.presentation.get', {}),
         execute: (action: PetPresentationAction) => invoke<PetPresentationSnapshot>('pet.presentation.execute', { action })

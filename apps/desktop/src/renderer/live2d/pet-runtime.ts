@@ -1,4 +1,4 @@
-import type { PetLifecycleEvent, PetPerformanceMetrics, PetRuntimeState } from '../../shared/pet'
+import type { PetLifecycleEvent, PetLipSyncFrame, PetPerformanceMetrics, PetRuntimeState } from '../../shared/pet'
 import type { AlphaContour } from '../../shared/alpha-contour'
 import { bridge } from '../shared/bridge'
 import { PerformanceMonitor } from './performance-monitor'
@@ -129,6 +129,7 @@ export class PetRuntime {
     this.listen(window, 'keydown', this.onKeyDown)
     this.listen(window, 'storage', this.onPetBubble)
     this.cleanups.push(bridge.pet.onLifecycle(this.onLifecycle))
+    this.cleanups.push(bridge.pet.onLipSync(this.onLipSync))
     const resizeObserver = new ResizeObserver(() => this.onResize())
     resizeObserver.observe(this.canvas.parentElement ?? this.canvas)
     this.cleanups.push(() => resizeObserver.disconnect())
@@ -199,6 +200,10 @@ export class PetRuntime {
     if (event.type === 'suspend') this.suspend()
     else if (event.type === 'resume') this.resume()
     else this.onResize()
+  }
+
+  private readonly onLipSync = (frame: PetLipSyncFrame): void => {
+    this.player.setLipSyncFrame(frame)
   }
 
   private readMetricsBase(): Omit<PetPerformanceMetrics, 'fps' | 'averageFrameMs' | 'p95FrameMs' | 'maximumFrameMs'> {

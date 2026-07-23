@@ -20,7 +20,7 @@ import type { Logger } from '../logging/logger'
 import type { WindowManager } from '../windows/window-manager'
 import type { PetAssetService } from '../services/pet-asset-service'
 import type { PetWindowManager } from '../windows/pet-window-manager'
-import type { PetPerformanceMetrics, PetWindowUpdate } from '../../shared/pet'
+import type { PetLipSyncFrame, PetPerformanceMetrics, PetWindowUpdate } from '../../shared/pet'
 import { isPetPresentationAction } from '../../shared/presentation'
 import type { PetPresentationService } from '../services/pet-presentation-service'
 import type { DouyinSessionService } from '../services/douyin-session-service'
@@ -173,6 +173,17 @@ export class IpcRouter {
 
   private readonly handleSend = (event: IpcMainEvent, value: unknown): void => {
     if (!isIpcNotificationEnvelope(value) || !this.isTrusted(event)) return
+    if (value.type === 'pet.lipSync.sample') {
+      const sourceKind = this.windows.kindFor(event.sender)
+      const frame = readPetLipSyncFrame(value.payload)
+      if (sourceKind === undefined || frame === null || !isAllowedLipSyncSource(sourceKind, frame.source)) {
+        this.log.warn('ipc', 'Rejected invalid lip sync sample', { senderId: event.sender.id, sourceWindow: sourceKind })
+        return
+      }
+      const pet = this.windows.get('pet')
+      if (pet !== undefined && !pet.isDestroyed()) pet.webContents.send(IPC_CHANNELS.petLipSync, frame)
+      return
+    }
     if (value.type === 'event.subscribe') {
       if (isRecord(value.payload)) this.events.subscribe(event.sender, value.requestId, value.payload.types)
       return
@@ -542,4 +553,17 @@ function elapsedMs(startedAt: number): number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function readPetLipSyncFrame(value: unknown): PetLipSyncFrame | null {
+  if (!isRecord(value) || (value.source !== 'tts' && value.source !== 'music') ||
+    typeof value.level !== 'number' || !Number.isFinite(value.level) || value.level < 0 || value.level > 1 ||
+    typeof value.active !== 'boolean' || typeof value.timestamp !== 'number' || !Number.isFinite(value.timestamp)) {
+    return null
+  }
+  return { source: value.source, level: value.level, active: value.active, timestamp: value.timestamp }
+}
+
+function isAllowedLipSyncSource(kind: WindowKind, source: PetLipSyncFrame['source']): boolean {
+  return source === 'music' ? kind === 'pet' : kind === 'pet' || kind === 'chat' || kind === 'voice-conversation'
 }

@@ -1,4 +1,5 @@
 import type { IpcEventEnvelope } from '../../../shared/ipc'
+import { publishAudioLipSync } from '../../shared/audio-lipsync'
 import { bridge } from '../../shared/bridge'
 
 interface MusicPlaybackState {
@@ -21,11 +22,14 @@ export function startPetMusicPlayback(): () => void {
   let audio: HTMLAudioElement | null = null
   let audioContext: AudioContext | null = null
   let analyser: AnalyserNode | null = null
+  let stopLipSync: (() => void) | null = null
   let playbackUrl = ''
   let disposed = false
   let masterAudio = { muted: false, volume: 100 }
 
   const stopLocal = (): void => {
+    stopLipSync?.()
+    stopLipSync = null
     audio?.pause()
     audio = null
     playbackUrl = ''
@@ -73,6 +77,7 @@ export function startPetMusicPlayback(): () => void {
     activeAnalyser = nextAnalyser
     await context.resume()
     await element.play()
+    if (!disposed && audio === element && analyser === nextAnalyser) stopLipSync = publishAudioLipSync('music', nextAnalyser)
   }
 
   const onCoreEvent = (event: IpcEventEnvelope): void => {
@@ -99,11 +104,15 @@ export function startPetMusicPlayback(): () => void {
         return
       }
       if (state.isPaused) {
+        stopLipSync?.()
+        stopLipSync = null
         audio.pause()
         activeAnalyser = null
       } else if (state.isPlaying) {
         activeAnalyser = analyser
-        void audioContext?.resume().then(() => audio?.play()).catch((reason: unknown) => {
+        void audioContext?.resume().then(() => audio?.play()).then(() => {
+          if (analyser !== null && stopLipSync === null) stopLipSync = publishAudioLipSync('music', analyser)
+        }).catch((reason: unknown) => {
           console.error('[MusicPlayback] resume failed', reason)
           void stop()
         })

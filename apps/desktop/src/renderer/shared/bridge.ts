@@ -1,7 +1,7 @@
 import type { CoreEventType, CoreRequest, CoreStatus } from '../../shared/core'
 import type { IpcEventEnvelope, IpcResponseEnvelope } from '../../shared/ipc'
 import type { WindowKind } from '../../shared/windows'
-import type { PetAssetManifest, PetLifecycleEvent, PetPerformanceMetrics, PetRuntimeSnapshot, PetWindowUpdate } from '../../shared/pet'
+import type { PetAssetManifest, PetLifecycleEvent, PetLipSyncFrame, PetPerformanceMetrics, PetRuntimeSnapshot, PetWindowUpdate } from '../../shared/pet'
 import type { PetPresentationAction, PetPresentationSnapshot } from '../../shared/presentation'
 import type { HotkeyAction, PlatformSettingsSnapshot } from '../../shared/system-settings'
 
@@ -70,6 +70,10 @@ export const bridge = Object.freeze({
       requireCapability(window.aimaid.pet?.reportMetrics, 'pet.reportMetrics')(metrics),
     runtimeStatus: (): Promise<IpcResponseEnvelope<PetRuntimeSnapshot>> =>
       requireCapability(window.aimaid.pet?.runtimeStatus, 'pet.runtime.get')(),
+    publishLipSync: (frame: PetLipSyncFrame): void =>
+      requireCapability(window.aimaid.pet?.publishLipSync, 'pet.publishLipSync')(frame),
+    onLipSync: (listener: (frame: PetLipSyncFrame) => void): (() => void) =>
+      requireCapability(window.aimaid.pet?.onLipSync, 'pet.onLipSync')(listener),
     presentation: Object.freeze({
       get: (): Promise<IpcResponseEnvelope<PetPresentationSnapshot>> =>
         requireCapability(window.aimaid.pet?.presentation.get, 'pet.presentation.get')(),

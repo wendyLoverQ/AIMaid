@@ -52,6 +52,15 @@ export interface PetLifecycleEvent {
   timestamp: number
 }
 
+export type PetLipSyncSource = 'tts' | 'music'
+
+export interface PetLipSyncFrame {
+  source: PetLipSyncSource
+  level: number
+  active: boolean
+  timestamp: number
+}
+
 export function paginatePetBubble(text: string, pageSize = 78): string[] {
   const normalized = text.trim()
   if (normalized.length === 0) return []

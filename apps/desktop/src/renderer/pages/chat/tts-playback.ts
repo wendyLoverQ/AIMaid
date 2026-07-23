@@ -1,7 +1,10 @@
 import { bridge } from '../../shared/bridge'
+import { publishAudioLipSync } from '../../shared/audio-lipsync'
 import { paginatePetBubble } from '../../../shared/pet'
 
 let activeAudio: HTMLAudioElement | null = null
+let activeAudioContext: AudioContext | null = null
+let stopActiveLipSync: (() => void) | null = null
 let audioSubscription: (() => void) | null = null
 
 export async function synthesizeAndPlay(text: string, voiceId?: string): Promise<string> {
@@ -50,13 +53,30 @@ export async function playLocalAudio(filePath: string, onPlaybackStarted?: () =>
   stopAudioPlayback()
   const audio = new Audio(registered.payload.url)
   audio.volume = master.volume / 100
+  const context = new AudioContext()
+  const source = context.createMediaElementSource(audio)
+  const analyser = context.createAnalyser()
+  analyser.fftSize = 256
+  analyser.minDecibels = -90
+  analyser.maxDecibels = -10
+  analyser.smoothingTimeConstant = 0.85
+  source.connect(analyser)
+  analyser.connect(context.destination)
   activeAudio = audio
+  activeAudioContext = context
   audio.addEventListener('ended', () => {
-    if (activeAudio === audio) activeAudio = null
-    reportPlayback(false)
+    releaseAudio(audio)
   }, { once: true })
-  audio.addEventListener('error', () => reportPlayback(false), { once: true })
-  await audio.play()
+  audio.addEventListener('error', () => releaseAudio(audio), { once: true })
+  try {
+    await context.resume()
+    await audio.play()
+  } catch (error) {
+    releaseAudio(audio)
+    throw error
+  }
+  if (activeAudio !== audio) return null
+  stopActiveLipSync = publishAudioLipSync('tts', analyser)
   reportPlayback(true)
   onPlaybackStarted?.()
   return audio
@@ -84,10 +104,21 @@ function waitForAudioEnd(audio: HTMLAudioElement): Promise<void> {
 
 export function stopAudioPlayback(): void {
   if (activeAudio !== null) {
-    activeAudio.pause()
-    reportPlayback(false)
+    const audio = activeAudio
+    audio.pause()
+    releaseAudio(audio)
   }
+}
+
+function releaseAudio(audio: HTMLAudioElement): void {
+  if (activeAudio !== audio) return
   activeAudio = null
+  stopActiveLipSync?.()
+  stopActiveLipSync = null
+  const context = activeAudioContext
+  activeAudioContext = null
+  void context?.close().catch((error: unknown) => console.error('[TTSPlayback] audio context close failed', error))
+  reportPlayback(false)
 }
 
 function reportPlayback(playing: boolean): void {

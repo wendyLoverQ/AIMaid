@@ -8,6 +8,7 @@ import { createCubismMaskBufferPlan } from '../../../shared/live2d-mask-buffer';
 import { buildOuterAlphaContour } from '../../../shared/alpha-contour';
 import type { AlphaContour } from '../../../shared/alpha-contour';
 import { PET_BASE_WINDOW_HEIGHT, PET_BASE_WINDOW_WIDTH, PET_ITEM_PADDING } from '../../../shared/pet-geometry';
+import type { PetLipSyncFrame, PetLipSyncSource } from '../../../shared/pet';
 
 let Live2DModel: typeof Live2DModelType | null = null;
 
@@ -79,6 +80,9 @@ export class Live2DPlayer {
   private outfitSelections = new Map<string, number>();
   private outfitControlledParameterIds = new Set<string>();
   private contourRenderTexture: RenderTexture | null = null;
+  private lipSyncFrames = new Map<PetLipSyncSource, PetLipSyncFrame>();
+  private mouthWasAudioDriven = false;
+  private missingMouthParameterLogged = false;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.app = null as unknown as Application;
@@ -284,6 +288,8 @@ export class Live2DPlayer {
     });
 
     this.live2dModel = live2dModel;
+    this.missingMouthParameterLogged = false;
+    this.mouthWasAudioDriven = false;
     this.app.stage.addChild(live2dModel);
 
     const anyLive2dModel = live2dModel as any;
@@ -291,6 +297,7 @@ export class Live2DPlayer {
     // Establish persistent outfit values before motion/expression evaluation.
     // Motions must be allowed to animate the same parameters afterwards.
     internalModel?.on?.('beforeMotionUpdate', () => this.applyOutfitOverrides());
+    internalModel?.on?.('beforeModelUpdate', () => this.applyLipSync());
 
     console.info('[Live2D] Model loaded: ' + JSON.stringify({
       hasInternalModel: !!internalModel,
@@ -331,6 +338,11 @@ export class Live2DPlayer {
     const head = bodyPart === 'head' || bodyPart === 'face' || bodyPart === 'hair';
     const preferredGroups = head ? ['TapHead', 'TapBody'] : bodyPart === 'leg' ? ['TapLeg', 'TapBody'] : ['TapBody'];
     return this.applyActionTag(head ? 'touch_head' : 'touch_body', preferredGroups);
+  }
+
+  setLipSyncFrame(frame: PetLipSyncFrame): void {
+    if (frame.active) this.lipSyncFrames.set(frame.source, frame);
+    else this.lipSyncFrames.delete(frame.source);
   }
 
   async applyActionTag(tag: string, preferredMotionGroups: readonly string[] = []): Promise<boolean> {
@@ -538,6 +550,8 @@ export class Live2DPlayer {
   }
 
   dispose(): void {
+    this.lipSyncFrames.clear();
+    this.mouthWasAudioDriven = false;
     this.contourRenderTexture?.destroy(true);
     this.contourRenderTexture = null;
     if (this.model) {
@@ -796,6 +810,32 @@ export class Live2DPlayer {
       }
     }
 
+  }
+
+  private applyLipSync(): void {
+    const coreModel = (this.live2dModel as any)?.internalModel?.coreModel;
+    if (!coreModel) return;
+
+    const now = Date.now();
+    for (const [source, frame] of this.lipSyncFrames) {
+      if (now - frame.timestamp > 250) this.lipSyncFrames.delete(source);
+    }
+
+    if (this.lipSyncFrames.size === 0 && !this.mouthWasAudioDriven) return;
+    const parameterIndex = coreModel.getParameterIndex?.('ParamMouthOpenY') ?? -1;
+    if (parameterIndex < 0) {
+      if (!this.missingMouthParameterLogged) {
+        this.missingMouthParameterLogged = true;
+        console.error('[Live2D] Active model does not expose ParamMouthOpenY; audio lip sync cannot run');
+      }
+      this.mouthWasAudioDriven = false;
+      return;
+    }
+
+    let level = 0;
+    for (const frame of this.lipSyncFrames.values()) level = Math.max(level, frame.level);
+    coreModel.setParameterValueByIndex?.(parameterIndex, level);
+    this.mouthWasAudioDriven = this.lipSyncFrames.size > 0;
   }
 
   private classifyDrawablePart(coreModel: any, drawableIndex: number): BodyPart {
