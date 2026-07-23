@@ -179,6 +179,11 @@ public sealed class CoreProtocolHost(
             CharacterChangedEvent value => (Type: "character.changed", CorrelationId: value.RoleId, Payload: (object)value),
             AgentApprovalRequestedEvent value => (Type: "agent.approval_requested", CorrelationId: value.ApprovalToken, Payload: (object)value),
             AgentToolCallCompletedEvent value => (Type: "agent.tool_call_completed", CorrelationId: value.ToolCall.CallId, Payload: (object)value),
+            ReminderDueEvent value => (
+                Type: "reminder.due",
+                CorrelationId: value.Reminder.ReminderId,
+                Payload: (object)value.Reminder
+            ),
             MusicPlaybackRequestedEvent value => (Type: "music.playback.requested", CorrelationId: value.EventId, Payload: (object)value),
             MusicPlaybackStateChangedEvent value => (Type: "music.playback.state_changed", CorrelationId: value.EventId, Payload: (object)value),
             MusicPlaybackStoppedEvent value => (Type: "music.playback.stopped", CorrelationId: value.EventId, Payload: (object)value),
