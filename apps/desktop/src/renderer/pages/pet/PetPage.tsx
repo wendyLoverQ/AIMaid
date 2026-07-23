@@ -301,6 +301,7 @@ export default function PetPage(): React.JSX.Element {
         await playLocalAudioPaths(audioPaths);
     }
     async function loadVoiceMenu(): Promise<void> {
+        setVoiceMenu({ roleName: '正在读取…', intimacy: '正在读取…' });
         try {
             const response = await bridge.core.invoke({ type: 'pet.voice_menu.get', payload: {} });
             if (!response.success || response.payload === null)
@@ -311,8 +312,10 @@ export default function PetPage(): React.JSX.Element {
             };
             setVoiceMenu({ roleName: value.roleName, intimacy: value.intimacyLabel });
         }
-        catch {
-            setVoiceMenu({ roleName: '未选择', intimacy: '信赖 5 级' });
+        catch (reason: unknown) {
+            setVoiceMenu({ roleName: '读取失败', intimacy: '读取失败' });
+            const message = reason instanceof Error ? reason.message : String(reason);
+            showBubble(message || '语音状态读取失败。', 'error');
         }
     }
     async function cycleVoiceIntimacy(): Promise<void> {
