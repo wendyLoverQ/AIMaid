@@ -7,14 +7,13 @@ let activeAudioContext: AudioContext | null = null
 let stopActiveLipSync: (() => void) | null = null
 let audioSubscription: (() => void) | null = null
 const CACHED_AUDIO_MIN_DURATION_SECONDS = 0.15
-const CACHED_AUDIO_READY_TIMEOUT_MS = 5000
 type CachedAudioSource = 'startup' | 'click'
 type PendingPlayback = { source: CachedAudioSource; cancel: () => void }
 let pendingPlayback: PendingPlayback | null = null
 
 export type CachedAudioPlaybackResult =
   | { played: true; durationSeconds: number }
-  | { played: false; reason: 'audio_loading' | 'audio_busy' | 'master_muted' | 'volume_zero' | 'file_unreadable' | 'decode_failed' | 'unsupported_format' | 'zero_duration' | 'media_timeout' | 'play_failed'; message: string }
+  | { played: false; reason: 'audio_loading' | 'audio_busy' | 'master_muted' | 'volume_zero' | 'file_unreadable' | 'decode_failed' | 'unsupported_format' | 'zero_duration' | 'play_failed'; message: string }
 
 class CachedAudioError extends Error {
   constructor(public readonly reason: Exclude<CachedAudioPlaybackResult, { played: true }>['reason'], message: string) {
@@ -74,7 +73,6 @@ export async function playLocalAudio(filePath: string, onPlaybackStarted?: () =>
   audio.volume = master.volume / 100
   let context: AudioContext | null = null
   let cancelled = false
-  let rejectPending: ((error: Error) => void) | null = null
   const pending: PendingPlayback = {
     source: options?.source ?? 'click',
     cancel: () => {
@@ -82,7 +80,6 @@ export async function playLocalAudio(filePath: string, onPlaybackStarted?: () =>
       audio.pause()
       audio.removeAttribute('src')
       audio.load()
-      rejectPending?.(new CachedAudioError('audio_loading', '语音加载已取消。'))
     }
   }
   pendingPlayback = pending
@@ -91,12 +88,6 @@ export async function playLocalAudio(filePath: string, onPlaybackStarted?: () =>
   }, { once: true })
   audio.addEventListener('error', () => releaseAudio(audio), { once: true })
   try {
-    if (options?.requireReady === true) {
-      await Promise.race([
-        waitForCachedAudioReady(audio, registered.payload.url),
-        new Promise<never>((_, reject) => { rejectPending = reject })
-      ])
-    }
     if (cancelled) throw new CachedAudioError('audio_loading', '语音加载已取消。')
     context = new AudioContext()
     const source = context.createMediaElementSource(audio)
@@ -110,8 +101,10 @@ export async function playLocalAudio(filePath: string, onPlaybackStarted?: () =>
     await context.resume()
     if (cancelled) throw new CachedAudioError('audio_loading', '语音加载已取消。')
     await audio.play()
-    await waitForAudioPlaying(audio)
     if (cancelled) throw new CachedAudioError('audio_loading', '语音加载已取消。')
+    if (audio.paused) throw new CachedAudioError('play_failed', '语音未进入播放状态。')
+    if (Number.isFinite(audio.duration) && audio.duration <= CACHED_AUDIO_MIN_DURATION_SECONDS)
+      throw new CachedAudioError('zero_duration', `语音时长无效：${audio.duration || 0} 秒。`)
     activeAudio = audio
     activeAudioContext = context
     if (pendingPlayback === pending) pendingPlayback = null
@@ -121,12 +114,14 @@ export async function playLocalAudio(filePath: string, onPlaybackStarted?: () =>
     onPlaybackStarted?.()
     return audio
   } catch (error) {
+    const failure = normalizeCachedAudioError(audio, error)
+    if (options?.requireReady === true) logCachedAudioFailure(audio, registered.payload.url, failure)
     if (pendingPlayback === pending) pendingPlayback = null
     audio.pause()
     audio.removeAttribute('src')
     audio.load()
     void context?.close().catch((reason: unknown) => console.error('[TTSPlayback] pending audio context close failed', reason))
-    throw error
+    throw failure
   }
 }
 
@@ -137,7 +132,7 @@ export async function playCachedAudio(filePath: string, source: CachedAudioSourc
     else return { played: false, reason: 'audio_loading', message: '语音正在加载，请稍候。' }
   }
   const master = await loadMasterAudio()
-  if (master.muted) return { played: false, reason: master.volume <= 0 ? 'volume_zero' : 'master_muted', message: master.volume <= 0 ? '应用主音量为 0，无法播放语音。' : '应用主音量已静音。' }
+  if (master.muted || master.volume <= 0) return { played: false, reason: master.volume <= 0 ? 'volume_zero' : 'master_muted', message: master.volume <= 0 ? '应用主音量为 0，无法播放语音。' : '应用主音量已静音。' }
   try {
     const audio = await playLocalAudio(filePath, undefined, { requireReady: true, source })
     if (audio === null) return { played: false, reason: 'play_failed', message: '语音未进入播放状态。' }
@@ -168,64 +163,27 @@ function waitForAudioEnd(audio: HTMLAudioElement): Promise<void> {
   })
 }
 
-function waitForCachedAudioReady(audio: HTMLAudioElement, registeredUrl: string): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    let loadedMetadataReceived = false
-    let canplayReceived = false
-    const timer = window.setTimeout(() => finish(new CachedAudioError('media_timeout', '语音媒体加载超时。')), CACHED_AUDIO_READY_TIMEOUT_MS)
-    const finish = (error?: Error): void => {
-      window.clearTimeout(timer)
-      audio.removeEventListener('loadedmetadata', onLoadedMetadata)
-      audio.removeEventListener('canplay', onCanplay)
-      audio.removeEventListener('error', onError)
-      if (error !== undefined) {
-        console.warn('[TTSPlayback] cached media failed', {
-          registeredUrl,
-          readyState: audio.readyState,
-          networkState: audio.networkState,
-          mediaErrorCode: audio.error?.code ?? null,
-          duration: Number.isFinite(audio.duration) ? audio.duration : null,
-          loadedMetadataReceived,
-          canplayReceived,
-          contentType: expectedAudioMime(registeredUrl),
-          reason: error instanceof CachedAudioError ? error.reason : error.message
-        })
-        reject(error)
-      }
-      else resolve()
-    }
-    const onError = (): void => finish(new CachedAudioError(audio.error?.code === 4 ? 'unsupported_format' : 'decode_failed', describeMediaError(audio)))
-    const check = (): void => {
-      if (audio.error !== null) return onError()
-      if (!Number.isFinite(audio.duration)) return
-      if (audio.duration <= CACHED_AUDIO_MIN_DURATION_SECONDS) return finish(new CachedAudioError('zero_duration', `语音时长无效：${audio.duration || 0} 秒。`))
-      if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) finish()
-    }
-    const onLoadedMetadata = (): void => { loadedMetadataReceived = true; check() }
-    const onCanplay = (): void => { canplayReceived = true; check() }
-    audio.addEventListener('loadedmetadata', onLoadedMetadata)
-    audio.addEventListener('canplay', onCanplay)
-    audio.addEventListener('error', onError)
-    audio.load()
-    check()
-  })
+function logCachedAudioFailure(audio: HTMLAudioElement, registeredUrl: string, error: unknown): void {
+  console.warn('[TTSPlayback] cached media failed ' + JSON.stringify({
+    registeredUrl,
+    readyState: audio.readyState,
+    networkState: audio.networkState,
+    mediaErrorCode: audio.error?.code ?? null,
+    duration: Number.isFinite(audio.duration) ? audio.duration : null,
+    currentTime: audio.currentTime,
+    paused: audio.paused,
+    contentType: expectedAudioMime(registeredUrl),
+    reason: error instanceof CachedAudioError ? error.reason : error instanceof Error ? error.message : String(error)
+  }))
 }
 
-function waitForAudioPlaying(audio: HTMLAudioElement): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const timer = window.setTimeout(() => finish(new CachedAudioError('play_failed', '语音未进入 playing 状态。')), 3000)
-    const finish = (error?: Error): void => {
-      window.clearTimeout(timer)
-      audio.removeEventListener('playing', onPlaying)
-      audio.removeEventListener('error', onError)
-      error === undefined ? resolve() : reject(error)
-    }
-    const onPlaying = (): void => finish()
-    const onError = (): void => finish(new CachedAudioError(audio.error?.code === 4 ? 'unsupported_format' : 'decode_failed', describeMediaError(audio)))
-    audio.addEventListener('playing', onPlaying)
-    audio.addEventListener('error', onError)
-    if (!audio.paused && audio.currentTime > 0) finish()
-  })
+function normalizeCachedAudioError(audio: HTMLAudioElement, error: unknown): unknown {
+  if (error instanceof CachedAudioError) return error
+  if (audio.error !== null)
+    return new CachedAudioError(audio.error.code === 4 ? 'unsupported_format' : 'decode_failed', describeMediaError(audio))
+  if (error instanceof DOMException && error.name === 'NotSupportedError')
+    return new CachedAudioError('unsupported_format', error.message || '浏览器不支持该语音格式。')
+  return error
 }
 
 function describeMediaError(audio: HTMLAudioElement): string {

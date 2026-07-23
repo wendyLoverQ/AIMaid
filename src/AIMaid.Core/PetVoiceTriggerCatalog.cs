@@ -3,8 +3,8 @@ namespace AIMaid.Core;
 /// <summary>The sole, versioned source of cacheable desktop-pet voice slots.</summary>
 public static class PetVoiceTriggerCatalog
 {
-    public const string Version = "pet_voice_trigger_catalog_v2";
-    public const string BodyPartRecognitionVersion = "live2d_hit_area_v1";
+    public const string Version = "pet_voice_trigger_catalog_v3";
+    public const string BodyPartRecognitionVersion = "live2d_hit_area_v1+image_region_v2";
 
     public static readonly IReadOnlyList<PetVoiceTriggerPlan> Plans =
     [

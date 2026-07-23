@@ -33,6 +33,10 @@ public sealed class PetVoiceMenuApplicationService(
     private const string VoiceCacheDedupeDomain = "voice_cache_dedupe";
     private const string BusinessModelDomain = "llm_business_model";
     private const int DefaultIntimacyLevel = 5;
+    private const int ClickTextMinLength = 8;
+    private const int ClickTextMaxLength = 20;
+    private const int StartupTextMinLength = 12;
+    private const int StartupTextMaxLength = 30;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { PropertyNameCaseInsensitive = true };
     private readonly SemaphoreSlim generationGate = new(1, 1);
     private readonly CancellationTokenSource lifetime = new();
@@ -86,7 +90,7 @@ public sealed class PetVoiceMenuApplicationService(
         if (state.RoleId.Length == 0)
             return OperationResult<PetVoiceCacheEnsureResultDto>.Failure("pet_voice.role_missing", "尚未选择当前语音角色。");
         if (forceRefresh) CancelForegroundGeneration(state.RoleId, state.IntimacyLevel);
-        return await EnsureAsync(state.RoleId, state.IntimacyLevel, includeNextPeriod, cancellationToken);
+        return await EnsureAsync(state.RoleId, state.IntimacyLevel, includeNextPeriod, cancellationToken, forceRefresh);
     }
 
     public async Task<OperationResult<PetVoiceCacheClearResultDto>> ClearCurrentCacheAsync(CancellationToken cancellationToken = default)
@@ -171,8 +175,16 @@ public sealed class PetVoiceMenuApplicationService(
         string roleId,
         int intimacyLevel,
         bool includeNextPeriod,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool forceRefresh = false)
     {
+        if (!forceRefresh)
+        {
+            var readyResult = await TryGetReadyCacheAsync(roleId, intimacyLevel, includeNextPeriod, cancellationToken);
+            if (readyResult is not null)
+                return OperationResult<PetVoiceCacheEnsureResultDto>.Success(readyResult);
+        }
+
         CharacterDto? character = null;
         var currentKey = string.Empty;
         var contextHash = string.Empty;
@@ -199,7 +211,7 @@ public sealed class PetVoiceMenuApplicationService(
             currentKey = await GetCurrentCacheKeyAsync(0, generationToken);
             contextHash = await ComputeContextHashAsync(character, intimacyLevel, currentKey, generationToken);
             var readyGeneration = await FindReadyGenerationAsync(roleId, intimacyLevel, currentKey, contextHash, generationToken);
-            if (readyGeneration is not null)
+            if (!forceRefresh && readyGeneration is not null)
             {
                 var readyEntries = await LoadEntriesAsync(roleId, intimacyLevel, currentKey, generationToken);
                 if (IsCompleteGeneration(readyEntries, readyGeneration.GenerationId, contextHash))
@@ -269,6 +281,35 @@ public sealed class PetVoiceMenuApplicationService(
         }
     }
 
+    private async Task<PetVoiceCacheEnsureResultDto?> TryGetReadyCacheAsync(
+        string roleId,
+        int intimacyLevel,
+        bool includeNextPeriod,
+        CancellationToken cancellationToken)
+    {
+        var character = await characters.GetAsync(roleId, cancellationToken);
+        if (character is null || !character.IsEnabled) return null;
+        var cacheKey = await GetCurrentCacheKeyAsync(0, cancellationToken);
+        var contextHash = await ComputeContextHashAsync(character, intimacyLevel, cacheKey, cancellationToken);
+        var readyGeneration = await FindReadyGenerationAsync(roleId, intimacyLevel, cacheKey, contextHash, cancellationToken);
+        if (readyGeneration is null) return null;
+        var entries = await LoadEntriesAsync(roleId, intimacyLevel, cacheKey, cancellationToken);
+        if (!IsCompleteGeneration(entries, readyGeneration.GenerationId, contextHash)) return null;
+
+        if (includeNextPeriod)
+        {
+            var nextKey = await GetCurrentCacheKeyAsync(1, cancellationToken);
+            var backgroundKey = $"{character.RoleId}:{intimacyLevel}:{nextKey}";
+            _ = backgroundGenerations.GetOrAdd(backgroundKey, _ => GenerateNextPeriodAsync(character, intimacyLevel, nextKey, backgroundKey));
+        }
+        var currentPeriod = await GetCurrentPeriodAsync(cancellationToken);
+        SchedulePeriodBoundary(currentPeriod);
+        return new PetVoiceCacheEnsureResultDto(
+            readyGeneration.GenerationId, roleId, intimacyLevel, cacheKey, contextHash, Plans.Count, 0, true,
+            currentPeriod.StartAt, currentPeriod.EndAt, currentPeriod.NextCacheKey, false, "ready",
+            $"{character.Name} 的 {FormatIntimacy(intimacyLevel)} 语音缓存已准备好。");
+    }
+
     private CancellationTokenSource AcquireForegroundGeneration(string roleId, int intimacyLevel)
     {
         var owner = $"{roleId}:{intimacyLevel}";
@@ -312,6 +353,12 @@ public sealed class PetVoiceMenuApplicationService(
             try
             {
                 contextHash = await ComputeContextHashAsync(character, intimacyLevel, cacheKey, lifetime.Token);
+                var readyGeneration = await FindReadyGenerationAsync(character.RoleId, intimacyLevel, cacheKey, contextHash, lifetime.Token);
+                if (readyGeneration is not null)
+                {
+                    var entries = await LoadEntriesAsync(character.RoleId, intimacyLevel, cacheKey, lifetime.Token);
+                    if (IsCompleteGeneration(entries, readyGeneration.GenerationId, contextHash)) return;
+                }
                 await PublishStatusAsync(generationId, character, intimacyLevel, cacheKey, contextHash, "pending", 0, false, "下一周期缓存已排队。", "", "", lifetime.Token);
                 await PublishStatusAsync(generationId, character, intimacyLevel, cacheKey, contextHash, "generating_lines", 0, false, "正在生成下一周期缓存文案。", "", "", lifetime.Token);
                 await GenerateMissingAsync(character, intimacyLevel, cacheKey, contextHash, generationId, false, lifetime.Token);
@@ -476,8 +523,17 @@ public sealed class PetVoiceMenuApplicationService(
                 ["scene"] = "desktop_pet",
                 ["tier"] = FormatIntimacy(intimacyLevel),
                 ["count"] = remaining.Length.ToString(CultureInfo.InvariantCulture),
-                ["style"] = "按触发项选择 normal/soft/lively/close",
-                ["itemsJson"] = JsonSerializer.Serialize(remaining.Select(plan => new { key = plan.Key, triggerId = plan.TriggerId, category = plan.Category, bodyPart = plan.BodyPart })),
+                ["style"] = $"按触发项选择 normal/soft/lively/close；click 必须为 {ClickTextMinLength}-{ClickTextMaxLength} 个字符；startup.welcome 必须为 {StartupTextMinLength}-{StartupTextMaxLength} 个字符；只写一句可立即说完的中文台词",
+                ["itemsJson"] = JsonSerializer.Serialize(remaining.Select(plan => new
+                {
+                    key = plan.Key,
+                    triggerId = plan.TriggerId,
+                    category = plan.Category,
+                    bodyPart = plan.BodyPart,
+                    textLength = plan.TriggerId.Equals("startup.welcome", StringComparison.OrdinalIgnoreCase)
+                        ? $"{StartupTextMinLength}-{StartupTextMaxLength}"
+                        : $"{ClickTextMinLength}-{ClickTextMaxLength}"
+                })),
                 ["existingLinesJson"] = JsonSerializer.Serialize(forbidden),
                 ["acceptedLinesJson"] = JsonSerializer.Serialize(result.Values.Select(line => line.Text)),
                 ["duplicateLinesJson"] = "[]",
@@ -497,9 +553,10 @@ public sealed class PetVoiceMenuApplicationService(
                 raw.Append(delta);
             var generated = ParseLines(raw.ToString());
             ValidateGeneratedBatch(generated, remaining);
+            var remainingByKey = remaining.ToDictionary(plan => plan.Key, StringComparer.OrdinalIgnoreCase);
             foreach (var line in generated)
             {
-                if (line.Text.Length is < 1 or > 300) continue;
+                if (!remainingByKey.TryGetValue(line.CacheKey, out var plan) || !IsAllowedTextLength(line.Text, plan)) continue;
                 if (line.VoiceStyle.Trim().ToLowerInvariant() is not ("normal" or "soft" or "lively" or "close")) continue;
                 var fingerprint = NormalizeFingerprint(line.Text);
                 if (fingerprint.Length == 0 || forbidden.Concat(result.Values.Select(value => value.Text))
@@ -775,6 +832,14 @@ public sealed class PetVoiceMenuApplicationService(
         if (resultKeys.Any(string.IsNullOrWhiteSpace) || resultKeys.Distinct(StringComparer.OrdinalIgnoreCase).Count() != resultKeys.Length ||
             resultKeys.Any(key => !requestedKeys.Contains(key))) throw new InvalidDataException("缓存文案包含重复或未请求的槽位。");
         if (lines.Any(x => string.IsNullOrWhiteSpace(x.Text) || x.Text.Trim().Length > 300)) throw new InvalidDataException("缓存文案存在空文本或超长文本。");
+    }
+
+    private static bool IsAllowedTextLength(string text, PetVoiceTriggerPlan plan)
+    {
+        var length = text.Trim().Length;
+        return plan.TriggerId.Equals("startup.welcome", StringComparison.OrdinalIgnoreCase)
+            ? length is >= StartupTextMinLength and <= StartupTextMaxLength
+            : length is >= ClickTextMinLength and <= ClickTextMaxLength;
     }
 
     private static void ValidateAudioFile(string path)

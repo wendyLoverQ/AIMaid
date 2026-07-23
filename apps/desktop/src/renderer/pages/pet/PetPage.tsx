@@ -48,6 +48,8 @@ export default function PetPage(): React.JSX.Element {
     const readySentRef = useRef(false);
     const startupPlayedRef = useRef(false);
     const forcedVoiceRefreshPathsRef = useRef(new Set<string>());
+    const voiceCacheEnsureRef = useRef<Promise<Record<string, unknown> | null> | null>(null);
+    const voiceCacheEnsureRoleRef = useRef('');
     const stageRef = useRef<HTMLElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const itemRef = useRef<HTMLDivElement>(null);
@@ -99,18 +101,39 @@ export default function PetPage(): React.JSX.Element {
     }, [refreshPresentation]);
     useEffect(() => { presentationRef.current = presentation; }, [presentation]);
     const ensureVoiceCache = useCallback(async (announce: boolean, forceRefresh = false): Promise<Record<string, unknown> | null> => {
-        if (announce)
-            showBubble('正在准备当前角色的点击语音缓存…', 'feedback');
-        const response = await bridge.core.invoke({ type: 'pet.voice_cache.ensure', payload: { includeNextPeriod: true, forceRefresh } }, 120_000);
-        if (!response.success || response.payload === null) {
-            showBubble(response.error?.message ?? '点击语音缓存生成失败。', 'error');
-            return null;
+        if (voiceCacheEnsureRef.current !== null) {
+            if (voiceCacheEnsureRoleRef.current === voiceRoleIdRef.current)
+                return voiceCacheEnsureRef.current;
+            await voiceCacheEnsureRef.current;
+            if (voiceCacheEnsureRef.current !== null)
+                return voiceCacheEnsureRef.current;
         }
-        if (announce) {
-            const value = response.payload as { message?: string };
-            showBubble(value.message ?? '点击语音缓存已准备好。', 'feedback');
+        const requestedRoleId = voiceRoleIdRef.current;
+        const task = (async (): Promise<Record<string, unknown> | null> => {
+            if (announce)
+                showBubble('正在准备当前角色的点击语音缓存…', 'feedback');
+            const response = await bridge.core.invoke({ type: 'pet.voice_cache.ensure', payload: { includeNextPeriod: true, forceRefresh } }, 120_000);
+            if (!response.success || response.payload === null) {
+                showBubble(response.error?.message ?? '点击语音缓存生成失败。', 'error');
+                return null;
+            }
+            if (announce) {
+                const value = response.payload as { message?: string };
+                showBubble(value.message ?? '点击语音缓存已准备好。', 'feedback');
+            }
+            return response.payload as Record<string, unknown>;
+        })();
+        voiceCacheEnsureRef.current = task;
+        voiceCacheEnsureRoleRef.current = requestedRoleId;
+        try {
+            return await task;
         }
-        return response.payload as Record<string, unknown>;
+        finally {
+            if (voiceCacheEnsureRef.current === task) {
+                voiceCacheEnsureRef.current = null;
+                voiceCacheEnsureRoleRef.current = '';
+            }
+        }
     }, [showBubble]);
     useEffect(() => {
         if (!petRendererReady)
@@ -169,7 +192,7 @@ export default function PetPage(): React.JSX.Element {
                 }
                 const canvas = visualCanvasRef.current;
                 if (canvas !== null)
-                    void playPetClickVoice({ bodyPart: resolveImageBodyPart(canvas, event.clientX, event.clientY) });
+                    void playPetClickVoice(resolveImageVoiceContext(canvas, event.clientX, event.clientY));
             }
         });
         interactionRef.current = interaction;
@@ -727,12 +750,12 @@ function isOpaqueCanvasPoint(canvas: HTMLCanvasElement, clientX: number, clientY
         return false;
     }
 }
-function resolveImageBodyPart(canvas: HTMLCanvasElement, clientX: number, clientY: number): string {
+function resolveImageVoiceContext(canvas: HTMLCanvasElement, clientX: number, clientY: number): PetVoiceClickContext {
     const rect = canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0)
-        return 'body';
-    const x = (clientX - rect.left) / rect.width;
-    const y = (clientY - rect.top) / rect.height;
+        return { bodyPart: 'body', hitAreaName: 'image_region:body', normalizedX: 0.5, normalizedY: 0.5 };
+    const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const y = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
     const areas = [
         { id: 'face', x: 0.34, y: 0.10, width: 0.32, height: 0.15, priority: 140 },
         { id: 'hair', x: 0.26, y: 0.00, width: 0.48, height: 0.13, priority: 130 },
@@ -743,9 +766,10 @@ function resolveImageBodyPart(canvas: HTMLCanvasElement, clientX: number, client
         { id: 'leg', x: 0.25, y: 0.48, width: 0.50, height: 0.30, priority: 80 },
         { id: 'body', x: 0.25, y: 0.20, width: 0.50, height: 0.34, priority: 70 }
     ];
-    return areas
+    const bodyPart = areas
         .filter((area) => x >= area.x && x <= area.x + area.width && y >= area.y && y <= area.y + area.height)
         .sort((left, right) => right.priority - left.priority || left.width * left.height - right.width * right.height)[0]?.id ?? 'body';
+    return { bodyPart, hitAreaName: `image_region:${bodyPart}`, normalizedX: x, normalizedY: y };
 }
 function PetContextMenu({ position, presentation, voiceMenu, execute, open, cycleVoiceIntimacy, clearVoiceCache, showCurrentConversation, close }: {
     position: {
