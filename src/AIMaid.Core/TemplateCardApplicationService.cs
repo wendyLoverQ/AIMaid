@@ -12,7 +12,8 @@ namespace AIMaid.Core;
 public sealed class TemplateCardApplicationService(
     ICharacterStore characters,
     IDomainDocumentStore documents,
-    IAiProviderClient aiProvider) :
+    IAiProviderClient aiProvider,
+    IEventPublisher events) :
     ICommandHandler<GenerateTemplateCardCommand, OperationResult<CharacterDto>>
 {
     private const string SourcePromptDomain = "llm_source_prompt";
@@ -79,6 +80,7 @@ public sealed class TemplateCardApplicationService(
                             UpdatedAt = DateTimeOffset.Now
                         };
                         await characters.UpsertAsync(role, cancellationToken);
+                        await events.PublishAsync(new CharacterChangedEvent(EventIdentity.NewId(), DateTimeOffset.Now, role.RoleId, "template_changed"), cancellationToken);
                         return OperationResult<CharacterDto>.Success(role);
                     }
                     catch (OperationCanceledException) { throw; }

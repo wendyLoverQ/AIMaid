@@ -180,6 +180,12 @@ public sealed class ExtendedDomainApplicationService :
                 mutations.Add(new(AtomicMutationKind.DeleteDomain, ModelConfigurationSecretDomain, configuration.ModelKey, IdempotentDelete: true));
         }
         await atomic.ApplyAsync(mutations, cancellationToken);
+        var cacheModelJson = await store.GetAsync(BusinessModelDomain, "lazy_voice_cache", cancellationToken);
+        var cacheModel = cacheModelJson is null ? null : JsonSerializer.Deserialize<LlmBusinessModelConfigDto>(cacheModelJson, JsonConfig.Persistence);
+        var changedKeys = command.Configurations.Select(x => x.ModelKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (cacheModel is not null && changedKeys.Contains(cacheModel.ModelKey))
+            await events.PublishAsync(new AIMaid.Contracts.PetVoice.VoiceCacheConfigurationChangedEvent(EventIdentity.NewId(), DateTimeOffset.Now,
+                "model_configuration_changed", changedKeys.ToArray()), cancellationToken);
         return OperationResult.Success();
     }
 
@@ -216,22 +222,29 @@ public sealed class ExtendedDomainApplicationService :
             var value = configuration with { Provider = provider, UpdatedAt = DateTimeOffset.Now };
             await store.UpsertAsync(BusinessModelDomain, value.BusinessKey, JsonSerializer.Serialize(value), value.UpdatedAt, cancellationToken);
         }
+        if (command.Configurations.Any(x => x.BusinessKey.Equals("lazy_voice_cache", StringComparison.OrdinalIgnoreCase)))
+            await events.PublishAsync(new AIMaid.Contracts.PetVoice.VoiceCacheConfigurationChangedEvent(EventIdentity.NewId(), DateTimeOffset.Now,
+                "cache_model_changed", ["lazy_voice_cache"]), cancellationToken);
         return OperationResult.Success();
     }
 
     public async Task<IReadOnlyList<LlmSourcePromptDto>> HandleAsync(ListLlmSourcePromptsQuery query, CancellationToken cancellationToken = default)
         => (await ListAsync<LlmSourcePromptDto>(SourcePromptDomain, cancellationToken)).Where(item => item.IsEnabled).OrderBy(item => item.SourceKey).ToArray();
 
-    public Task<OperationResult> HandleAsync(SaveLlmSourcePromptCommand command, CancellationToken cancellationToken = default)
+    public async Task<OperationResult> HandleAsync(SaveLlmSourcePromptCommand command, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(command.Prompt.SourceKey)) return Task.FromResult(OperationResult.Failure("source_prompt.invalid", "Source Key 不能为空。"));
+        if (string.IsNullOrWhiteSpace(command.Prompt.SourceKey)) return OperationResult.Failure("source_prompt.invalid", "Source Key 不能为空。");
         if (!string.IsNullOrWhiteSpace(command.Prompt.OutputSchemaJson))
         {
             try { using var _ = JsonDocument.Parse(command.Prompt.OutputSchemaJson); }
-            catch (JsonException) { return Task.FromResult(OperationResult.Failure("source_prompt.invalid_schema", "输出结构 JSON 无效。")); }
+            catch (JsonException) { return OperationResult.Failure("source_prompt.invalid_schema", "输出结构 JSON 无效。"); }
         }
         var value = command.Prompt with { UpdatedAt = DateTimeOffset.Now };
-        return SaveAsync(SourcePromptDomain, value.SourceKey, value, value.UpdatedAt, cancellationToken);
+        var result = await SaveAsync(SourcePromptDomain, value.SourceKey, value, value.UpdatedAt, cancellationToken);
+        if (result.Succeeded && value.SourceKey.Equals("lazy_voice_lines", StringComparison.OrdinalIgnoreCase))
+            await events.PublishAsync(new AIMaid.Contracts.PetVoice.VoiceCacheConfigurationChangedEvent(EventIdentity.NewId(), DateTimeOffset.Now,
+                "cache_prompt_changed", [value.SourceKey]), cancellationToken);
+        return result;
     }
 
     private static OperationResult? ValidateModelConfiguration(ModelConfigurationDto value)

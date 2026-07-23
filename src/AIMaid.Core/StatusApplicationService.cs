@@ -19,7 +19,6 @@ public sealed class StatusApplicationService(
 {
     private const string ProxySettingKey = "user_config:App:Proxy:Address";
     private const string CachePeriodSettingKey = "user_config:App:VoiceCache:LazyCachePeriodHours";
-    private const int VoiceCachePlanCount = 12;
 
     public Task<SystemResourceSnapshotDto> GetResourcesAsync(CancellationToken cancellationToken = default)
         => platform.GetResourcesAsync(cancellationToken);
@@ -37,7 +36,7 @@ public sealed class StatusApplicationService(
         using var maid = await FindMaidStateAsync(voice.RoleId, cancellationToken);
         var maidRoot = maid?.RootElement;
         var cacheCompleted = voice.RoleId.Length == 0
-            ? VoiceCachePlanCount
+            ? PetVoiceTriggerCatalog.Plans.Count
             : await CountCompletedVoiceCacheAsync(voice.RoleId, voice.IntimacyLevel, cancellationToken);
         return new StatusRoleStateDto(
             voice.RoleId,
@@ -45,7 +44,7 @@ public sealed class StatusApplicationService(
             character?.VoiceName ?? character?.PreferredVoiceId ?? string.Empty,
             voice.IntimacyLevel,
             voice.IntimacyLabel,
-            VoiceCachePlanCount,
+            PetVoiceTriggerCatalog.Plans.Count,
             cacheCompleted,
             maid is not null,
             maidRoot is null ? string.Empty : FormatMood(maidRoot.Value),
@@ -84,9 +83,21 @@ public sealed class StatusApplicationService(
 
     private async Task<int> CountCompletedVoiceCacheAsync(string roleId, int intimacyLevel, CancellationToken cancellationToken)
     {
-        var periodText = (await settings.GetAsync(CachePeriodSettingKey, cancellationToken))?.Value;
+        var periodText = (await settings.GetAsync("voice_cache_period_hours", cancellationToken))?.Value ??
+            (await settings.GetAsync(CachePeriodSettingKey, cancellationToken))?.Value;
         var period = int.TryParse(periodText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed is 1 or 2 or 4 or 8 or 16 ? parsed : 1;
-        var cacheKey = BuildLazyCacheKey(DateTime.Now, period);
+        var cacheKey = PetVoiceCachePeriodCalculator.Calculate(DateTimeOffset.Now, period).CacheKey;
+        var contextHash = string.Empty;
+        foreach (var json in await documents.ListAsync("voice_cache_generation", cancellationToken))
+        {
+            using var manifest = JsonDocument.Parse(json);
+            if (string.Equals(ReadString(manifest.RootElement, "RoleId", "roleId"), roleId, StringComparison.OrdinalIgnoreCase) &&
+                ReadInt(manifest.RootElement, "IntimacyLevel", "intimacyLevel") == intimacyLevel &&
+                string.Equals(ReadString(manifest.RootElement, "CacheKey", "cacheKey"), cacheKey, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(ReadString(manifest.RootElement, "Status", "status"), "ready", StringComparison.OrdinalIgnoreCase))
+            { contextHash = ReadString(manifest.RootElement, "ContextHash", "contextHash"); break; }
+        }
+        if (contextHash.Length == 0) return 0;
         var slots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var json in await documents.ListAsync("voice_role_audio_cache", cancellationToken))
         {
@@ -95,18 +106,12 @@ public sealed class StatusApplicationService(
             if (!string.Equals(ReadString(root, "RoleId", "roleId"), roleId, StringComparison.OrdinalIgnoreCase) ||
                 ReadInt(root, "IntimacyLevel", "intimacyLevel") != intimacyLevel ||
                 !string.Equals(ReadString(root, "CacheKey", "cacheKey"), cacheKey, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!string.Equals(ReadString(root, "ContextHash", "contextHash"), contextHash, StringComparison.OrdinalIgnoreCase)) continue;
             var audioPath = ReadString(root, "AudioPath", "audioPath");
             if (audioPath.Length == 0 || !File.Exists(audioPath)) continue;
             slots.Add($"{ReadString(root, "TriggerId", "triggerId")}|{ReadString(root, "BodyPart", "bodyPart")}");
         }
-        return Math.Min(VoiceCachePlanCount, slots.Count);
-    }
-
-    private static string BuildLazyCacheKey(DateTime now, int periodHours)
-    {
-        var epoch = new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Local);
-        var hours = (long)Math.Floor((now - epoch).TotalHours);
-        return epoch.AddHours(hours / periodHours * periodHours).ToString("yyyyMMddHH", CultureInfo.InvariantCulture);
+        return Math.Min(PetVoiceTriggerCatalog.Plans.Count, slots.Count);
     }
 
     private static string FormatMood(JsonElement root) => ReadString(root, "Mood", "mood") switch

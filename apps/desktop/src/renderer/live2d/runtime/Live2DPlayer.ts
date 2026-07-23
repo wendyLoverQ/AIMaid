@@ -12,7 +12,7 @@ import type { PetLipSyncFrame, PetLipSyncSource } from '../../../shared/pet';
 
 let Live2DModel: typeof Live2DModelType | null = null;
 
-export type BodyPart = 'head' | 'face' | 'hair' | 'body' | 'hand' | 'leg' | 'other';
+export type BodyPart = 'head' | 'face' | 'hair' | 'body' | 'hand' | 'leg' | 'foot' | 'other';
 
 type OutfitRegion = BodyPart | 'whole';
 
@@ -336,9 +336,9 @@ export class Live2DPlayer {
     this.applyTransform('loadModel');
   }
 
-  async playClickMotion(bodyPart: 'head' | 'face' | 'hair' | 'body' | 'hand' | 'leg' | 'other'): Promise<boolean> {
+  async playClickMotion(bodyPart: BodyPart): Promise<boolean> {
     const head = bodyPart === 'head' || bodyPart === 'face' || bodyPart === 'hair';
-    const preferredGroups = head ? ['TapHead', 'TapBody'] : bodyPart === 'leg' ? ['TapLeg', 'TapBody'] : ['TapBody'];
+    const preferredGroups = head ? ['TapHead', 'TapBody'] : bodyPart === 'leg' || bodyPart === 'foot' ? ['TapLeg', 'TapBody'] : ['TapBody'];
     return this.applyActionTag(head ? 'touch_head' : 'touch_body', preferredGroups);
   }
 
@@ -814,6 +814,19 @@ export class Live2DPlayer {
 
   }
 
+  /** Preserves the native HitArea and geometry context for cache selection. */
+  resolveVoiceHitContext(clientX: number, clientY: number): { bodyPart: BodyPart; hitAreaName: string; normalizedX: number; normalizedY: number } {
+    const point = this.clientToPixiPoint(clientX, clientY);
+    const bounds = this.live2dModel?.getBounds?.();
+    const normalizedX = bounds !== undefined && bounds.width > 0 ? Math.max(0, Math.min(1, (point.x - bounds.x) / bounds.width)) : 0.5;
+    const normalizedY = bounds !== undefined && bounds.height > 0 ? Math.max(0, Math.min(1, (point.y - bounds.y) / bounds.height)) : 0.5;
+    const hitAreaName = this.hitTest(clientX, clientY)[0] ?? '';
+    const byName = classifyBodyPartLabel(hitAreaName);
+    const bodyPart = byName !== 'other' ? byName : this.resolveAutoHitArea(clientX, clientY) ??
+      (normalizedY < 0.28 ? 'head' : normalizedY < 0.45 ? 'face' : normalizedY < 0.75 ? 'body' : 'leg');
+    return { bodyPart, hitAreaName, normalizedX, normalizedY };
+  }
+
   setViewportPlacement(x: number, y: number): void {
     this.placementX = Number.isFinite(x) ? x : this.placementX;
     this.placementY = Number.isFinite(y) ? y : this.placementY;
@@ -1108,7 +1121,8 @@ function classifyBodyPartLabel(label: string): BodyPart {
   if (/(hair|bang|fringe|ponytail|头发|髮|刘海|鬓|马尾)/i.test(label)) return 'hair';
   if (/(face|eye|brow|nose|mouth|lip|cheek|forehead|脸|臉|眼|眉|鼻|嘴|唇|腮|额)/i.test(label)) return 'face';
   if (/(hand|arm|finger|wrist|palm|手|臂|指|腕|掌)/i.test(label)) return 'hand';
-  if (/(leg|foot|feet|knee|shoe|boot|thigh|calf|sock|lower.?body|hem|腿|脚|腳|膝|鞋|靴|袜|襪|下半身|下摆|下擺)/i.test(label)) return 'leg';
+  if (/(foot|feet|shoe|boot|sock|脚|腳|鞋|靴|袜|襪)/i.test(label)) return 'foot';
+  if (/(leg|knee|thigh|calf|lower.?body|hem|腿|膝|下半身|下摆|下擺)/i.test(label)) return 'leg';
   if (/(head|horn|ear|hat|cap|头|頭|角|耳|帽)/i.test(label)) return 'head';
   if (/(body|chest|breast|belly|waist|hip|torso|neck|shoulder|clothes|outfit|dress|skirt|身体|身體|胸|腹|腰|胯|脖|颈|頸|肩|衣|裙)/i.test(label)) return 'body';
   return 'other';

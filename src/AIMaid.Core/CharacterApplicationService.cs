@@ -62,7 +62,7 @@ public sealed class CharacterApplicationService :
 
     private async Task DeleteRoleDocumentsAsync(string roleId, CancellationToken cancellationToken)
     {
-        foreach (var domain in new[] { "voice_role_voice", "voice_role_binding", "voice_role", "voice_conversation", "voice_role_audio_cache" })
+        foreach (var domain in new[] { "voice_role_voice", "voice_role_binding", "voice_role", "voice_conversation", "voice_role_audio_cache", "voice_cache_generation" })
         {
             foreach (var id in await documents.ListIdsAsync(domain, cancellationToken))
             {

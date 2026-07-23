@@ -139,8 +139,8 @@ export type CoreRequest =
   | { type: 'pet.voice_intimacy.cycle'; payload: Record<string, never> }
   | { type: 'pet.voice_cache.clear'; payload: Record<string, never> }
   | { type: 'pet.voice_cache.ensure'; payload: { includeNextPeriod?: boolean } }
-  | { type: 'pet.voice.play'; payload: { triggerId?: string; bodyPart?: string; source?: string } }
-  | { type: 'pet.voice.playback.report'; payload: { triggerId: string; bodyPart?: string; text?: string; audioPath?: string; played: boolean; reason?: string; source?: string } }
+  | { type: 'pet.voice.play'; payload: { triggerId?: string; bodyPart?: string; source?: string; hitAreaName?: string; normalizedX?: number; normalizedY?: number } }
+  | { type: 'pet.voice.playback.report'; payload: { triggerId: string; bodyPart?: string; text?: string; audioPath?: string; played: boolean; reason?: string; source?: string; generationId?: string; contextHash?: string; category?: string; hitAreaName?: string; normalizedX?: number; normalizedY?: number } }
   | { type: 'music.current'; payload: Record<string, never> }
   | { type: 'music.search_and_play'; payload: { songName: string } }
   | { type: 'music.toggle_pause'; payload: Record<string, never> }
@@ -179,6 +179,8 @@ export const CORE_EVENT_TYPES = [
   'chat.completed',
   'reminder.due',
   'character.changed',
+  'pet.voice_cache.status',
+  'pet.voice_cache.configuration_changed',
   'agent.approval_requested',
   'agent.tool_call_completed',
   'music.playback.requested',
@@ -441,14 +443,23 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
     case 'pet.voice.play':
       return (value.payload.triggerId === undefined || typeof value.payload.triggerId === 'string') &&
         (value.payload.bodyPart === undefined || typeof value.payload.bodyPart === 'string') &&
-        (value.payload.source === undefined || typeof value.payload.source === 'string')
+        (value.payload.source === undefined || typeof value.payload.source === 'string') &&
+        (value.payload.hitAreaName === undefined || typeof value.payload.hitAreaName === 'string') &&
+        (value.payload.normalizedX === undefined || typeof value.payload.normalizedX === 'number') &&
+        (value.payload.normalizedY === undefined || typeof value.payload.normalizedY === 'number')
     case 'pet.voice.playback.report':
       return isNonEmptyString(value.payload.triggerId) && typeof value.payload.played === 'boolean' &&
         (value.payload.bodyPart === undefined || typeof value.payload.bodyPart === 'string') &&
         (value.payload.text === undefined || typeof value.payload.text === 'string') &&
         (value.payload.audioPath === undefined || typeof value.payload.audioPath === 'string') &&
         (value.payload.reason === undefined || typeof value.payload.reason === 'string') &&
-        (value.payload.source === undefined || typeof value.payload.source === 'string')
+        (value.payload.source === undefined || typeof value.payload.source === 'string') &&
+        (value.payload.generationId === undefined || typeof value.payload.generationId === 'string') &&
+        (value.payload.contextHash === undefined || typeof value.payload.contextHash === 'string') &&
+        (value.payload.category === undefined || typeof value.payload.category === 'string') &&
+        (value.payload.hitAreaName === undefined || typeof value.payload.hitAreaName === 'string') &&
+        (value.payload.normalizedX === undefined || typeof value.payload.normalizedX === 'number') &&
+        (value.payload.normalizedY === undefined || typeof value.payload.normalizedY === 'number')
     case 'music.search_and_play':
       return isNonEmptyString(value.payload.songName) && value.payload.songName.length <= 200
     case 'status.llm_latencies':

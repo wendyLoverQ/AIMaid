@@ -30,8 +30,23 @@
     "sql": "CREATE UNIQUE INDEX IX_TimerRecords_RecordId ON TimerRecords(RecordId)"
   },
   {
+    "name": "IX_VoiceCacheGenerations_Status_UpdatedAt",
+    "table": "VoiceCacheGenerations",
+    "sql": "CREATE INDEX IX_VoiceCacheGenerations_Status_UpdatedAt ON VoiceCacheGenerations(Status, UpdatedAt)"
+  },
+  {
     "name": "IX_VoiceRoleCards_RoleId",
     "table": "VoiceRoleCards",
     "sql": "CREATE UNIQUE INDEX IX_VoiceRoleCards_RoleId ON VoiceRoleCards(RoleId)"
+  },
+  {
+    "name": "UX_VoiceCacheGenerations_Context",
+    "table": "VoiceCacheGenerations",
+    "sql": "CREATE UNIQUE INDEX UX_VoiceCacheGenerations_Context ON VoiceCacheGenerations(RoleId, IntimacyLevel, CacheKey)"
+  },
+  {
+    "name": "UX_VoiceRoleAudioCaches_Slot",
+    "table": "VoiceRoleAudioCaches",
+    "sql": "CREATE UNIQUE INDEX UX_VoiceRoleAudioCaches_Slot\n  ON VoiceRoleAudioCaches(RoleId, IntimacyLevel, CacheKey, TriggerId, BodyPart)"
   }
 ]

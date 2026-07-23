@@ -84,12 +84,39 @@ internal static class SchemaBootstrapper
                 CREATE UNIQUE INDEX IF NOT EXISTS IX_ProactiveTriggerRules_RuleId ON ProactiveTriggerRules(RuleId);
                 CREATE TABLE IF NOT EXISTS ProactiveTriggerStates (Id INTEGER PRIMARY KEY AUTOINCREMENT, RuleId TEXT NOT NULL, LastTriggeredAt TEXT NULL, TriggerCount INTEGER NOT NULL, LastResult TEXT NOT NULL, UpdatedAt TEXT NOT NULL);
                 CREATE UNIQUE INDEX IF NOT EXISTS IX_ProactiveTriggerStates_RuleId ON ProactiveTriggerStates(RuleId);
+                CREATE TABLE IF NOT EXISTS VoiceCacheGenerations (
+                    GenerationId TEXT PRIMARY KEY, RoleId TEXT NOT NULL, IntimacyLevel INTEGER NOT NULL,
+                    CacheKey TEXT NOT NULL, ContextHash TEXT NOT NULL, CatalogVersion TEXT NOT NULL,
+                    Status TEXT NOT NULL, TotalEntries INTEGER NOT NULL, CompletedEntries INTEGER NOT NULL,
+                    PeriodStartAt TEXT NOT NULL, PeriodEndAt TEXT NOT NULL, ErrorCode TEXT NOT NULL DEFAULT '',
+                    ErrorMessage TEXT NOT NULL DEFAULT '', CreatedAt TEXT NOT NULL, UpdatedAt TEXT NOT NULL);
+                CREATE UNIQUE INDEX IF NOT EXISTS UX_VoiceCacheGenerations_Context ON VoiceCacheGenerations(RoleId, IntimacyLevel, CacheKey);
+                CREATE INDEX IF NOT EXISTS IX_VoiceCacheGenerations_Status_UpdatedAt ON VoiceCacheGenerations(Status, UpdatedAt);
                 """, cancellationToken);
 
             await AddColumnIfMissingAsync(connection, transaction, "AppSettings", "UpdatedAt", "TEXT NOT NULL DEFAULT '1970-01-01T00:00:00+00:00'", cancellationToken);
             await AddColumnIfMissingAsync(connection, transaction, "VoiceRoleCards", "CreatedAt", "TEXT NOT NULL DEFAULT '1970-01-01T00:00:00+00:00'", cancellationToken);
             await AddColumnIfMissingAsync(connection, transaction, "VoiceRoleCards", "AvatarPath", "TEXT NOT NULL DEFAULT ''", cancellationToken);
             await AddColumnIfMissingAsync(connection, transaction, "TimerRecords", "RecordId", "TEXT NULL", cancellationToken);
+            await AddColumnIfMissingAsync(connection, transaction, "VoiceRoleAudioCaches", "GenerationId", "TEXT NOT NULL DEFAULT ''", cancellationToken);
+            await AddColumnIfMissingAsync(connection, transaction, "VoiceRoleAudioCaches", "ContextHash", "TEXT NOT NULL DEFAULT ''", cancellationToken);
+            await AddColumnIfMissingAsync(connection, transaction, "VoiceTriggerLogs", "GenerationId", "TEXT NOT NULL DEFAULT ''", cancellationToken);
+            await AddColumnIfMissingAsync(connection, transaction, "VoiceTriggerLogs", "ContextHash", "TEXT NOT NULL DEFAULT ''", cancellationToken);
+            await AddColumnIfMissingAsync(connection, transaction, "VoiceTriggerLogs", "HitAreaName", "TEXT NOT NULL DEFAULT ''", cancellationToken);
+            await AddColumnIfMissingAsync(connection, transaction, "VoiceTriggerLogs", "NormalizedX", "REAL NULL", cancellationToken);
+            await AddColumnIfMissingAsync(connection, transaction, "VoiceTriggerLogs", "NormalizedY", "REAL NULL", cancellationToken);
+            // Derived cache rows are safe to consolidate before the slot uniqueness constraint is introduced.
+            await ExecuteAsync(connection, transaction, """
+                DELETE FROM VoiceRoleAudioCaches
+                WHERE Id NOT IN (
+                  SELECT keep.Id FROM (
+                    SELECT Id, ROW_NUMBER() OVER (
+                      PARTITION BY RoleId, IntimacyLevel, CacheKey, TriggerId, BodyPart
+                      ORDER BY IsEnabled DESC, UpdatedAt DESC, Id DESC) AS row_number
+                    FROM VoiceRoleAudioCaches) AS keep WHERE keep.row_number=1);
+                CREATE UNIQUE INDEX IF NOT EXISTS UX_VoiceRoleAudioCaches_Slot
+                  ON VoiceRoleAudioCaches(RoleId, IntimacyLevel, CacheKey, TriggerId, BodyPart);
+                """, cancellationToken);
             await ExecuteAsync(connection, transaction, "CREATE UNIQUE INDEX IF NOT EXISTS IX_AppSettings_Key ON AppSettings(Key); CREATE UNIQUE INDEX IF NOT EXISTS IX_VoiceRoleCards_RoleId ON VoiceRoleCards(RoleId); UPDATE TimerRecords SET RecordId='legacy_timer_' || Id WHERE COALESCE(RecordId,'')=''; CREATE UNIQUE INDEX IF NOT EXISTS IX_TimerRecords_RecordId ON TimerRecords(RecordId);", cancellationToken);
             if (await ExistsAsync(connection, "VoiceRoles", cancellationToken))
                 await ExecuteAsync(connection, transaction, "UPDATE VoiceRoleCards SET AvatarPath=COALESCE((SELECT AvatarPath FROM VoiceRoles WHERE VoiceRoles.RoleId=VoiceRoleCards.RoleId LIMIT 1),'') WHERE COALESCE(AvatarPath,'')='';", cancellationToken);
@@ -114,6 +141,7 @@ internal static class SchemaBootstrapper
             ["VoiceRoleCards"] = ["RoleId", "CreatedAt", "UpdatedAt"],
             ["TimerRecords"] = ["Id", "RecordId", "SavedAt", "DurationSeconds"],
             ["CoreBackgroundTasks"] = ["TaskId", "TaskType", "UpdatedAt"]
+            , ["VoiceCacheGenerations"] = ["GenerationId", "RoleId", "ContextHash", "Status"]
         };
         foreach (var pair in required)
         {

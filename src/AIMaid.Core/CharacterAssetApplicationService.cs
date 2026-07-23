@@ -11,7 +11,8 @@ namespace AIMaid.Core;
 public sealed class CharacterAssetApplicationService(
     IDomainDocumentStore store,
     ApplicationPaths paths,
-    ICharacterStore characters) :
+    ICharacterStore characters,
+    IEventPublisher events) :
     IQueryHandler<ListVoiceAssetsQuery, IReadOnlyList<VoiceAssetDto>>,
     ICommandHandler<AddVoiceAssetCommand, OperationResult<VoiceAssetDto>>,
     ICommandHandler<ImportCharacterAvatarCommand, OperationResult<string>>,
@@ -94,6 +95,7 @@ public sealed class CharacterAssetApplicationService(
             var id = StableLegacyId("legacy_role_voice_", $"{command.RoleId}:{item.Style}");
             await store.UpsertAsync(RoleVoiceDomain, id, JsonSerializer.Serialize(item), item.UpdatedAt, cancellationToken);
         }
+        await events.PublishAsync(new CharacterChangedEvent(EventIdentity.NewId(), DateTimeOffset.Now, command.RoleId, "voices_changed"), cancellationToken);
         return OperationResult.Success();
     }
 

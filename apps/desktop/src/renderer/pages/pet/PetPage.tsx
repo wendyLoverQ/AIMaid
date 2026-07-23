@@ -23,6 +23,7 @@ import { playCachedAudio } from '../chat/tts-playback';
 import { usePetBubbleQueue, type PetBubbleQueue } from './usePetBubbleQueue';
 type PetHitTest = (clientX: number, clientY: number) => boolean;
 type PetPointerClick = (event: MouseEvent) => void;
+type PetVoiceClickContext = { bodyPart: string; hitAreaName?: string; normalizedX?: number; normalizedY?: number };
 const BUBBLE_ALPHA_GAP = 5;
 const BUBBLE_TAIL_HEIGHT = 21;
 const BUBBLE_ANCHOR_REFRESH_MS = 120;
@@ -41,7 +42,9 @@ export default function PetPage(): React.JSX.Element {
     const [liveVisualTransform, setLiveVisualTransform] = useState<PetVisualTransform>({ centerX: 0, centerY: 0, scale: 1 });
     const [voiceMenu, setVoiceMenu] = useState({ roleName: '未选择', intimacy: '信赖 5 级' });
     const [visualizerStyle, setVisualizerStyle] = useState<MusicVisualizerStyle>('surround-bars');
+    const [petRendererReady, setPetRendererReady] = useState(false);
     const readySentRef = useRef(false);
+    const startupPlayedRef = useRef(false);
     const stageRef = useRef<HTMLElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const itemRef = useRef<HTMLDivElement>(null);
@@ -85,39 +88,61 @@ export default function PetPage(): React.JSX.Element {
         if (readySentRef.current)
             return;
         readySentRef.current = true;
+        setPetRendererReady(true);
         void bridge.pet.ready();
     }, []);
     useEffect(() => {
         void refreshPresentation();
     }, [refreshPresentation]);
     useEffect(() => { presentationRef.current = presentation; }, [presentation]);
-    const ensureVoiceCache = useCallback(async (announce: boolean): Promise<void> => {
+    const ensureVoiceCache = useCallback(async (announce: boolean): Promise<Record<string, unknown> | null> => {
         if (announce)
             showBubble('正在准备当前角色的点击语音缓存…', 'feedback');
         const response = await bridge.core.invoke({ type: 'pet.voice_cache.ensure', payload: { includeNextPeriod: true } }, 120_000);
         if (!response.success || response.payload === null) {
             showBubble(response.error?.message ?? '点击语音缓存生成失败。', 'error');
-            return;
+            return null;
         }
         if (announce) {
             const value = response.payload as { message?: string };
             showBubble(value.message ?? '点击语音缓存已准备好。', 'feedback');
         }
+        return response.payload as Record<string, unknown>;
     }, [showBubble]);
     useEffect(() => {
-        void ensureVoiceCache(false);
-        return bridge.events.subscribe(['character.changed', 'settings.changed'], (event) => {
+        if (!petRendererReady)
+            return;
+        void ensureVoiceCache(false).then((value) => {
+            if (value?.ready === true)
+                void playPetStartupVoice();
+        });
+        return bridge.events.subscribe(['character.changed', 'settings.changed', 'pet.voice_cache.status', 'pet.voice_cache.configuration_changed'], (event) => {
             const envelope = isRecord(event.payload) ? event.payload : null;
             const data = envelope !== null && isRecord(envelope.data) ? envelope.data : null;
             if (event.type === 'character.changed') {
+                startupPlayedRef.current = false;
+                void ensureVoiceCache(true).then((value) => { if (value?.ready === true) void playPetStartupVoice(); });
+                return;
+            }
+            if (event.type === 'pet.voice_cache.status') {
+                if (data?.isForeground !== true) return;
+                const completed = typeof data.completedEntries === 'number' ? data.completedEntries : 0;
+                const total = typeof data.totalEntries === 'number' ? data.totalEntries : 9;
+                const phase = typeof data.phase === 'string' ? data.phase : 'pending';
+                const message = typeof data.message === 'string' ? data.message : `缓存 ${phase}：${completed}/${total}`;
+                showBubble(`${message} (${completed}/${total})`, phase === 'failed' ? 'error' : 'feedback');
+                return;
+            }
+            if (event.type === 'pet.voice_cache.configuration_changed') {
                 void ensureVoiceCache(true);
                 return;
             }
             const keys = data !== null && Array.isArray(data.keys) ? data.keys : [];
-            if (keys.some((key) => key === 'voice_cache_period_hours' || key === 'user_config:App:VoiceCache:LazyCachePeriodHours'))
+            if (keys.some((key) => key === 'voice_cache_period_hours' || key === 'user_config:App:VoiceCache:LazyCachePeriodHours' ||
+                key === 'user_config:App:Tts:Enabled' || key === 'user_config:App:Tts:Endpoint' || key === 'user_config:App:Tts:VoiceId'))
                 void ensureVoiceCache(true);
         });
-    }, [ensureVoiceCache]);
+    }, [ensureVoiceCache, petRendererReady]);
     useEffect(() => {
         const panel = panelRef.current;
         if (panel === null)
@@ -139,12 +164,13 @@ export default function PetPage(): React.JSX.Element {
                 }
                 const canvas = visualCanvasRef.current;
                 if (canvas !== null)
-                    void playPetClickVoice(resolveImageBodyPart(canvas, event.clientX, event.clientY));
+                    void playPetClickVoice({ bodyPart: resolveImageBodyPart(canvas, event.clientX, event.clientY) });
             }
         });
         interactionRef.current = interaction;
         const unsubscribe = bridge.pet.onLifecycle((event) => {
             if (event.type === 'display-changed' || event.type === 'resume') interaction.syncAfterDisplayChange();
+            if (event.type === 'resume') void ensureVoiceCache(false);
             if (event.type === 'presentation-changed') void refreshPresentation();
             else if (event.type === 'reset-position') interaction.resetPosition();
         });
@@ -153,7 +179,7 @@ export default function PetPage(): React.JSX.Element {
             interaction.dispose();
             interactionRef.current = null;
         };
-    }, [refreshPresentation]);
+    }, [ensureVoiceCache, refreshPresentation]);
     useEffect(() => {
         interactionRef.current?.setLocked(menu !== null);
     }, [menu]);
@@ -353,14 +379,45 @@ export default function PetPage(): React.JSX.Element {
         const value = response.payload as { message?: string; deletedEntries?: number; deletedFiles?: number; generatedEntries?: number };
         showBubble(value.message ?? `语音缓存已清理并重生成：删除 ${value.deletedEntries ?? 0} 条，生成 ${value.generatedEntries ?? 0} 条。`, 'feedback');
     }
-    const playPetClickVoice = useCallback(async (bodyPart: string): Promise<void> => {
+    async function playPetStartupVoice(): Promise<void> {
+        if (startupPlayedRef.current)
+            return;
         const mode = presentationRef.current?.mode ?? 'unknown';
-        const response = await bridge.core.invoke({ type: 'pet.voice.play', payload: { triggerId: 'click', bodyPart, source: `pet.${mode}` } });
+        const response = await bridge.core.invoke({ type: 'pet.voice.play', payload: {
+            triggerId: 'startup.welcome', bodyPart: 'default', source: 'pet.startup'
+        } });
+        if (!response.success || response.payload === null) {
+            showBubble(response.error?.message ?? '启动语音缓存读取失败。', 'error');
+            return;
+        }
+        const value = response.payload as { matched?: boolean; audioPath?: string; text?: string; reason?: string; triggerId?: string; bodyPart?: string; generationId?: string; contextHash?: string; category?: string };
+        if (value.matched !== true || typeof value.audioPath !== 'string' || value.audioPath === '') {
+            showBubble(value.reason === 'cache_generating' ? '启动语音正在生成…' : '启动语音缓存未就绪。', 'feedback');
+            return;
+        }
+        const played = await playCachedAudio(value.audioPath);
+        await bridge.core.invoke({ type: 'pet.voice.playback.report', payload: {
+            triggerId: value.triggerId ?? 'startup.welcome', bodyPart: value.bodyPart ?? 'default', text: value.text ?? '',
+            audioPath: value.audioPath, played, reason: played ? 'cache_match' : 'play_failed', source: 'pet.startup',
+            generationId: value.generationId ?? '', contextHash: value.contextHash ?? '', category: value.category ?? 'startup'
+        } });
+        if (!played)
+            return;
+        startupPlayedRef.current = true;
+        if (typeof value.text === 'string' && value.text !== '') showBubble(value.text, 'speech');
+    }
+    const playPetClickVoice = useCallback(async (context: PetVoiceClickContext): Promise<void> => {
+        const { bodyPart } = context;
+        const mode = presentationRef.current?.mode ?? 'unknown';
+        const response = await bridge.core.invoke({ type: 'pet.voice.play', payload: { triggerId: 'click', bodyPart, source: `pet.${mode}`,
+            ...(context.hitAreaName === undefined ? {} : { hitAreaName: context.hitAreaName }),
+            ...(context.normalizedX === undefined ? {} : { normalizedX: context.normalizedX }),
+            ...(context.normalizedY === undefined ? {} : { normalizedY: context.normalizedY }) } });
         if (!response.success || response.payload === null) {
             showBubble(response.error?.message ?? '点击语音读取失败。', 'error');
             return;
         }
-        const value = response.payload as { matched?: boolean; triggerId?: string; bodyPart?: string; text?: string; audioPath?: string; reason?: string };
+        const value = response.payload as { matched?: boolean; triggerId?: string; bodyPart?: string; text?: string; audioPath?: string; reason?: string; generationId?: string; contextHash?: string; category?: string };
         if (value.matched !== true || typeof value.audioPath !== 'string' || value.audioPath.length === 0) {
             showBubble('当前点击语音缓存尚未准备好。', 'feedback');
             return;
@@ -382,7 +439,10 @@ export default function PetPage(): React.JSX.Element {
             payload: {
                 triggerId: value.triggerId ?? 'click', bodyPart: value.bodyPart ?? bodyPart,
                 text: value.text ?? '', audioPath: value.audioPath, played, reason,
-                source: `pet.${mode}`
+                source: `pet.${mode}`, generationId: value.generationId ?? '', contextHash: value.contextHash ?? '',
+                category: value.category ?? 'click', hitAreaName: context.hitAreaName ?? '',
+                ...(context.normalizedX === undefined ? {} : { normalizedX: context.normalizedX }),
+                ...(context.normalizedY === undefined ? {} : { normalizedY: context.normalizedY })
             }
         });
     }, [showBubble]);
@@ -708,7 +768,7 @@ function Live2DMode({ canvasRef, role, scale, placement, registerHitTest, regist
     registerPointerClick: (click: PetPointerClick | null) => void;
     registerContourReader: (reader: (() => AlphaContour | null) | null) => void;
     showBubble: PetBubbleQueue['show'];
-    playVoice: (bodyPart: string) => Promise<void>;
+    playVoice: (context: PetVoiceClickContext) => Promise<void>;
 }): React.JSX.Element {
     const runtimeRef = useRef<PetRuntime | null>(null);
     useEffect(() => {
@@ -727,7 +787,7 @@ function Live2DMode({ canvasRef, role, scale, placement, registerHitTest, regist
         registerHitTest((x, y) => runtime.containsPoint(x, y));
         registerPointerClick((event) => {
             void runtime.handlePointerClick(event.clientX, event.clientY, event.ctrlKey, event.altKey)
-                .then((bodyPart) => bodyPart === null ? undefined : playVoice(bodyPart))
+                .then((context) => context === null ? undefined : playVoice(context))
                 .catch((reason: unknown) => {
                     showBubble(reason instanceof Error ? reason.message : String(reason), 'error');
                 });

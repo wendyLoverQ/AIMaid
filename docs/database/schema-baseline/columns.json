@@ -4120,6 +4120,126 @@
     "primaryKeyOrder": 0
   },
   {
+    "table": "VoiceCacheGenerations",
+    "name": "GenerationId",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "VoiceCacheGenerations",
+    "name": "RoleId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheGenerations",
+    "name": "IntimacyLevel",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheGenerations",
+    "name": "CacheKey",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheGenerations",
+    "name": "ContextHash",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheGenerations",
+    "name": "CatalogVersion",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheGenerations",
+    "name": "Status",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheGenerations",
+    "name": "TotalEntries",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheGenerations",
+    "name": "CompletedEntries",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheGenerations",
+    "name": "PeriodStartAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheGenerations",
+    "name": "PeriodEndAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheGenerations",
+    "name": "ErrorCode",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheGenerations",
+    "name": "ErrorMessage",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheGenerations",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheGenerations",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
     "table": "VoiceConversations",
     "name": "ConversationId",
     "type": "TEXT",
@@ -4325,6 +4445,22 @@
     "type": "TEXT",
     "notNull": true,
     "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleAudioCaches",
+    "name": "GenerationId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleAudioCaches",
+    "name": "ContextHash",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
     "primaryKeyOrder": 0
   },
   {
@@ -4780,6 +4916,46 @@
     "name": "AudioPath",
     "type": "TEXT",
     "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceTriggerLogs",
+    "name": "GenerationId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceTriggerLogs",
+    "name": "ContextHash",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceTriggerLogs",
+    "name": "HitAreaName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceTriggerLogs",
+    "name": "NormalizedX",
+    "type": "REAL",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceTriggerLogs",
+    "name": "NormalizedY",
+    "type": "REAL",
+    "notNull": false,
     "defaultValue": null,
     "primaryKeyOrder": 0
   }

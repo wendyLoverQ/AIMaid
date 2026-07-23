@@ -33,7 +33,7 @@ try
     var settings = new SettingsApplicationService(store, events);
     var reminders = new ReminderApplicationService(store, events);
     var characters = new CharacterApplicationService(store, store, store, store, events);
-    var characterAssets = new CharacterAssetApplicationService(store, paths, store);
+    var characterAssets = new CharacterAssetApplicationService(store, paths, store, events);
     using var music = new MusicApplicationService(events, store);
     using var market = new BinanceMarketApplicationService(store, store);
     market.StartLiquidationStream();
@@ -49,8 +49,8 @@ try
         events);
     using var aiProvider = new SettingsBackedAiProviderClient(domains, store, store, store);
     var chat = new ChatApplicationService(store, store, aiProvider, events);
-    var templateCards = new TemplateCardApplicationService(store, store, aiProvider);
-    var petVoiceMenu = new PetVoiceMenuApplicationService(store, store, store, aiProvider, speechClient, templateCards, paths);
+    var templateCards = new TemplateCardApplicationService(store, store, aiProvider, events);
+    await using var petVoiceMenu = new PetVoiceMenuApplicationService(store, store, store, store, events, aiProvider, speechClient, templateCards, paths);
     var status = new StatusApplicationService(statusPlatform, store, store, store, petVoiceMenu);
     using var httpAgentExecutor = new HttpApiAgentExecutor();
     var agent = new AgentApplicationService(store,

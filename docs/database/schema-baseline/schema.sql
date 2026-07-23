@@ -10,14 +10,23 @@ CREATE UNIQUE INDEX IX_ProactiveTriggerRules_RuleId ON ProactiveTriggerRules(Rul
 CREATE UNIQUE INDEX IX_ProactiveTriggerStates_RuleId ON ProactiveTriggerStates(RuleId);
 -- index: IX_TimerRecords_RecordId
 CREATE UNIQUE INDEX IX_TimerRecords_RecordId ON TimerRecords(RecordId);
+-- index: IX_VoiceCacheGenerations_Status_UpdatedAt
+CREATE INDEX IX_VoiceCacheGenerations_Status_UpdatedAt ON VoiceCacheGenerations(Status, UpdatedAt);
 -- index: IX_VoiceRoleCards_RoleId
 CREATE UNIQUE INDEX IX_VoiceRoleCards_RoleId ON VoiceRoleCards(RoleId);
 -- index: sqlite_autoindex_CoreBackgroundTasks_1
 ;
 -- index: sqlite_autoindex_NotebookAttachments_1
 ;
+-- index: sqlite_autoindex_VoiceCacheGenerations_1
+;
 -- index: sqlite_autoindex_VoiceConversations_1
 ;
+-- index: UX_VoiceCacheGenerations_Context
+CREATE UNIQUE INDEX UX_VoiceCacheGenerations_Context ON VoiceCacheGenerations(RoleId, IntimacyLevel, CacheKey);
+-- index: UX_VoiceRoleAudioCaches_Slot
+CREATE UNIQUE INDEX UX_VoiceRoleAudioCaches_Slot
+  ON VoiceRoleAudioCaches(RoleId, IntimacyLevel, CacheKey, TriggerId, BodyPart);
 -- table: ActionTagDefinitions
 CREATE TABLE "ActionTagDefinitions" (
     "Id" INTEGER NOT NULL CONSTRAINT "PK_ActionTagDefinitions" PRIMARY KEY AUTOINCREMENT,
@@ -611,6 +620,13 @@ CREATE TABLE VoiceCacheDedupeLogs (
             Source TEXT NOT NULL,
             CreatedAt TEXT NOT NULL
         );
+-- table: VoiceCacheGenerations
+CREATE TABLE VoiceCacheGenerations (
+    GenerationId TEXT PRIMARY KEY, RoleId TEXT NOT NULL, IntimacyLevel INTEGER NOT NULL,
+    CacheKey TEXT NOT NULL, ContextHash TEXT NOT NULL, CatalogVersion TEXT NOT NULL,
+    Status TEXT NOT NULL, TotalEntries INTEGER NOT NULL, CompletedEntries INTEGER NOT NULL,
+    PeriodStartAt TEXT NOT NULL, PeriodEndAt TEXT NOT NULL, ErrorCode TEXT NOT NULL DEFAULT '',
+    ErrorMessage TEXT NOT NULL DEFAULT '', CreatedAt TEXT NOT NULL, UpdatedAt TEXT NOT NULL);
 -- table: VoiceConversations
 CREATE TABLE VoiceConversations (
     ConversationId TEXT NOT NULL CONSTRAINT PK_VoiceConversations PRIMARY KEY,
@@ -642,7 +658,7 @@ CREATE TABLE VoiceRoleAudioCaches (
     IsEnabled INTEGER NOT NULL,
     CreatedAt TEXT NOT NULL,
     UpdatedAt TEXT NOT NULL
-);
+, "GenerationId" TEXT NOT NULL DEFAULT '', "ContextHash" TEXT NOT NULL DEFAULT '');
 -- table: VoiceRoleBindings
 CREATE TABLE VoiceRoleBindings (
     Id INTEGER NOT NULL CONSTRAINT PK_VoiceRoleBindings PRIMARY KEY AUTOINCREMENT,
@@ -706,4 +722,4 @@ CREATE TABLE "VoiceTriggerLogs" (
     "Reason" TEXT NOT NULL,
     "Text" TEXT NOT NULL,
     "AudioPath" TEXT NOT NULL
-);
+, "GenerationId" TEXT NOT NULL DEFAULT '', "ContextHash" TEXT NOT NULL DEFAULT '', "HitAreaName" TEXT NOT NULL DEFAULT '', "NormalizedX" REAL NULL, "NormalizedY" REAL NULL);

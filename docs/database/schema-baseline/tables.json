@@ -184,6 +184,10 @@
     "internalTable": false
   },
   {
+    "name": "VoiceCacheGenerations",
+    "internalTable": false
+  },
+  {
     "name": "VoiceConversations",
     "internalTable": false
   },

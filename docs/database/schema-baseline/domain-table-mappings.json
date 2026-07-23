@@ -172,6 +172,10 @@
     "Value": "VoiceCacheDedupeLogs"
   },
   {
+    "Key": "voice_cache_generation",
+    "Value": "VoiceCacheGenerations"
+  },
+  {
     "Key": "voice_conversation",
     "Value": "VoiceConversations"
   },

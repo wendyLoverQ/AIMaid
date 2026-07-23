@@ -162,6 +162,8 @@ public sealed class CoreProtocolHost(
             ChatCompletedEvent value => (Type: "chat.completed", CorrelationId: value.Completion.ConversationId, Payload: (object)value),
             SettingsChangedEvent value => (Type: "settings.changed", CorrelationId: value.EventId, Payload: (object)value),
             CharacterChangedEvent value => (Type: "character.changed", CorrelationId: value.RoleId, Payload: (object)value),
+            AIMaid.Contracts.PetVoice.PetVoiceCacheStatusEvent value => (Type: "pet.voice_cache.status", CorrelationId: value.GenerationId, Payload: (object)value),
+            AIMaid.Contracts.PetVoice.VoiceCacheConfigurationChangedEvent value => (Type: "pet.voice_cache.configuration_changed", CorrelationId: value.EventId, Payload: (object)value),
             AgentApprovalRequestedEvent value => (Type: "agent.approval_requested", CorrelationId: value.ApprovalToken, Payload: (object)value),
             AgentToolCallCompletedEvent value => (Type: "agent.tool_call_completed", CorrelationId: value.ToolCall.CallId, Payload: (object)value),
             ReminderDueEvent value => (
@@ -636,7 +638,9 @@ public sealed class CoreProtocolHost(
                     await HandleValueResultAsync(request, await petVoiceMenu.ResolvePlaybackAsync(new AIMaid.Contracts.PetVoice.PlayPetVoiceCommand(
                         ReadOptionalString(request.Payload, "triggerId") ?? "click",
                         ReadOptionalString(request.Payload, "bodyPart") ?? "body",
-                        ReadOptionalString(request.Payload, "source") ?? "pet.click"), source.Token), source.Token);
+                        ReadOptionalString(request.Payload, "source") ?? "pet.click",
+                        ReadOptionalString(request.Payload, "hitAreaName") ?? "",
+                        ReadOptionalDouble(request.Payload, "normalizedX"), ReadOptionalDouble(request.Payload, "normalizedY")), source.Token), source.Token);
                     break;
                 case "pet.voice.playback.report":
                     await petVoiceMenu.ReportPlaybackAsync(new AIMaid.Contracts.PetVoice.ReportPetVoicePlaybackCommand(
@@ -646,7 +650,10 @@ public sealed class CoreProtocolHost(
                         ReadOptionalString(request.Payload, "audioPath") ?? "",
                         ReadBoolean(request.Payload, "played"),
                         ReadOptionalString(request.Payload, "reason") ?? "",
-                        ReadOptionalString(request.Payload, "source") ?? "pet.click"), source.Token);
+                        ReadOptionalString(request.Payload, "source") ?? "pet.click",
+                        ReadOptionalString(request.Payload, "generationId") ?? "", ReadOptionalString(request.Payload, "contextHash") ?? "",
+                        ReadOptionalString(request.Payload, "category") ?? "", ReadOptionalString(request.Payload, "hitAreaName") ?? "",
+                        ReadOptionalDouble(request.Payload, "normalizedX"), ReadOptionalDouble(request.Payload, "normalizedY")), source.Token);
                     await writer.SuccessAsync(request, new { saved = true }, source.Token);
                     break;
                 case "music.current":
@@ -1098,6 +1105,10 @@ public sealed class CoreProtocolHost(
         value = payload.TryGetProperty(name, out var element) ? element.GetString() ?? string.Empty : string.Empty;
         return !string.IsNullOrWhiteSpace(value);
     }
+
+    private static double? ReadOptionalDouble(JsonElement payload, string name)
+        => payload.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var parsed)
+            ? parsed : null;
 
     private static string ReadRequiredString(JsonElement payload, string name)
         => TryGetString(payload, name, out var value) ? value : throw new ArgumentException($"缺少 {name}。");

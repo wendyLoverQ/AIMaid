@@ -722,6 +722,7 @@ internal sealed class LegacyRelationalDocumentStore
             M("voice_role_voice","VoiceRoleVoices","Id",IdMode.PrefixedInteger,"legacy_role_voice_",b:["IsDefault","IsEnabled"],drop:["Id"]),
             M("voice_role_binding","VoiceRoleBindings","Id",IdMode.PrefixedInteger,"legacy_voice_binding_",b:[],drop:["Id"]),
             M("voice_role_audio_cache","VoiceRoleAudioCaches","Id",IdMode.PrefixedInteger,"legacy_voice_cache_",b:["IsEnabled"],drop:["Id"]),
+            M("voice_cache_generation","VoiceCacheGenerations","GenerationId",b:[],drop:[]),
             M("voice_conversation","VoiceConversations","ConversationId",b:[],drop:["Id"]),
             M("notebook","NotebookNotes","NoteId",b:["IsPinned","IsDeleted"],drop:["Id","ContentXaml","ImagePathsJson"],remove:["ContentRich"]),
             M("notebook_attachment","NotebookAttachments","Id",b:["IsDeleted"]),

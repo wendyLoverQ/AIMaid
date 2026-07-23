@@ -10,6 +10,12 @@ export interface PetRuntimeCallbacks {
   onScale: (scale: number) => void
   onMetrics: (metrics: PetPerformanceMetrics) => void
 }
+export interface PetVoiceHitContext {
+  bodyPart: string
+  hitAreaName: string
+  normalizedX: number
+  normalizedY: number
+}
 export class PetRuntime {
   private readonly player: Live2DPlayer
   private readonly monitor: PerformanceMonitor
@@ -104,19 +110,20 @@ export class PetRuntime {
     this.player.setViewportPlacement(x, y)
   }
 
-  async handlePointerClick(clientX: number, clientY: number, ctrlKey: boolean, altKey: boolean): Promise<string | null> {
+  async handlePointerClick(clientX: number, clientY: number, ctrlKey: boolean, altKey: boolean): Promise<PetVoiceHitContext | null> {
     if (this.state !== 'ready') return null
     if (altKey) {
       this.player.resetOutfit()
       return null
     }
-    const bodyPart = this.player.resolveAutoHitArea(clientX, clientY) ?? 'other'
+    const hit = this.player.resolveVoiceHitContext(clientX, clientY)
+    const bodyPart = hit.bodyPart
     if (ctrlKey) {
-      this.player.cycleOutfit(bodyPart)
+      this.player.cycleOutfit(bodyPart === 'foot' ? 'leg' : bodyPart)
       return null
     }
     await this.player.playClickMotion(bodyPart)
-    return bodyPart
+    return hit
   }
 
   dispose(): void {
