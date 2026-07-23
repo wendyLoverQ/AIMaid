@@ -50,39 +50,14 @@ public sealed class CoreProtocolHost(
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    private static readonly HashSet<string> RequestTypes = new(StringComparer.Ordinal)
-    {
-        "system.handshake", "system.health", "system.window.fit_virtual_desktop", "system.window.center_on_client_rect", "system.shutdown", "system.cancel", "system.stream", "settings.get", "settings.save", "chat.history", "chat.send", "chat.update_metadata", "tts.speak", "asr.transcribe",
-        "reminder.list", "reminder.save", "reminder.delete", "reminder.set_enabled", "reminder.set_allow_tts", "reminder.process_due",
-        "character.list", "character.set_current", "character.save", "character.delete", "character.voice_assets", "character.voice_asset.add", "character.avatar.import", "character.voices", "character.voices.set", "character.binding.get", "character.binding.set", "character.binding.clear", "character.template.generate",
-        "agent.capabilities.list", "agent.capability.save", "agent.execute", "agent.decide",
-        "pet.voice_menu.get", "pet.voice_intimacy.cycle", "pet.voice_cache.clear", "pet.voice_cache.ensure", "pet.voice.play", "pet.voice.playback.report", "music.current", "music.search_and_play", "music.toggle_pause", "music.stop", "market.symbols", "market.snapshot", "market.chart_snapshot", "market.list", "market.record", "status.resources", "status.network", "status.role", "status.tts", "status.llm_latencies", "status.server.health", "status.server.summary", "status.codex_quota", "tts.playback.set"
-        , "notebook.list", "notebook.save", "notebook.delete", "video.list", "video.import_file", "video.import_folder", "video.refresh_metadata",
-        "video.toggle_favorite", "video.set_display_name", "video.set_remark", "video.update_progress",
-        "video.album.create", "video.album.rename", "video.album.delete", "video.album.move",
-        "video.tag.create", "video.tag.rename", "video.tag.delete", "video.tag.set",
-        "video.remove_records", "video.delete_local_files", "video.play", "video.dependencies",
-        "subtitle.list", "subtitle.import", "subtitle.import_folder", "subtitle.delete",
-        "vault.list", "vault.get", "vault.secret.reveal", "vault.save", "vault.delete", "vault.history.list", "vault.history.restore", "vault.export"
-        , "voice_conversation.list", "voice_conversation.save", "voice_conversation.delete"
-        , "script.list", "script.save", "script.run"
-        , "timer_record.list", "timer_record.save", "timer_record.delete"
-        , "remote_site.list", "remote_site.get", "remote_site.save", "remote_site.delete"
-        , "remote_video.resolve", "remote_video.thumbnail", "remote_video.formats", "remote_video.play"
-        , "remote_video.download.start", "remote_video.download.cancel", "remote_video.download.list", "remote_video.download.delete", "remote_video.download.play"
-        , "remote_video.play.list", "remote_video.play.replay"
-        , "remote_video.settings.get", "remote_video.settings.save", "remote_video.diagnostics"
-        , "crypto_provider.get", "crypto_provider.save", "crypto_provider.check"
-        , "appearance.get", "appearance.save", "disturbance_settings.get", "disturbance_settings.save"
-        , "model.list", "model.save", "model.add", "business_model.list", "business_model.save", "source_prompt.list", "source_prompt.save"
-    };
     private static readonly string[] DefaultSafeSettingKeys = ["ui_language"];
     private readonly ConcurrentDictionary<string, CancellationTokenSource> active = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, Task> running = new(StringComparer.Ordinal);
     private readonly object businessEventGate = new();
     private readonly Dictionary<string, long> businessEventSequences = new(StringComparer.Ordinal);
     private Task businessEventWriteTail = Task.CompletedTask;
-    private readonly ConcurrentDictionary<string, byte> seen = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, DateTimeOffset> recentlyCompleted = new(StringComparer.Ordinal);
+    private static readonly TimeSpan RecentRequestRetention = TimeSpan.FromSeconds(60);
     private readonly DateTimeOffset startedAt = DateTimeOffset.UtcNow;
     private volatile bool ready;
 
@@ -104,7 +79,8 @@ public sealed class CoreProtocolHost(
                     new { code = parsed.ErrorCode, message = "收到无效协议消息。" }, cancellationToken);
                 continue;
             }
-            if (!seen.TryAdd(request.Id, 0))
+            PruneRecentlyCompleted();
+            if (active.ContainsKey(request.Id) || recentlyCompleted.ContainsKey(request.Id))
             {
                 Log("warn", "protocol_rejected", request.Id, request.Type, "duplicate", message: "Duplicate request ID rejected");
                 await writer.FailureAsync(request, "PROTOCOL_DUPLICATE_REQUEST", "请求 ID 已经使用。", cancellationToken: cancellationToken);
@@ -115,32 +91,38 @@ public sealed class CoreProtocolHost(
                 Log("warn", "protocol_rejected", request.Id, request.Type, "version_mismatch", message: "Protocol version mismatch");
                 await writer.FailureAsync(request, "PROTOCOL_VERSION_MISMATCH", "协议版本不兼容。",
                     new Dictionary<string, object?> { ["supported"] = ProtocolConstants.Version }, cancellationToken);
+                MarkCompleted(request.Id);
                 continue;
             }
-            if (!RequestTypes.Contains(request.Type))
+            if (!ProtocolRequestRegistry.IsRegistered(request.Type))
             {
                 Log("warn", "protocol_rejected", request.Id, request.Type, "unknown_type", message: "Unknown request type rejected");
                 await writer.FailureAsync(request, "PROTOCOL_UNKNOWN_TYPE", "未注册的消息类型。", cancellationToken: cancellationToken);
+                MarkCompleted(request.Id);
                 continue;
             }
             if (request.Type == "system.handshake")
             {
                 await HandleHandshakeAsync(request, cancellationToken);
+                MarkCompleted(request.Id);
                 continue;
             }
             if (!ready)
             {
                 await writer.FailureAsync(request, "CORE_NOT_READY", "Core 尚未完成握手。", cancellationToken: cancellationToken);
+                MarkCompleted(request.Id);
                 continue;
             }
             if (request.Type == "system.shutdown")
             {
                 await writer.SuccessAsync(request, new { accepted = true }, cancellationToken);
+                MarkCompleted(request.Id);
                 break;
             }
             if (request.Type == "system.cancel")
             {
                 await HandleCancelAsync(request, cancellationToken);
+                MarkCompleted(request.Id);
                 continue;
             }
 
@@ -149,6 +131,7 @@ public sealed class CoreProtocolHost(
             {
                 linked.Dispose();
                 await writer.FailureAsync(request, "PROTOCOL_DUPLICATE_REQUEST", "请求正在执行。", cancellationToken: cancellationToken);
+                MarkCompleted(request.Id);
                 continue;
             }
             var task = ExecuteAsync(request, linked);
@@ -162,6 +145,8 @@ public sealed class CoreProtocolHost(
 
         foreach (var item in active.Values) item.Cancel();
         await Task.WhenAll(running.Values);
+        active.Clear();
+        recentlyCompleted.Clear();
         businessEvents.EventPublished -= OnBusinessEventPublished;
         await businessEventWriteTail;
         Log("info", "core_exit", null, null, "stopped", message: "Core protocol host stopped",
@@ -776,8 +761,21 @@ public sealed class CoreProtocolHost(
         finally
         {
             active.TryRemove(request.Id, out _);
+            MarkCompleted(request.Id);
             source.Dispose();
         }
+    }
+
+    private void MarkCompleted(string requestId)
+    {
+        recentlyCompleted[requestId] = DateTimeOffset.UtcNow;
+    }
+
+    private void PruneRecentlyCompleted()
+    {
+        var cutoff = DateTimeOffset.UtcNow - RecentRequestRetention;
+        foreach (var pair in recentlyCompleted)
+            if (pair.Value < cutoff) recentlyCompleted.TryRemove(pair.Key, out _);
     }
 
     private async Task HandleCharacterSaveAsync(ProtocolRequest request, CancellationToken cancellationToken)
@@ -842,7 +840,7 @@ public sealed class CoreProtocolHost(
         {
             coreVersion,
             protocolVersion = ProtocolConstants.Version,
-            capabilities = ProtocolConstants.Capabilities,
+            capabilities = ProtocolRequestRegistry.Capabilities,
             platform = Environment.OSVersion.Platform.ToString(),
             arch = RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant(),
             desktopVersion

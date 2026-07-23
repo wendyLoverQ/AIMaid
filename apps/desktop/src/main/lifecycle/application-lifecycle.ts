@@ -17,6 +17,8 @@ import type { WindowKind } from '../../shared/windows'
 export class ApplicationLifecycle {
   private cleanupStarted = false
   private cleanupComplete = false
+  private startupComplete = false
+  private fatalCoreExitStarted = false
 
   constructor(
     private readonly windows: WindowManager,
@@ -58,6 +60,7 @@ export class ApplicationLifecycle {
       if (this.coreClient.getStatus().state !== 'ready') {
         throw new Error(`Core failed to become ready: ${this.coreClient.getStatus().state}`)
       }
+      this.startupComplete = true
       await this.systemSettings.initialize()
       this.reminders.start()
       const requestedWindow = this.readStartupWindow()
@@ -87,7 +90,7 @@ export class ApplicationLifecycle {
         petVisible: !hidePet
       })
     } catch (error) {
-      await this.cleanupAndExit()
+      await this.cleanupAndExit(1)
       throw error
     }
   }
@@ -101,6 +104,7 @@ export class ApplicationLifecycle {
   }
 
   private registerLifecycleHandlers(): void {
+    this.coreProcess.on('exit', this.handleCoreExit)
     app.on('child-process-gone', (_event, details) => {
       this.log.error('process', 'Electron child process gone', new Error(`${details.type} exited: ${details.reason}`), {
         type: details.type,
@@ -125,11 +129,24 @@ export class ApplicationLifecycle {
     app.on('before-quit', (event) => {
       if (this.cleanupComplete) return
       event.preventDefault()
-      if (!this.cleanupStarted) void this.cleanupAndExit()
+      if (!this.cleanupStarted) void this.cleanupAndExit(0)
     })
   }
 
-  private async cleanupAndExit(): Promise<void> {
+  private readonly handleCoreExit = (details: { code: number | null, signal: string | null, expected: boolean }): void => {
+    if (!this.startupComplete || details.expected || this.cleanupStarted || this.fatalCoreExitStarted) return
+    this.fatalCoreExitStarted = true
+    const status = this.coreProcess.status
+    this.log.error('lifecycle', 'Core exited unexpectedly after application startup', new Error(status.lastError ?? 'Core exited unexpectedly'), {
+      code: details.code,
+      signal: details.signal,
+      lastError: status.lastError
+    })
+    void this.cleanupAndExit(1)
+  }
+
+  private async cleanupAndExit(exitCode: number): Promise<void> {
+    if (this.cleanupStarted) return
     this.cleanupStarted = true
     this.log.info('lifecycle', 'Application cleanup started')
     await this.cleanupStep('reminders', () => this.reminders.stop())
@@ -144,7 +161,8 @@ export class ApplicationLifecycle {
     await this.cleanupStep('Core process', () => this.coreProcess.stop())
     this.cleanupComplete = true
     this.log.info('lifecycle', 'Application cleanup complete')
-    app.quit()
+    if (exitCode === 0) app.quit()
+    else app.exit(exitCode)
   }
 
   private async cleanupStep(name: string, action: () => void | Promise<void>): Promise<void> {

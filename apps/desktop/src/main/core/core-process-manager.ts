@@ -19,6 +19,7 @@ export class CoreProcessManager extends EventEmitter {
   private lastError: string | undefined
   private handshake: CoreHandshake | undefined
   private expectedExit = false
+  private releaseRouting: (() => void) | undefined
 
   constructor(
     private readonly launchSpec: CoreLaunchSpec,
@@ -55,6 +56,13 @@ export class CoreProcessManager extends EventEmitter {
     })
 
     await new Promise<void>((resolve, reject) => {
+      let settled = false
+      const settle = (action: () => void): void => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        action()
+      }
       const child = spawn(this.launchSpec.command, this.launchSpec.args, {
         cwd: this.launchSpec.workingDirectory,
         env: this.launchSpec.environment,
@@ -63,26 +71,41 @@ export class CoreProcessManager extends EventEmitter {
       })
       this.child = child
       const timer = setTimeout(() => {
-        child.kill()
-        reject(new Error(`Core start timed out after ${this.startTimeoutMs}ms`))
+        const error = new Error(`Core start timed out after ${this.startTimeoutMs}ms`)
+        settle(() => {
+          this.lastError = error.message
+          this.setState('failed')
+          this.releaseProcessResources()
+          if (this.child === child) this.child = undefined
+          this.startedAt = undefined
+          this.handshake = undefined
+          child.kill()
+          reject(error)
+        })
       }, this.startTimeoutMs)
       child.once('spawn', () => {
-        clearTimeout(timer)
-        this.startedAt = Date.now()
-        this.installProcessRouting(child)
-        this.setState('handshaking')
-        this.log.info('core-process', 'Core process spawned', {
-          processId: child.pid ?? -1,
-          durationMs: elapsedMs(startRequestedAt)
+        settle(() => {
+          this.startedAt = Date.now()
+          this.installProcessRouting(child)
+          this.setState('handshaking')
+          this.log.info('core-process', 'Core process spawned', {
+            processId: child.pid ?? -1,
+            durationMs: elapsedMs(startRequestedAt)
+          })
+          resolve()
         })
-        resolve()
       })
       child.once('error', (error) => {
-        clearTimeout(timer)
-        this.lastError = error.message
-        this.setState('failed')
-        this.log.error('core-process', 'Core process launch failed', error, { durationMs: elapsedMs(startRequestedAt) })
-        reject(error)
+        settle(() => {
+          this.lastError = error.message
+          this.setState('failed')
+          this.releaseProcessResources()
+          if (this.child === child) this.child = undefined
+          this.startedAt = undefined
+          this.handshake = undefined
+          this.log.error('core-process', 'Core process launch failed', error, { durationMs: elapsedMs(startRequestedAt) })
+          reject(error)
+        })
       })
     })
   }
@@ -108,7 +131,23 @@ export class CoreProcessManager extends EventEmitter {
     if (this.child === undefined || this.child.stdin.destroyed || (this.state !== 'handshaking' && this.state !== 'ready')) {
       throw new Error('Core stdin is unavailable')
     }
-    this.child.stdin.write(`${line}\n`, 'utf8')
+    try {
+      this.child.stdin.write(`${line}\n`, 'utf8')
+    } catch (error) {
+      const failure = error instanceof Error ? error : new Error(String(error))
+      this.failSession(failure)
+      throw failure
+    }
+  }
+
+  failSession(error: Error): void {
+    const child = this.child
+    if (child === undefined) return
+    this.expectedExit = false
+    this.lastError = error.message
+    this.setState('failed')
+    this.log.error('core-process', 'Core session failed', error, { processId: child.pid ?? -1 })
+    child.kill()
   }
 
   async stop(): Promise<void> {
@@ -126,6 +165,7 @@ export class CoreProcessManager extends EventEmitter {
       await waitForExit(child, 2_000)
     }
     this.child = undefined
+    this.releaseProcessResources()
     this.startedAt = undefined
     this.handshake = undefined
     this.setState('stopped')
@@ -141,6 +181,7 @@ export class CoreProcessManager extends EventEmitter {
   }
 
   private installProcessRouting(child: ChildProcessWithoutNullStreams): void {
+    this.releaseProcessResources()
     const stdout = createInterface({ input: child.stdout, crlfDelay: Infinity })
     const stderr = createInterface({ input: child.stderr, crlfDelay: Infinity })
     stdout.on('line', (line) => this.emit('line', line))
@@ -150,9 +191,12 @@ export class CoreProcessManager extends EventEmitter {
       else this.log.info('core-stderr', readCoreLogMessage(record), record)
       this.emit('stderr', line)
     })
-    child.once('exit', (code, signal) => {
+    const onStdinError = (error: Error): void => this.failSession(error)
+    child.stdin.once('error', onStdinError)
+    const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
       stdout.close()
       stderr.close()
+      child.stdin.off('error', onStdinError)
       const uptimeMs = this.startedAt === undefined ? undefined : Date.now() - this.startedAt
       this.child = undefined
       this.startedAt = undefined
@@ -170,7 +214,19 @@ export class CoreProcessManager extends EventEmitter {
         uptimeMs
       })
       this.emit('exit', { code, signal, expected: this.expectedExit })
-    })
+    }
+    child.once('exit', onExit)
+    this.releaseRouting = () => {
+      stdout.close()
+      stderr.close()
+      child.stdin.off('error', onStdinError)
+      child.off('exit', onExit)
+    }
+  }
+
+  private releaseProcessResources(): void {
+    this.releaseRouting?.()
+    this.releaseRouting = undefined
   }
 
   private setState(state: CoreProcessState): void {

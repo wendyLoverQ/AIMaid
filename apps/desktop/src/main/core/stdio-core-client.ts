@@ -24,6 +24,7 @@ export interface CoreClientTransport {
   off(event: 'exit', listener: () => void): unknown
   markReady(handshake: CoreHandshake): void
   expectExit(): void
+  failSession?(error: Error): void
   writeLine(line: string): void
   health(): boolean
 }
@@ -46,7 +47,7 @@ const DEFAULT_TIMEOUTS: CoreClientTimeouts = {
 
 export class StdioCoreClient implements CoreClient {
   private readonly pending = new Map<string, PendingRequest>()
-  private readonly completedIds = new Set<string>()
+  private readonly completedIds = new Map<string, number>()
   private readonly listeners = new Set<CoreEventListener>()
   private readonly sequences = new Map<string, number>()
   private started = false
@@ -60,6 +61,8 @@ export class StdioCoreClient implements CoreClient {
 
   async start(): Promise<void> {
     if (this.started) return
+    this.detach()
+    this.resetSessionState()
     const startedAt = performance.now()
     this.log.info('core-client', 'Core handshake started', {
       protocolVersion: CORE_PROTOCOL_VERSION,
@@ -108,7 +111,7 @@ export class StdioCoreClient implements CoreClient {
     this.started = false
     this.rejectAll(new CoreClientError('CORE_EXITED', 'Core client stopped.'))
     this.detach()
-    this.sequences.clear()
+    this.resetSessionState()
   }
 
   invoke(requestId: string, request: CoreRequest, signal: AbortSignal): Promise<unknown> {
@@ -134,14 +137,13 @@ export class StdioCoreClient implements CoreClient {
   }
 
   private invokeRaw(id: string, type: string, payload: unknown, timeoutMs: number, signal?: AbortSignal): Promise<unknown> {
+    this.pruneCompletedIds()
     if (this.pending.has(id) || this.completedIds.has(id)) {
       return Promise.reject(new CoreClientError('PROTOCOL_DUPLICATE_REQUEST', 'Core requestId 已经使用。'))
     }
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        const timedOut = this.pending.get(id)
-        this.pending.delete(id)
-        timedOut?.removeAbort?.()
+        if (!this.finishPending(id)) return
         reject(new CoreClientError('REQUEST_TIMEOUT', `${type} 请求超时。`))
         this.log.warn('core-client', 'Core request timed out', { requestId: id, type, timeoutMs })
         if (this.started && type !== 'system.cancel' && type !== 'system.shutdown' && type !== 'system.handshake') {
@@ -151,8 +153,7 @@ export class StdioCoreClient implements CoreClient {
       const pending: PendingRequest = { type, startedAt: performance.now(), resolve, reject, timer }
       if (signal !== undefined) {
         const onAbort = (): void => {
-          if (!this.pending.delete(id)) return
-          clearTimeout(timer)
+          if (!this.finishPending(id)) return
           reject(new CoreClientError('REQUEST_CANCELLED', '请求已取消。'))
           if (this.started) void this.cancel(id).catch((error: unknown) => this.log.error('core-client', 'Core cancellation failed', error))
         }
@@ -164,7 +165,7 @@ export class StdioCoreClient implements CoreClient {
       try {
         this.processManager.writeLine(JSON.stringify(createCoreRequest(id, type, payload)))
       } catch (error) {
-        this.completePending(id)
+        this.finishPending(id)
         reject(error instanceof Error ? error : new Error(String(error)))
       }
     })
@@ -175,8 +176,7 @@ export class StdioCoreClient implements CoreClient {
     try {
       envelope = parseCoreLine(line)
     } catch (error) {
-      this.log.error('core-protocol', 'Protocol parse failed', error)
-      if (error instanceof CoreProtocolViolation && error.code === 'PROTOCOL_VERSION_MISMATCH') this.rejectAll(error)
+      this.failProtocol(error instanceof Error ? error : new Error(String(error)), line)
       return
     }
     if (envelope.kind === 'response') this.handleResponse(envelope)
@@ -186,16 +186,16 @@ export class StdioCoreClient implements CoreClient {
   private handleResponse(response: CoreResponseEnvelope): void {
     const pending = this.pending.get(response.id)
     if (pending === undefined) {
-      const status = this.completedIds.has(response.id) ? 'duplicate response' : 'unknown response id'
+      const status = this.completedIds.has(response.id) ? 'late or duplicate response' : 'unknown response id'
       this.log.warn('core-protocol', status, { requestId: response.id, type: response.type })
       return
     }
     if (pending.type !== response.type) {
-      this.completePending(response.id)
+      this.finishPending(response.id)
       pending.reject(new CoreProtocolViolation('PROTOCOL_INVALID_ENVELOPE', 'Core response type 与请求不匹配。'))
       return
     }
-    this.completePending(response.id)
+    this.finishPending(response.id)
     const durationMs = elapsedMs(pending.startedAt)
     if (response.success) {
       pending.resolve(response.payload)
@@ -262,6 +262,8 @@ export class StdioCoreClient implements CoreClient {
     const pendingCount = this.pending.size
     this.started = false
     this.rejectAll(new CoreClientError('CORE_EXITED', 'Core 进程已经退出。'))
+    this.detach()
+    this.resetSessionState()
     this.log.warn('core-client', 'Core process exited', { pendingCount })
   }
 
@@ -271,14 +273,14 @@ export class StdioCoreClient implements CoreClient {
       : this.timeouts.request
   }
 
-  private completePending(id: string): void {
+  private finishPending(id: string): boolean {
     const pending = this.pending.get(id)
-    if (pending === undefined) return
+    if (pending === undefined) return false
     clearTimeout(pending.timer)
     pending.removeAbort?.()
     this.pending.delete(id)
-    this.completedIds.add(id)
-    setTimeout(() => this.completedIds.delete(id), 60_000).unref()
+    this.completedIds.set(id, Date.now())
+    return true
   }
 
   private rejectAll(error: Error): void {
@@ -287,12 +289,33 @@ export class StdioCoreClient implements CoreClient {
       pending.removeAbort?.()
       pending.reject(error)
       this.pending.delete(id)
+      this.completedIds.set(id, Date.now())
     }
   }
 
   private detach(): void {
     this.processManager.off('line', this.handleLine)
     this.processManager.off('exit', this.handleExit)
+  }
+
+  private pruneCompletedIds(): void {
+    const cutoff = Date.now() - 60_000
+    for (const [id, completedAt] of this.completedIds) if (completedAt < cutoff) this.completedIds.delete(id)
+  }
+
+  private resetSessionState(): void {
+    this.completedIds.clear()
+    this.sequences.clear()
+  }
+
+  private failProtocol(error: Error, line: string): void {
+    if (!this.started && this.pending.size === 0) return
+    this.log.error('core-protocol', 'Fatal Core stdout protocol violation', error, { line })
+    this.started = false
+    this.rejectAll(error)
+    this.detach()
+    this.resetSessionState()
+    this.processManager.failSession?.(error)
   }
 }
 
