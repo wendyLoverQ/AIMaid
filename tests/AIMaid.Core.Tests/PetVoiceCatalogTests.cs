@@ -53,6 +53,25 @@ public sealed class PetVoiceCatalogTests
     }
 
     [TestMethod]
+    public async Task Ensure_ConcurrentSameIdentity_UsesOneGenerationBatch()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var fixture = new VoiceCacheFixture(CreateLinesJson(), new TestAi(CreateLinesJson(), started, blockFirstCall: true, firstCallRelease: release));
+        var first = fixture.Service.EnsureCurrentCacheAsync(includeNextPeriod: false);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var second = fixture.Service.EnsureCurrentCacheAsync(includeNextPeriod: false);
+        release.TrySetResult();
+
+        var values = await Task.WhenAll(first, second);
+
+        Assert.IsTrue(values.All(value => value.Succeeded));
+        Assert.AreEqual(1, fixture.Ai.Calls);
+        Assert.AreEqual(9, fixture.Tts.Calls);
+        Assert.AreEqual(values[0].Value!.GenerationId, values[1].Value!.GenerationId);
+    }
+
+    [TestMethod]
     public async Task Ensure_TemplateCardIdentityChange_RegeneratesInsteadOfReusingTheOldGeneration()
     {
         using var fixture = new VoiceCacheFixture(CreateLinesJson());
@@ -313,7 +332,7 @@ public sealed class PetVoiceCatalogTests
         }
     }
 
-    private sealed class TestAi(string response, TaskCompletionSource? firstCallStarted = null, bool blockFirstCall = false) : IAiProviderClient
+    private sealed class TestAi(string response, TaskCompletionSource? firstCallStarted = null, bool blockFirstCall = false, TaskCompletionSource? firstCallRelease = null) : IAiProviderClient
     {
         private int calls;
         public string Response { get; set; } = response;
@@ -323,7 +342,11 @@ public sealed class PetVoiceCatalogTests
             var call = Interlocked.Increment(ref calls);
             if (call == 1) firstCallStarted?.TrySetResult();
             cancellationToken.ThrowIfCancellationRequested();
-            if (call == 1 && blockFirstCall) await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            if (call == 1 && blockFirstCall)
+            {
+                if (firstCallRelease is not null) await firstCallRelease.Task.WaitAsync(cancellationToken);
+                else await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
             yield return Response;
             await Task.CompletedTask;
         }
