@@ -23,6 +23,7 @@ export class PetRuntime {
   private queuedModelId: string | null = null
   private modelLoad: Promise<void> | null = null
   private desiredScale = 1
+  private resizeFrame: number | null = null
 
   constructor(private readonly canvas: HTMLCanvasElement, private readonly callbacks: PetRuntimeCallbacks) {
     this.player = new Live2DPlayer(canvas)
@@ -113,6 +114,8 @@ export class PetRuntime {
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
+    if (this.resizeFrame !== null) cancelAnimationFrame(this.resizeFrame)
+    this.resizeFrame = null
     this.monitor.stop()
     for (const cleanup of this.cleanups.splice(0)) cleanup()
     this.player.dispose()
@@ -148,8 +151,10 @@ export class PetRuntime {
   }
 
   private readonly onResize = (): void => {
-    this.resizeCount += 1
-    requestAnimationFrame(() => {
+    if (this.resizeFrame !== null) return
+    this.resizeFrame = requestAnimationFrame(() => {
+      this.resizeFrame = null
+      this.resizeCount += 1
       this.player.handleWindowResize()
     })
   }

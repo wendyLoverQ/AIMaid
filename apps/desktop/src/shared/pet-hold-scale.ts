@@ -13,17 +13,8 @@ export function calculatePetHoldGeometry(
   baseHeight: number,
   holdScale: number,
   originX: number,
-  originY: number,
-  resizeSurface = true
+  originY: number
 ): PetHoldGeometry {
-  if (!resizeSurface) {
-    return {
-      width: baseWidth,
-      height: baseHeight,
-      originShiftX: 0,
-      originShiftY: 0
-    }
-  }
   const width = baseWidth * holdScale
   const height = baseHeight * holdScale
   return {
