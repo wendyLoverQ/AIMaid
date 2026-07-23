@@ -85,15 +85,13 @@
 .pet-music-lyrics {
   position: absolute;
   z-index: 4;
-  left: 50%;
-  bottom: 24%;
   display: grid;
   width: min(760px, calc(100% - 48px));
   gap: 6px;
   padding: 12px 24px 14px;
   border: 1px solid color-mix(in srgb, var(--color-accent) 34%, transparent);
   border-radius: var(--radius-lg);
-  transform: translateX(-50%);
+  transform: translate(-50%, -100%);
   color: var(--color-text-primary);
   background: color-mix(in srgb, var(--color-bg-surface) 82%, transparent);
   box-shadow: 0 10px 32px rgba(15, 23, 42, 0.18);

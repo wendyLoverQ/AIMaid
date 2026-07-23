@@ -559,7 +559,8 @@ export default function PetPage(): React.JSX.Element {
         presentation.mode === 'png-sequence' ? `png:${presentation.pngRole}` : `live2d:${presentation.live2dRole}`}
       visualAnchor={presentation.mode === 'live2d' ? { clientX: liveVisualTransform.centerX, clientY: liveVisualTransform.centerY } : undefined}
       visualizerStyle={visualizerStyle}/> : null}
-    <PetMusicLyrics/>
+    <PetMusicLyrics anchorX={liveVisualTransform.centerX}
+      anchorTop={Math.max(80, liveVisualTransform.centerY - PET_CANVAS_HEIGHT * liveVisualTransform.scale / 2 - 20)}/>
     {menu !== null && presentation !== null ? <PetContextMenu position={menu} presentation={presentation} voiceMenu={voiceMenu} execute={(action) => void execute(action)} open={open} cycleVoiceIntimacy={() => void cycleVoiceIntimacy()} clearVoiceCache={() => void clearVoiceCache()} showCurrentConversation={() => void showCurrentConversation()} close={() => setMenu(null)}/> : null}
   </TransparentStage>;
 }
