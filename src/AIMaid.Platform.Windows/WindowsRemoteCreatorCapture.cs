@@ -208,6 +208,7 @@ internal static class WindowsRemoteCreatorCapture
     private static void ApplyCookies(CoreWebView2CookieManager manager, string cookieText)
     {
         cookieText = Regex.Replace(cookieText, @"\\+(?:r\\+)?n", "\n", RegexOptions.CultureInvariant);
+        cookieText = Regex.Replace(cookieText, @"\\+t", "\t", RegexOptions.CultureInvariant);
         foreach (var line in cookieText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
         {
             if (line.StartsWith('#')) continue;

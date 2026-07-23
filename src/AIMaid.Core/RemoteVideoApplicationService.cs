@@ -1074,6 +1074,7 @@ public sealed partial class RemoteVideoApplicationService
     private static string NormalizeCookie(string value, string domainPattern)
     {
         value = Regex.Replace(value, @"\\+(?:r\\+)?n", "\n", RegexOptions.CultureInvariant);
+        value = Regex.Replace(value, @"\\+t", "\t", RegexOptions.CultureInvariant);
         if (value.Contains("# Netscape HTTP Cookie File", StringComparison.OrdinalIgnoreCase) || value.Contains('\t')) return value;
         var domain = "." + domainPattern.Trim().TrimStart('*').TrimStart('.');
         var builder = new StringBuilder("# Netscape HTTP Cookie File" + Environment.NewLine);
