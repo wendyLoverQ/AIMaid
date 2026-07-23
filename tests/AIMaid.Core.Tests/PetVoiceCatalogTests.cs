@@ -53,6 +53,23 @@ public sealed class PetVoiceCatalogTests
     }
 
     [TestMethod]
+    public async Task Ensure_TemplateCardIdentityChange_RegeneratesInsteadOfReusingTheOldGeneration()
+    {
+        using var fixture = new VoiceCacheFixture(CreateLinesJson());
+        var first = await fixture.Service.EnsureCurrentCacheAsync(includeNextPeriod: false);
+        fixture.Characters.UpdateTemplate("{\"systemPrompt\":\"changed\"}");
+        fixture.Ai.Response = CreateLinesJson("新身份台词");
+
+        var second = await fixture.Service.EnsureCurrentCacheAsync(includeNextPeriod: false, forceRefresh: true);
+
+        Assert.IsTrue(first.Succeeded, first.ErrorMessage);
+        Assert.IsTrue(second.Succeeded, second.ErrorMessage);
+        Assert.AreNotEqual(first.Value!.GenerationId, second.Value!.GenerationId);
+        Assert.AreNotEqual(first.Value.ContextHash, second.Value.ContextHash);
+        Assert.AreEqual(2, fixture.Ai.Calls);
+    }
+
+    [TestMethod]
     public async Task Ensure_IncompleteLines_LeavesNoReadyManifestOrPartialCache()
     {
         using var fixture = new VoiceCacheFixture(CreateLinesJson(count: 8));
@@ -194,12 +211,12 @@ public sealed class PetVoiceCatalogTests
         Assert.AreEqual("audio_missing", playback.Value.Reason);
     }
 
-    private static string CreateLinesJson(int count = 9)
+    private static string CreateLinesJson(string prefix = "语音缓存测试台词", int count = 9)
     {
         var lines = PetVoiceTriggerCatalog.Plans.Take(count).Select((plan, index) => new
         {
             key = plan.Key,
-            text = $"语音缓存测试台词 {index + 1}",
+            text = $"{prefix} {index + 1}",
             voiceStyle = plan.SuggestedStyle
         });
         return JsonSerializer.Serialize(new { lines });
@@ -250,6 +267,7 @@ public sealed class PetVoiceCatalogTests
     private sealed class TestAi(string response, TaskCompletionSource? firstCallStarted = null, bool blockFirstCall = false) : IAiProviderClient
     {
         private int calls;
+        public string Response { get; set; } = response;
         public int Calls => Volatile.Read(ref calls);
         public async IAsyncEnumerable<string> StreamChatAsync(AiChatRequest request, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
@@ -257,7 +275,7 @@ public sealed class PetVoiceCatalogTests
             if (call == 1) firstCallStarted?.TrySetResult();
             cancellationToken.ThrowIfCancellationRequested();
             if (call == 1 && blockFirstCall) await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
-            yield return response;
+            yield return Response;
             await Task.CompletedTask;
         }
     }
