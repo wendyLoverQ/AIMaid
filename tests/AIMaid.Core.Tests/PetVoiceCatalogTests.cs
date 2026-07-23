@@ -121,6 +121,22 @@ public sealed class PetVoiceCatalogTests
     }
 
     [TestMethod]
+    public async Task Ensure_ModelConfigurationChange_RegeneratesWithANewIdentity()
+    {
+        using var fixture = new VoiceCacheFixture(CreateLinesJson());
+        var first = await fixture.Service.EnsureCurrentCacheAsync(includeNextPeriod: false);
+        fixture.Ai.Response = CreateLinesJson("新模型身份台词");
+        fixture.Documents.Put("model_configuration", "model-a", new ModelConfigurationDto("model-a", "openai", "https://changed.example.test", "new-model", "", false, false));
+
+        var second = await fixture.Service.EnsureCurrentCacheAsync(includeNextPeriod: false, forceRefresh: true);
+
+        Assert.IsTrue(first.Succeeded, first.ErrorMessage);
+        Assert.IsTrue(second.Succeeded, second.ErrorMessage);
+        Assert.AreNotEqual(first.Value!.ContextHash, second.Value!.ContextHash);
+        Assert.AreEqual(2, fixture.Ai.Calls);
+    }
+
+    [TestMethod]
     public async Task Ensure_IncompleteLines_LeavesNoReadyManifestOrPartialCache()
     {
         using var fixture = new VoiceCacheFixture(CreateLinesJson(count: 8));
