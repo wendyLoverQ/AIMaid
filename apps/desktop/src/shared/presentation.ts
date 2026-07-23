@@ -37,6 +37,7 @@ export interface PetPresentationSnapshot {
   pngRoles: string[]
   live2dRole: string
   live2dRoles: string[]
+  currentObjectKey: string
 }
 
 export interface PetPresentationApi {

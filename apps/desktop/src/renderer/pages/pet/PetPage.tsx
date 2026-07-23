@@ -57,6 +57,8 @@ export default function PetPage(): React.JSX.Element {
     const itemRef = useRef<HTMLDivElement>(null);
     const visualCanvasRef = useRef<HTMLCanvasElement>(null);
     const presentationRef = useRef<PetPresentationSnapshot | null>(null);
+    const appliedBindingTargetRef = useRef('');
+    const bindingApplyTailRef = useRef<Promise<void>>(Promise.resolve());
     const liveContourReaderRef = useRef<(() => AlphaContour | null) | null>(null);
     const hitTestRef = useRef<PetHitTest>(() => false);
     const pointerClickRef = useRef<PetPointerClick>(() => undefined);
@@ -85,6 +87,7 @@ export default function PetPage(): React.JSX.Element {
     const refreshPresentation = useCallback(async (): Promise<void> => {
         const response = await bridge.pet.presentation.get();
         if (response.success && response.payload !== null) {
+            void applyPresentationBinding(response.payload);
             setPresentation(response.payload);
             setError(null);
         }
@@ -325,12 +328,28 @@ export default function PetPage(): React.JSX.Element {
     async function execute(action: PetPresentationAction): Promise<void> {
         const response = await bridge.pet.presentation.execute(action);
         if (response.success && response.payload !== null) {
+            void applyPresentationBinding(response.payload);
             setPresentation(response.payload);
             setError(null);
         }
         else
             setError(response.error?.message ?? '桌宠操作失败。');
         setMenu(null);
+    }
+    async function applyPresentationBinding(snapshot: PetPresentationSnapshot): Promise<void> {
+        const targetKey = snapshot.currentObjectKey.trim();
+        if (targetKey === '' || appliedBindingTargetRef.current === targetKey) return;
+        appliedBindingTargetRef.current = targetKey;
+        const apply = bindingApplyTailRef.current.catch(() => undefined).then(async () => {
+            if (appliedBindingTargetRef.current !== targetKey) return;
+            const response = await bridge.core.invoke({ type: 'character.binding.apply', payload: { targetKey } });
+            if (!response.success && appliedBindingTargetRef.current === targetKey) {
+                appliedBindingTargetRef.current = '';
+                showBubble(response.error?.message ?? '当前对象的语音角色绑定应用失败。', 'error');
+            }
+        });
+        bindingApplyTailRef.current = apply;
+        await apply;
     }
     function open(target: WindowKind): void {
         setMenu(null);
@@ -849,10 +868,10 @@ function PetContextMenu({ position, presentation, voiceMenu, execute, open, cycl
     const icon = (name: Parameters<typeof UiIcon>[0]['name']): React.JSX.Element => <UiIcon name={name}/>;
     const items = [
         ...(presentation.mode !== 'live2d' ? [{ id: 'pause', label: presentation.paused ? '继续' : '暂停', icon: icon('pause'), onSelect: () => execute('toggle-pause') }] : []),
-        { id: 'mode', label: `显示模式：${modeLabel(presentation.mode)}`, icon: icon('layers'), onSelect: () => execute('cycle-mode') },
+        { id: 'mode', label: modeLabel(presentation.mode), icon: icon('layers'), onSelect: () => execute('cycle-mode') },
         ...(presentation.mode === 'image' ? [
             { id: 'next-image', label: '切换图片', icon: icon('image'), onSelect: () => execute('next-image') },
-            { id: 'interval', label: `${presentation.imageIntervalSeconds} 秒`, icon: icon('clock'), onSelect: () => execute('cycle-image-interval') },
+            { id: 'interval', label: imageIntervalLabel(presentation.imageIntervalSeconds), icon: icon('clock'), onSelect: () => execute('cycle-image-interval') },
             { id: 'folder', label: presentation.imageFolderName, icon: icon('folder'), onSelect: () => execute('cycle-image-folder') }
         ] : []),
         ...(presentation.mode === 'png-sequence' ? [
@@ -860,7 +879,7 @@ function PetContextMenu({ position, presentation, voiceMenu, execute, open, cycl
             { id: 'png-role', label: presentation.pngRole || '未找到 PNG 角色', icon: icon('user'), onSelect: () => execute('cycle-png-role') },
             { id: 'carousel', label: presentation.pngCarousel ? '轮播模式' : '循环模式', icon: icon('repeat'), onSelect: () => execute('toggle-png-carousel') }
         ] : []),
-        ...(presentation.mode === 'live2d' ? [{ id: 'live2d-role', label: `切换角色：${presentation.live2dRole}`, icon: icon('user'), onSelect: () => execute('switch-live2d-role') }] : []),
+        ...(presentation.mode === 'live2d' ? [{ id: 'live2d-role', label: '切换角色', icon: icon('user'), onSelect: () => execute('switch-live2d-role') }] : []),
         { id: 'voice-role', label: voiceMenu.roleName, icon: icon('sparkles'), separated: true, onSelect: () => open('characters') },
         { id: 'intimacy', label: voiceMenu.intimacy, icon: icon('heart'), onSelect: cycleVoiceIntimacy },
         { id: 'voice-cache', label: '清除语音缓存', icon: icon('trash'), onSelect: clearVoiceCache },
@@ -873,7 +892,11 @@ function PetContextMenu({ position, presentation, voiceMenu, execute, open, cycl
     ];
     return <ContextMenuSurface label="桌宠菜单" items={items} position={position} footer={`版本 ${bridge.app.version}`} onClose={close}/>;
 }
-function modeLabel(mode: PetPresentationSnapshot['mode']): string { return mode === 'image' ? '图片' : mode === 'png-sequence' ? 'PNG' : 'Live2D'; }
+function modeLabel(mode: PetPresentationSnapshot['mode']): string { return mode === 'image' ? '图片' : mode === 'png-sequence' ? '动画' : 'Live2D'; }
+function imageIntervalLabel(seconds: number): string {
+    if (seconds < 60) return `轮播：${seconds}秒`;
+    return `轮播：${seconds / 60}分钟`;
+}
 function Live2DMode({ canvasRef, role, scale, placement, registerHitTest, registerPointerClick, registerContourReader, showBubble, playVoice }: {
     canvasRef: React.RefObject<HTMLCanvasElement | null>;
     role: string;

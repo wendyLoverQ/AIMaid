@@ -594,6 +594,10 @@ public sealed class CoreProtocolHost(
                     await HandleResultAsync(request, await characterAssets.HandleAsync(new UnbindCharacterObjectCommand(
                         ReadRequiredString(request.Payload, "targetKey")), source.Token), source.Token);
                     break;
+                case "character.binding.apply":
+                    await HandleResultAsync(request, await characterAssets.HandleAsync(new ApplyCharacterObjectBindingCommand(
+                        ReadRequiredString(request.Payload, "targetKey")), source.Token), source.Token);
+                    break;
                 case "character.template.generate":
                     await HandleValueResultAsync(request, await templateCards.HandleAsync(new GenerateTemplateCardCommand(
                         ReadRequiredString(request.Payload, "roleId"), ReadBoolean(request.Payload, "continueIteration")), source.Token), source.Token);

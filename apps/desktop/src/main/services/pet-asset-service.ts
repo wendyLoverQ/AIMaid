@@ -78,6 +78,12 @@ export class PetAssetService {
       .sort(naturalCompare)
   }
 
+  getLive2dRoleFolder(modelId: string): string {
+    const roles = this.listLive2dRoles()
+    if (!roles.includes(modelId)) return ''
+    return join(this.root, 'models', modelId)
+  }
+
   getManifest(modelId: string): PetAssetManifest {
     const roles = this.listLive2dRoles()
     if (!roles.includes(modelId)) throw new Error(`Unknown Live2D role: ${modelId}`)

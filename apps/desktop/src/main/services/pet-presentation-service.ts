@@ -56,6 +56,10 @@ export class PetPresentationService {
     if (!live2dRoles.includes(this.state.live2dRole)) this.state.live2dRole = live2dRoles[0] ?? ''
     const imageIndex = images.length === 0 ? 0 : Math.min(Math.max(0, this.state.imageIndex), images.length - 1)
     this.state.imageIndex = imageIndex
+    const currentImagePath = images[imageIndex] === undefined ? '' : join(this.state.imageFolder, images[imageIndex]!.name)
+    const currentObjectKey = this.state.mode === 'live2d'
+      ? this.assets.getLive2dRoleFolder(this.state.live2dRole)
+      : currentImagePath
     if (!this.snapshotLogged) {
       this.snapshotLogged = true
       this.log.info('pet-presentation', 'Bundled presentation assets resolved', {
@@ -82,7 +86,8 @@ export class PetPresentationService {
       pngFrames: frames,
       pngRoles: roles,
       live2dRole: this.state.live2dRole,
-      live2dRoles
+      live2dRoles,
+      currentObjectKey
     }
   }
 

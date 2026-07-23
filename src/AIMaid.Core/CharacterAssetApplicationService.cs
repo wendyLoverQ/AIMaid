@@ -12,6 +12,7 @@ public sealed class CharacterAssetApplicationService(
     IDomainDocumentStore store,
     ApplicationPaths paths,
     ICharacterStore characters,
+    ISettingsStore settings,
     IEventPublisher events) :
     IQueryHandler<ListVoiceAssetsQuery, IReadOnlyList<VoiceAssetDto>>,
     ICommandHandler<AddVoiceAssetCommand, OperationResult<VoiceAssetDto>>,
@@ -20,8 +21,10 @@ public sealed class CharacterAssetApplicationService(
     ICommandHandler<SetRoleVoicesCommand, OperationResult>,
     IQueryHandler<GetCharacterObjectBindingQuery, CharacterObjectBindingDto?>,
     ICommandHandler<BindCharacterObjectCommand, OperationResult<CharacterObjectBindingDto>>,
-    ICommandHandler<UnbindCharacterObjectCommand, OperationResult>
+    ICommandHandler<UnbindCharacterObjectCommand, OperationResult>,
+    ICommandHandler<ApplyCharacterObjectBindingCommand, OperationResult>
 {
+    private const string CurrentRoleKey = "voice_current_role_id";
     private const string VoiceAssetDomain = "voice_asset";
     private const string RoleVoiceDomain = "voice_role_voice";
     private const string RoleBindingDomain = "voice_role_binding";
@@ -132,6 +135,22 @@ public sealed class CharacterAssetApplicationService(
         var targetKey = NormalizeTargetKey(command.TargetKey);
         if (targetKey.Length == 0) return OperationResult.Failure("character.binding_target_empty", "当前没有可绑定的对象。");
         await DeleteMatchingBindingsAsync(targetKey, cancellationToken);
+        return OperationResult.Success();
+    }
+
+    public async Task<OperationResult> HandleAsync(ApplyCharacterObjectBindingCommand command, CancellationToken cancellationToken = default)
+    {
+        var targetKey = NormalizeTargetKey(command.TargetKey);
+        if (targetKey.Length == 0) return OperationResult.Failure("character.binding_target_empty", "当前没有可应用绑定的对象。");
+        var binding = await HandleAsync(new GetCharacterObjectBindingQuery(targetKey), cancellationToken);
+        if (binding is null) return OperationResult.Success();
+        if (await characters.GetAsync(binding.RoleId, cancellationToken) is null)
+            return OperationResult.Failure("character.not_found", "当前对象绑定的语音角色不存在。");
+        var currentRoleId = (await settings.GetAsync(CurrentRoleKey, cancellationToken))?.Value?.Trim() ?? string.Empty;
+        if (currentRoleId.Equals(binding.RoleId, StringComparison.OrdinalIgnoreCase)) return OperationResult.Success();
+        await settings.SetManyAsync(new Dictionary<string, string> { [CurrentRoleKey] = binding.RoleId }, cancellationToken);
+        await events.PublishAsync(new CharacterChangedEvent(
+            EventIdentity.NewId(), DateTimeOffset.Now, binding.RoleId, "selected"), cancellationToken);
         return OperationResult.Success();
     }
 

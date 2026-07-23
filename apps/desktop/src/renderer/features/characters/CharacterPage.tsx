@@ -41,9 +41,7 @@ export function CharacterPage(): React.JSX.Element {
       setError(null)
       const presentation = await bridge.pet.presentation.get()
       const snapshot = presentation.success ? presentation.payload : null
-      const objectKey = snapshot?.currentImage === null || snapshot?.currentImage === undefined
-        ? ''
-        : `${snapshot.imageFolder.replace(/[\\/]+$/u, '')}\\${snapshot.currentImage.name}`
+      const objectKey = snapshot?.currentObjectKey ?? ''
       setCurrentObjectKey(objectKey)
       if (objectKey === '') setBoundRoleId('')
       else {

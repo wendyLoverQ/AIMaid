@@ -35,6 +35,7 @@ public sealed record CharacterObjectBindingDto(string TargetType, string TargetK
 public sealed record GetCharacterObjectBindingQuery(string TargetKey) : IQuery<CharacterObjectBindingDto?>;
 public sealed record BindCharacterObjectCommand(string TargetKey, string RoleId) : ICommand<OperationResult<CharacterObjectBindingDto>>;
 public sealed record UnbindCharacterObjectCommand(string TargetKey) : ICommand<OperationResult>;
+public sealed record ApplyCharacterObjectBindingCommand(string TargetKey) : ICommand<OperationResult>;
 
 public sealed record GenerateTemplateCardCommand(string RoleId, bool ContinueIteration) : ICommand<OperationResult<CharacterDto>>;
 

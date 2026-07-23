@@ -127,6 +127,7 @@ export type CoreRequest =
   | { type: 'character.binding.get'; payload: { targetKey: string } }
   | { type: 'character.binding.set'; payload: { targetKey: string; roleId: string } }
   | { type: 'character.binding.clear'; payload: { targetKey: string } }
+  | { type: 'character.binding.apply'; payload: { targetKey: string } }
   | { type: 'character.template.generate'; payload: { roleId: string; continueIteration: boolean } }
   | { type: 'agent.capabilities.list'; payload: Record<string, never> }
   | { type: 'agent.capability.save'; payload: { capability: AgentCapabilityDto } }
@@ -474,6 +475,7 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
       return isNonEmptyString(value.payload.roleId) && Array.isArray(value.payload.voices) && value.payload.voices.every(isRoleVoice)
     case 'character.binding.get':
     case 'character.binding.clear':
+    case 'character.binding.apply':
       return isNonEmptyString(value.payload.targetKey)
     case 'character.binding.set':
       return isNonEmptyString(value.payload.targetKey) && isNonEmptyString(value.payload.roleId)
