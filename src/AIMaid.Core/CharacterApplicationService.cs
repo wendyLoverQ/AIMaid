@@ -18,14 +18,17 @@ public sealed class CharacterApplicationService :
     private readonly IEventPublisher events;
     private readonly IDomainDocumentStore documents;
     private readonly IChatStore chatStore;
+    private readonly ApplicationPaths paths;
 
-    public CharacterApplicationService(ICharacterStore characters, ISettingsStore settings, IDomainDocumentStore documents, IChatStore chatStore, IEventPublisher events)
+    public CharacterApplicationService(ICharacterStore characters, ISettingsStore settings, IDomainDocumentStore documents, IChatStore chatStore,
+        IEventPublisher events, ApplicationPaths paths)
     {
         this.characters = characters;
         this.settings = settings;
         this.documents = documents;
         this.chatStore = chatStore;
         this.events = events;
+        this.paths = paths;
     }
 
     public Task<IReadOnlyList<CharacterDto>> HandleAsync(ListCharactersQuery query, CancellationToken cancellationToken = default)
@@ -50,9 +53,9 @@ public sealed class CharacterApplicationService :
             return OperationResult.Failure("character.invalid_role", "角色 ID 不能为空。");
         if (await characters.GetAsync(command.RoleId, cancellationToken) is null)
             return OperationResult.Failure("character.not_found", "角色不存在。");
-        await characters.DeleteAsync(command.RoleId, cancellationToken);
         await DeleteRoleDocumentsAsync(command.RoleId, cancellationToken);
         await chatStore.DeleteByCharacterAsync(command.RoleId, cancellationToken);
+        await characters.DeleteAsync(command.RoleId, cancellationToken);
         if (string.Equals((await settings.GetAsync(CurrentRoleKey, cancellationToken))?.Value, command.RoleId, StringComparison.OrdinalIgnoreCase))
             await settings.SetManyAsync(new Dictionary<string, string> { [CurrentRoleKey] = string.Empty }, cancellationToken);
         await events.PublishAsync(new CharacterChangedEvent(EventIdentity.NewId(), DateTimeOffset.Now,
@@ -62,6 +65,7 @@ public sealed class CharacterApplicationService :
 
     private async Task DeleteRoleDocumentsAsync(string roleId, CancellationToken cancellationToken)
     {
+        var records = new List<(string Domain, string Id, string Json)>();
         foreach (var domain in new[] { "voice_role_voice", "voice_role_binding", "voice_role", "voice_conversation", "voice_role_audio_cache", "voice_cache_generation" })
         {
             foreach (var id in await documents.ListIdsAsync(domain, cancellationToken))
@@ -77,16 +81,50 @@ public sealed class CharacterApplicationService :
                                   role.ValueKind == System.Text.Json.JsonValueKind.String &&
                                   string.Equals(role.GetString(), roleId, StringComparison.OrdinalIgnoreCase);
                     if (!matches) continue;
-                    if (domain == "voice_conversation" &&
-                        (root.TryGetProperty("ConversationId", out var conversation) || root.TryGetProperty("conversationId", out conversation)) &&
-                        conversation.ValueKind == System.Text.Json.JsonValueKind.String &&
-                        !string.IsNullOrWhiteSpace(conversation.GetString()))
-                        await chatStore.DeleteConversationAsync(conversation.GetString()!, cancellationToken);
-                    await documents.DeleteAsync(domain, id, cancellationToken);
+                    records.Add((domain, id, json));
                 }
                 catch (System.Text.Json.JsonException) { }
             }
         }
+        foreach (var record in records.Where(record => record.Domain == "voice_role_audio_cache"))
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(record.Json);
+            var root = document.RootElement;
+            if (!(root.TryGetProperty("AudioPath", out var audioPath) || root.TryGetProperty("audioPath", out audioPath)) ||
+                audioPath.ValueKind != System.Text.Json.JsonValueKind.String || string.IsNullOrWhiteSpace(audioPath.GetString())) continue;
+            DeleteDerivedCacheAudio(audioPath.GetString()!);
+        }
+        foreach (var record in records)
+        {
+            if (record.Domain == "voice_conversation")
+            {
+                using var document = System.Text.Json.JsonDocument.Parse(record.Json);
+                var root = document.RootElement;
+                if ((root.TryGetProperty("ConversationId", out var conversation) || root.TryGetProperty("conversationId", out conversation)) &&
+                    conversation.ValueKind == System.Text.Json.JsonValueKind.String && !string.IsNullOrWhiteSpace(conversation.GetString()))
+                    await chatStore.DeleteConversationAsync(conversation.GetString()!, cancellationToken);
+            }
+            await documents.DeleteAsync(record.Domain, record.Id, cancellationToken);
+        }
+        DeleteEmptyVoiceCacheDirectories();
+    }
+
+    private void DeleteDerivedCacheAudio(string path)
+    {
+        var root = Path.GetFullPath(paths.Cache("tts"));
+        if (!Path.IsPathFullyQualified(path)) return;
+        var fullPath = Path.GetFullPath(path);
+        var prefix = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        if (!fullPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return;
+        if (File.Exists(fullPath)) File.Delete(fullPath);
+    }
+
+    private void DeleteEmptyVoiceCacheDirectories()
+    {
+        var root = paths.Cache(Path.Combine("tts", "voice_lazy_cache"));
+        if (!Directory.Exists(root)) return;
+        foreach (var directory in Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories).OrderByDescending(value => value.Length))
+            if (!Directory.EnumerateFileSystemEntries(directory).Any()) Directory.Delete(directory);
     }
 
     public async Task<OperationResult> HandleAsync(SetCurrentCharacterCommand command, CancellationToken cancellationToken = default)

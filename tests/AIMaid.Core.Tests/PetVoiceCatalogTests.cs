@@ -1,6 +1,7 @@
 using System.Text.Json;
 using AIMaid.Contracts;
 using AIMaid.Contracts.Characters;
+using AIMaid.Contracts.Chat;
 using AIMaid.Contracts.Domains;
 using AIMaid.Contracts.Settings;
 using AIMaid.Core;
@@ -140,6 +141,26 @@ public sealed class PetVoiceCatalogTests
         Assert.AreEqual(9, (await fixture.Documents.ListAsync("voice_role_audio_cache", CancellationToken.None)).Count);
     }
 
+    [TestMethod]
+    public async Task DeleteCharacter_RemovesThatRolesDerivedVoiceCacheFilesAndRecords()
+    {
+        using var fixture = new VoiceCacheFixture(CreateLinesJson());
+        var audioPath = fixture.Paths.Cache(Path.Combine("tts", "voice_lazy_cache", "period", "role-a", "voice.wav"));
+        Directory.CreateDirectory(Path.GetDirectoryName(audioPath)!);
+        await File.WriteAllBytesAsync(audioPath, [1, 2, 3]);
+        fixture.Documents.Put("voice_role_audio_cache", "cache-1", new { RoleId = "role-a", AudioPath = audioPath });
+        fixture.Documents.Put("voice_cache_generation", "generation-1", new { RoleId = "role-a" });
+        var service = new CharacterApplicationService(fixture.Characters, fixture.Settings, fixture.Documents, new TestChatStore(), new InProcessEventPublisher(), fixture.Paths);
+
+        var result = await service.HandleAsync(new DeleteCharacterCommand("role-a"));
+
+        Assert.IsTrue(result.Succeeded, result.ErrorMessage);
+        Assert.IsFalse(File.Exists(audioPath));
+        Assert.AreEqual(0, (await fixture.Documents.ListAsync("voice_role_audio_cache", CancellationToken.None)).Count);
+        Assert.AreEqual(0, (await fixture.Documents.ListAsync("voice_cache_generation", CancellationToken.None)).Count);
+        Assert.IsNull(await fixture.Characters.GetAsync("role-a"));
+    }
+
     private static string CreateLinesJson(int count = 9)
     {
         var lines = PetVoiceTriggerCatalog.Plans.Take(count).Select((plan, index) => new
@@ -156,6 +177,7 @@ public sealed class PetVoiceCatalogTests
         private readonly string root = Path.Combine(Path.GetTempPath(), "AIMaidVoiceCacheTests", Guid.NewGuid().ToString("N"));
         public TestDocuments Documents { get; } = new();
         public TestCharacters Characters { get; }
+        public TestSettings Settings { get; }
         public TestAi Ai { get; }
         public TestTts Tts { get; }
         public ApplicationPaths Paths { get; }
@@ -173,7 +195,7 @@ public sealed class PetVoiceCatalogTests
             Documents.Put("llm_business_model", "lazy_voice_cache", new LlmBusinessModelConfigDto("lazy_voice_cache", "缓存", "", "", "model-a", true, now, now));
             Documents.Put("llm_source_prompt", "lazy_voice_lines", new LlmSourcePromptDto("lazy_voice_lines", "", "", "", "{}", true, now, now));
             Documents.Put("model_configuration", "model-a", new ModelConfigurationDto("model-a", "openai", "https://example.test", "test", "", false, false));
-            var settings = new TestSettings(new Dictionary<string, string>
+            Settings = new TestSettings(new Dictionary<string, string>
             {
                 ["voice_current_role_id"] = "role-a", ["voice_cache_period_hours"] = "1",
                 ["user_config:App:Tts:Enabled"] = "true", ["user_config:App:Tts:VoiceId"] = "voice-a"
@@ -182,7 +204,7 @@ public sealed class PetVoiceCatalogTests
             Tts = new TestTts(root);
             var events = new InProcessEventPublisher();
             var templateCards = new TemplateCardApplicationService(Characters, Documents, Ai, events);
-            Service = new PetVoiceMenuApplicationService(Characters, settings, Documents, Documents, events, Ai, Tts, templateCards, Paths);
+            Service = new PetVoiceMenuApplicationService(Characters, Settings, Documents, Documents, events, Ai, Tts, templateCards, Paths);
         }
 
         public void Dispose()
@@ -226,7 +248,7 @@ public sealed class PetVoiceCatalogTests
         public Task<CharacterDto?> GetAsync(string roleId, CancellationToken cancellationToken = default) => Task.FromResult<CharacterDto?>(value.RoleId == roleId ? value : null);
         public Task<IReadOnlyList<CharacterDto>> ListAsync(bool enabledOnly, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<CharacterDto>>([value]);
         public Task UpsertAsync(CharacterDto character, CancellationToken cancellationToken = default) { value = character; return Task.CompletedTask; }
-        public Task DeleteAsync(string roleId, CancellationToken cancellationToken = default) { throw new NotSupportedException(); }
+        public Task DeleteAsync(string roleId, CancellationToken cancellationToken = default) { value = value with { RoleId = "" }; return Task.CompletedTask; }
         public void UpdateTemplate(string templateCardJson) => value = value with { TemplateCardJson = templateCardJson, UpdatedAt = DateTimeOffset.Now };
     }
 
@@ -260,6 +282,15 @@ public sealed class PetVoiceCatalogTests
             return Task.CompletedTask;
         }
         private Dictionary<string, string> GetDomain(string domain) => values.TryGetValue(domain, out var result) ? result : values[domain] = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private sealed class TestChatStore : IChatStore
+    {
+        public Task<long> AppendAsync(ChatMessageDto message, CancellationToken cancellationToken = default) => Task.FromResult(0L);
+        public Task<bool> UpdateMetadataAsync(long messageId, string metadataJson, CancellationToken cancellationToken = default) => Task.FromResult(false);
+        public Task<IReadOnlyList<ChatMessageDto>> LoadRecentAsync(string conversationId, int limit, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<ChatMessageDto>>([]);
+        public Task DeleteConversationAsync(string conversationId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task DeleteByCharacterAsync(string characterId, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
     private sealed class SqliteVoiceCacheFixture : IAsyncDisposable

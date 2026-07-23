@@ -32,7 +32,7 @@ try
     var speech = new SpeechApplicationService(speechClient, speechClient, events);
     var settings = new SettingsApplicationService(store, events);
     var reminders = new ReminderApplicationService(store, events);
-    var characters = new CharacterApplicationService(store, store, store, store, events);
+    var characters = new CharacterApplicationService(store, store, store, store, events, paths);
     var characterAssets = new CharacterAssetApplicationService(store, paths, store, events);
     using var music = new MusicApplicationService(events, store);
     using var market = new BinanceMarketApplicationService(store, store);
