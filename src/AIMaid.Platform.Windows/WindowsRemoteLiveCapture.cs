@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Globalization;
+using System.Net;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -179,9 +181,15 @@ internal static class WindowsRemoteLiveCapture
             .OrderByDescending(ScoreStream)
             .FirstOrDefault()
             ?? throw new InvalidDataException("直播响应中没有可播放的 HLS 或 FLV 地址。");
-        var title = FindNamedString(captured, "title", "room_name", "roomName") ?? $"{request.SiteKey} 直播";
-        var author = FindNamedString(captured, "nickname", "anchor_name", "user_name", "name") ?? string.Empty;
-        var cover = FindNamedString(captured, "cover_url", "room_cover", "cover", "coverUrl") ?? string.Empty;
+        var title = FindNamedString(captured, "title", "room_name", "roomName") ??
+                    FindEmbeddedField(captured, "title", "room_name", "roomName") ??
+                    $"{request.SiteKey} 直播";
+        var author = FindNamedString(captured, "nickname", "anchor_name", "user_name") ??
+                     FindEmbeddedField(captured, "nickname", "anchor_name", "user_name") ??
+                     string.Empty;
+        var cover = FindNamedString(captured, "cover_url", "room_cover", "cover", "coverUrl") ??
+                    FindEmbeddedImage(captured) ??
+                    string.Empty;
         var videoId = Uri.TryCreate(request.Url, UriKind.Absolute, out var uri)
             ? uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? string.Empty
             : string.Empty;
@@ -313,6 +321,54 @@ internal static class WindowsRemoteLiveCapture
                 if (!string.IsNullOrWhiteSpace(nested)) return nested;
             }
         return null;
+    }
+
+    private static string? FindEmbeddedField(IReadOnlyList<CapturedResponse> captured, params string[] names)
+    {
+        foreach (var response in captured)
+        {
+            if (string.IsNullOrWhiteSpace(response.Body)) continue;
+            var body = WebUtility.HtmlDecode(response.Body);
+            foreach (var name in names)
+            {
+                var match = Regex.Match(body,
+                    $@"(?:\\?""){Regex.Escape(name)}(?:\\?"")\s*:\s*(?:\\?"")(?<value>(?:\\.|[^""\\]){{1,500}})(?:\\?"")",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                if (!match.Success) continue;
+                var value = DecodeEmbeddedJsonString(match.Groups["value"].Value);
+                if (!string.IsNullOrWhiteSpace(value) && !ContainsMediaUrl(value)) return value;
+            }
+        }
+        return null;
+    }
+
+    private static string? FindEmbeddedImage(IReadOnlyList<CapturedResponse> captured)
+    {
+        foreach (var response in captured)
+        {
+            if (string.IsNullOrWhiteSpace(response.Body)) continue;
+            var body = WebUtility.HtmlDecode(response.Body);
+            var match = Regex.Match(body,
+                @"https?:\\?/\\?/[^""'\\\s]+?\.(?:jpe?g|png|webp)(?:\?[^""'\\\s]*)?",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (match.Success) return DecodeEmbeddedJsonString(match.Value);
+        }
+        return null;
+    }
+
+    private static string DecodeEmbeddedJsonString(string value)
+    {
+        var normalized = value.Replace("\\\"", "\"", StringComparison.Ordinal)
+            .Replace("\\/", "/", StringComparison.Ordinal);
+        try
+        {
+            return JsonSerializer.Deserialize<string>($"\"{normalized.Replace("\"", "\\\"", StringComparison.Ordinal)}\"")
+                   ?? normalized;
+        }
+        catch (JsonException)
+        {
+            return normalized.Replace("\\u0026", "&", StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     private sealed record CapturedResponse(string Url, string Body, bool IsMedia);

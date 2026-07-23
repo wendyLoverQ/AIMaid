@@ -103,7 +103,7 @@ public sealed partial class RemoteVideoApplicationService
                 resolved.Add(item);
             }
             var hydrationText = hydration.FailedCount > 0
-                ? $"，其中 {hydration.FailedCount} 项元数据补全失败"
+                ? $"，另有 {hydration.FailedCount} 项源站已不可访问并已剔除"
                 : string.Empty;
             summaries.Add($"{HostLabel(link)}：{parsed.Count} 项{hydrationText}");
         }
@@ -765,7 +765,7 @@ public sealed partial class RemoteVideoApplicationService
         var failed = 0;
         var tasks = items.Select(async item =>
         {
-            if (!NeedsMetadataHydration(item)) return item;
+            if (!NeedsMetadataHydration(item)) return (RemoteVideoResolvedItemDto?)item;
             await gate.WaitAsync(cancellationToken);
             try
             {
@@ -785,14 +785,16 @@ public sealed partial class RemoteVideoApplicationService
             catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 Interlocked.Increment(ref failed);
-                return item;
+                return null;
             }
             finally
             {
                 gate.Release();
             }
         }).ToArray();
-        return new PlaylistHydrationResult(await Task.WhenAll(tasks), failed);
+        return new PlaylistHydrationResult(
+            (await Task.WhenAll(tasks)).Where(x => x is not null).Select(x => x!).ToArray(),
+            failed);
     }
 
     private static bool NeedsMetadataHydration(RemoteVideoResolvedItemDto item)
