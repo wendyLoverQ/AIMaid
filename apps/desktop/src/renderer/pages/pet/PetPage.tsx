@@ -295,7 +295,16 @@ export default function PetPage(): React.JSX.Element {
             return;
         }
         showBubble(messages.map(formatConversationMessage).join('\n').trim(), 'conversation');
-        if (!await realtimeTtsEnabled())
+        let ttsEnabled: boolean;
+        try {
+            ttsEnabled = await realtimeTtsEnabled();
+        }
+        catch (reason: unknown) {
+            const message = reason instanceof Error ? reason.message : String(reason);
+            showBubble(message || '实时 TTS 设置读取失败。', 'error');
+            return;
+        }
+        if (!ttsEnabled)
             return;
         const audioPaths = latestAssistantAudioPaths(messages);
         await playLocalAudioPaths(audioPaths);
@@ -407,7 +416,7 @@ export default function PetPage(): React.JSX.Element {
 async function realtimeTtsEnabled(): Promise<boolean> {
     const response = await bridge.core.invoke({ type: 'settings.get', payload: { keys: ['realtime_tts_enabled'] } });
     if (!response.success)
-        return false;
+        throw new Error(response.error?.message ?? '实时 TTS 设置读取失败。');
     const payload = response.payload as {
         settings?: Array<{
             key: string;
