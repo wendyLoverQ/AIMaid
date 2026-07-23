@@ -181,19 +181,42 @@ internal static class WindowsRemoteLiveCapture
             .OrderByDescending(ScoreStream)
             .FirstOrDefault()
             ?? throw new InvalidDataException("直播响应中没有可播放的 HLS 或 FLV 地址。");
-        var title = FindEmbeddedField(captured, "title", "room_name", "roomName") ??
-                    FindNamedString(captured, "title", "room_name", "roomName") ??
+        var metadataResponses = ScopeMetadataResponses(captured, stream);
+        var title = FindEmbeddedField(metadataResponses, "title", "room_name", "roomName") ??
+                    FindNamedString(metadataResponses, "title", "room_name", "roomName") ??
                     $"{request.SiteKey} 直播";
-        var author = FindEmbeddedField(captured, "nickname", "anchor_name", "user_name") ??
-                     FindNamedString(captured, "nickname", "anchor_name", "user_name") ??
+        var author = FindEmbeddedField(metadataResponses, "nickname", "anchor_name", "user_name") ??
+                     FindNamedString(metadataResponses, "nickname", "anchor_name", "user_name") ??
                      string.Empty;
-        var cover = FindEmbeddedImage(captured) ??
-                    FindNamedString(captured, "cover_url", "room_cover", "cover", "coverUrl") ??
+        var cover = FindEmbeddedImage(metadataResponses) ??
+                    FindNamedString(metadataResponses, "cover_url", "room_cover", "cover", "coverUrl") ??
                     string.Empty;
         var videoId = Uri.TryCreate(request.Url, UriKind.Absolute, out var uri)
             ? uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? string.Empty
             : string.Empty;
         return new Core.RemoteLiveCaptureResult(stream, title, author, cover, videoId);
+    }
+
+    private static IReadOnlyList<CapturedResponse> ScopeMetadataResponses(
+        IReadOnlyList<CapturedResponse> captured,
+        string stream)
+    {
+        if (!Uri.TryCreate(stream, UriKind.Absolute, out var streamUri)) return captured;
+        var marker = streamUri.AbsolutePath;
+        var scoped = captured
+            .Where(x => !string.IsNullOrWhiteSpace(x.Body))
+            .Select(x =>
+            {
+                var index = x.Body.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+                if (index < 0) return null;
+                var start = Math.Max(0, index - 140_000);
+                var length = Math.Min(x.Body.Length - start, index - start + 20_000);
+                return new CapturedResponse(x.Url, x.Body.Substring(start, length), false);
+            })
+            .Where(x => x is not null)
+            .Select(x => x!)
+            .ToArray();
+        return scoped.Length > 0 ? scoped : captured;
     }
 
     private static void ApplyCookies(CoreWebView2CookieManager manager, string cookieText)
