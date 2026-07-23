@@ -176,23 +176,26 @@ internal static class WindowsRemoteCreatorCapture
 
     private static Core.RemoteCreatorCaptureItem? MapXiaohongshu(JsonElement item)
     {
-        var id = ReadString(item, "note_id", ReadString(item, "id"));
-        var type = ReadString(item, "type");
+        var nested = ReadObject(item, "note_card");
+        var note = nested.ValueKind == JsonValueKind.Object ? nested : item;
+        var id = ReadString(note, "note_id", ReadString(note, "id", ReadString(item, "id")));
+        var type = ReadString(note, "type", ReadString(item, "type"));
+        var video = ReadObject(note, "video");
         if (string.IsNullOrWhiteSpace(id) ||
-            (!string.IsNullOrWhiteSpace(type) &&
-             !type.Contains("video", StringComparison.OrdinalIgnoreCase)))
+            (!type.Contains("video", StringComparison.OrdinalIgnoreCase) &&
+             video.ValueKind != JsonValueKind.Object))
             return null;
-        var author = ReadObject(item, "user");
-        var cover = ReadImageUrl(ReadObject(item, "cover")) ??
-                    ReadImageUrl(ReadObject(item, "image_list")) ?? string.Empty;
+        var author = ReadObject(note, "user");
+        var cover = ReadImageUrl(ReadObject(note, "cover")) ??
+                    ReadImageUrl(ReadObject(note, "image_list")) ?? string.Empty;
         return new Core.RemoteCreatorCaptureItem(
             id,
             $"https://www.xiaohongshu.com/explore/{id}",
-            ReadString(item, "display_title", ReadString(item, "title", "未命名视频")),
-            ReadString(author, "nickname", ReadString(item, "nickname")),
+            ReadString(note, "display_title", ReadString(note, "title", "未命名视频")),
+            ReadString(author, "nickname", ReadString(note, "nickname")),
             cover,
-            ReadInt(item, "duration"),
-            ReadLong(item, "time"));
+            ReadInt(video, "duration"),
+            ReadLong(note, "time"));
     }
 
     private static bool IsCreatorResponse(string url, string siteKey)
