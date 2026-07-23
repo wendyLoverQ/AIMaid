@@ -1,5 +1,5 @@
 import type { PetWindowUpdate } from '../../shared/pet'
-import { PET_BASE_WINDOW_HEIGHT, PET_BASE_WINDOW_WIDTH } from '../../shared/pet-geometry'
+import { PET_BASE_WINDOW_HEIGHT, PET_BASE_WINDOW_WIDTH, PET_CANVAS_HEIGHT } from '../../shared/pet-geometry'
 import { calculatePetHoldGeometry, easeOutCubic, PET_HOLD_GROWTH_PER_MS, PET_HOLD_RELEASE_MS } from '../../shared/pet-hold-scale'
 
 const STORAGE_KEY = 'aimaid.pet-item-state.v1'
@@ -25,7 +25,14 @@ export interface PetItemInteractionOptions {
   dragEnd: () => void
   updateWindow: (update: PetWindowUpdate) => void
   onScale: (scale: number) => void
+  onVisualTransform?: (transform: PetVisualTransform) => void
   onClick: (event: MouseEvent) => void
+}
+
+export interface PetVisualTransform {
+  centerX: number
+  centerY: number
+  scale: number
 }
 
 export class PetItemInteractionController {
@@ -273,12 +280,21 @@ export class PetItemInteractionController {
     const { width, height, originShiftX, originShiftY } = calculatePetHoldGeometry(
       baseWidth, baseHeight, this.holdScale, this.holdOriginX, this.holdOriginY
     )
-    this.options.item.style.left = `calc(50% + ${this.offsetX + originShiftX}px)`
-    this.options.item.style.top = `calc(50% + ${this.offsetY + originShiftY}px)`
-    this.options.item.style.width = `${Math.round(width)}px`
-    this.options.item.style.height = `${Math.round(height)}px`
+    const displayMode = this.options.item.closest<HTMLElement>('[data-display-mode]')?.dataset.displayMode
+    const live2d = displayMode === 'live2d'
+    this.options.item.style.left = `calc(50% + ${this.offsetX + (live2d ? 0 : originShiftX)}px)`
+    this.options.item.style.top = `calc(50% + ${this.offsetY + (live2d ? 0 : originShiftY)}px)`
+    this.options.item.style.width = `${Math.round(live2d ? baseWidth : width)}px`
+    this.options.item.style.height = `${Math.round(live2d ? baseHeight : height)}px`
     this.options.item.style.transform = 'translate(-50%, -50%)'
-    this.options.onScale(this.scale * this.holdScale)
+    const renderScale = this.scale * this.holdScale
+    this.options.onScale(renderScale)
+    this.options.onVisualTransform?.({
+      centerX: window.innerWidth / 2 + this.offsetX + originShiftX,
+      centerY: window.innerHeight / 2 + this.offsetY + originShiftY
+        + (PET_BASE_WINDOW_HEIGHT - PET_CANVAS_HEIGHT) * renderScale / 2,
+      scale: renderScale
+    })
   }
 }
 

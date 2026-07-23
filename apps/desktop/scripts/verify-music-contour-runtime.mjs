@@ -9,6 +9,7 @@ const outputDirectory = resolve('artifacts/music-contour-runtime')
 const profile = resolve(`artifacts/.music-contour-runtime-${Date.now()}`)
 const configRoot = resolve(profile, 'config')
 const logRoot = resolve(profile, 'logs')
+const dataRoot = process.env.AIMAID_RUNTIME_DATA_ROOT ?? resolve(profile, 'data')
 
 await mkdir(outputDirectory, { recursive: true })
 await mkdir(configRoot, { recursive: true })
@@ -21,7 +22,7 @@ const app = spawn(electronPath, ['.', `--remote-debugging-port=${port}`, `--user
   windowsHide: true,
   env: {
     ...process.env,
-    AIMAID_DATA_ROOT: resolve(profile, 'data'),
+    AIMAID_DATA_ROOT: dataRoot,
     AIMAID_CONFIG_ROOT: configRoot,
     AIMAID_CACHE_ROOT: resolve(profile, 'cache'),
     AIMAID_LOG_ROOT: logRoot
@@ -68,7 +69,7 @@ try {
     let visiblePixels = 0;
     for (let index = 3; index < pixels.length; index += 4) if (pixels[index] > 0) visiblePixels += 1;
     return {
-      independentStageLayer: source.parentElement !== overlay.parentElement && overlay.parentElement?.classList.contains('ui-transparent-stage'),
+      independentStageLayer: source !== overlay && source.parentElement === overlay.parentElement && overlay.parentElement?.classList.contains('ui-transparent-stage'),
       sourceBounds: { x: sourceBounds.x, y: sourceBounds.y, width: sourceBounds.width, height: sourceBounds.height },
       overlayBounds: { x: overlayBounds.x, y: overlayBounds.y, width: overlayBounds.width, height: overlayBounds.height },
       stageBounds: { x: stageBounds.x, y: stageBounds.y, width: stageBounds.width, height: stageBounds.height },
@@ -76,11 +77,8 @@ try {
     };
   })()`)
 
-  const containsSource = metrics.overlayBounds.x <= metrics.sourceBounds.x && metrics.overlayBounds.y <= metrics.sourceBounds.y &&
-    metrics.overlayBounds.x + metrics.overlayBounds.width >= metrics.sourceBounds.x + metrics.sourceBounds.width &&
-    metrics.overlayBounds.y + metrics.overlayBounds.height >= metrics.sourceBounds.y + metrics.sourceBounds.height
   const tightlyBounded = metrics.overlayBounds.width < metrics.stageBounds.width / 2 && metrics.overlayBounds.height < metrics.stageBounds.height / 2
-  if (!metrics.independentStageLayer || !containsSource || !tightlyBounded || metrics.visiblePixels <= 100) {
+  if (!metrics.independentStageLayer || !tightlyBounded || metrics.visiblePixels <= 100) {
     throw new Error(`Visualizer is not an independent stage overlay: ${JSON.stringify(metrics)}`)
   }
 
@@ -129,16 +127,41 @@ try {
   await writeFile(screenshotPath, Buffer.from(screenshot.data, 'base64'))
 
   const styleScreenshots = { 'surround-bars': screenshotPath }
-  for (const style of ['surround-line', 'bottom-wave']) {
+  const styleMetrics = {}
+  for (const style of ['surround-line', 'bottom-wave', 'radial-bars', 'circular-wave', 'pulse-rings']) {
     const saved = await evaluate(client, `window.aimaid.core.invoke({ type: 'settings.save', payload: { values: { music_visualizer_style: '${style}' } } })`)
     if (!saved.success) throw new Error(`Visualizer style save failed: ${JSON.stringify(saved.error)}`)
     await waitFor(() => evaluate(client, `document.querySelector('.ui-pet-audio-contour')?.dataset.visualizerStyle === '${style}'`))
     await delay(500)
+    const currentStyleMetrics = await evaluate(client, `(() => {
+      const canvas = document.querySelector('.ui-pet-audio-contour');
+      const bounds = canvas.getBoundingClientRect();
+      const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+      let visiblePixels = 0;
+      for (let index = 3; index < pixels.length; index += 4) if (pixels[index] > 0) visiblePixels += 1;
+      return {
+        layer: canvas.dataset.visualizerLayer,
+        zIndex: getComputedStyle(canvas).zIndex,
+        bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+        visualAnchorX: Number(canvas.dataset.visualAnchorX),
+        visualAnchorY: Number(canvas.dataset.visualAnchorY),
+        visiblePixels
+      };
+    })()`)
+    const expectedLayer = ['radial-bars', 'circular-wave', 'pulse-rings'].includes(style) ? 'background' : 'foreground'
+    if (currentStyleMetrics.layer !== expectedLayer || currentStyleMetrics.visiblePixels <= 100 ||
+      currentStyleMetrics.bounds.width >= metrics.stageBounds.width / 2 || currentStyleMetrics.bounds.height >= metrics.stageBounds.height / 2 ||
+      (expectedLayer === 'background' && currentStyleMetrics.zIndex !== '-1')) {
+      throw new Error(`Visualizer style runtime contract failed for ${style}: ${JSON.stringify(currentStyleMetrics)}`)
+    }
+    styleMetrics[style] = currentStyleMetrics
     const styleScreenshot = await client.send('Page.captureScreenshot', { format: 'png', fromSurface: true })
     const stylePath = resolve(outputDirectory, `live2d-${style}.png`)
     await writeFile(stylePath, Buffer.from(styleScreenshot.data, 'base64'))
     styleScreenshots[style] = stylePath
   }
+
+  const bottomFollow = await verifyBottomVisualizerFollow(client)
 
   await evaluate(client, `window.aimaid.window.open('tray-menu')`)
   const trayTarget = await waitForTarget((candidate) => candidate.url.includes('window=tray-menu'))
@@ -174,7 +197,7 @@ try {
   const settingsTarget = await waitForTarget((candidate) => candidate.url.includes('window=settings'))
   settingsClient = await connect(settingsTarget.webSocketDebuggerUrl)
   await settingsClient.send('Page.enable')
-  await waitFor(() => evaluate(settingsClient, `document.body.innerText.includes('音乐音浪样式') && document.body.innerText.includes('环绕柱条') && document.body.innerText.includes('环绕线条') && document.body.innerText.includes('底部倒置柱状')`))
+  await waitFor(() => evaluate(settingsClient, `document.body.innerText.includes('音乐音浪样式') && document.body.innerText.includes('环绕柱条') && document.body.innerText.includes('环绕线条') && document.body.innerText.includes('底部倒置柱状') && document.body.innerText.includes('背景径向柱状圆环') && document.body.innerText.includes('背景圆形波形线') && document.body.innerText.includes('背景同心脉冲')`))
   const settingsScreenshot = await settingsClient.send('Page.captureScreenshot', { format: 'png', fromSurface: true })
   const settingsScreenshotPath = resolve(outputDirectory, 'settings-visualizer-styles.png')
   await writeFile(settingsScreenshotPath, Buffer.from(settingsScreenshot.data, 'base64'))
@@ -183,8 +206,10 @@ try {
     playback: playback.payload,
     ...metrics,
     interactionPerformance,
+    bottomFollow,
     screenshot: screenshotPath,
     styleScreenshots,
+    styleMetrics,
     settingsScreenshot: settingsScreenshotPath,
     trayControls: { currentSong: true, pause: true, resume: true, stop: true, screenshot: trayScreenshotPath }
   }
@@ -254,4 +279,51 @@ async function evaluate(target, expression) {
   const result = await target.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })
   if (result.exceptionDetails !== undefined) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text)
   return result.result.value
+}
+
+async function verifyBottomVisualizerFollow(target) {
+  const saved = await evaluate(target, `window.aimaid.core.invoke({ type: 'settings.save', payload: { values: { music_visualizer_style: 'bottom-wave' } } })`)
+  if (!saved.success) throw new Error(`Bottom visualizer save failed: ${JSON.stringify(saved.error)}`)
+  await waitFor(() => evaluate(target, `document.querySelector('.ui-pet-audio-contour')?.dataset.visualizerStyle === 'bottom-wave'`))
+  await evaluate(target, `window.dispatchEvent(new StorageEvent('storage', { key: 'aimaid.pet-bubble', newValue: JSON.stringify({ text: '音浪跟随验证', kind: 'feedback', nonce: crypto.randomUUID(), createdAt: Date.now() }) }))`)
+  await waitFor(() => evaluate(target, `document.querySelector('.ui-pet-bubble')?.dataset.alphaHitX !== undefined`))
+  await delay(700)
+  const before = await visualizerAnchorSnapshot(target)
+  await target.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: before.hitX, y: before.hitY, button: 'none', buttons: 0 })
+  await target.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: before.hitX, y: before.hitY, button: 'left', buttons: 1, clickCount: 1 })
+  for (let index = 1; index <= 12; index += 1) {
+    await target.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: before.hitX + index * 10, y: before.hitY + index * 4, button: 'left', buttons: 1 })
+    await delay(16)
+  }
+  await target.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: before.hitX + 120, y: before.hitY + 48, button: 'left', buttons: 0, clickCount: 1 })
+  await delay(700)
+  const after = await visualizerAnchorSnapshot(target)
+  const bubbleDelta = { x: after.alphaX - before.alphaX, y: after.alphaY - before.alphaY }
+  const visualizerDelta = { x: after.visualizerX - before.visualizerX, y: after.visualizerY - before.visualizerY }
+  const requestedDelta = { x: 120, y: 48 }
+  const tailError = { x: after.tailX - after.alphaX, y: after.tailY - after.alphaY }
+  if (Math.abs(visualizerDelta.x - requestedDelta.x) > 1 || Math.abs(visualizerDelta.y - requestedDelta.y) > 1 ||
+    Math.abs(tailError.x) > 6 || Math.abs(tailError.y + 5) > 6) {
+    throw new Error(`Bottom visualizer detached from Live2D: ${JSON.stringify({ before, after, bubbleDelta, visualizerDelta })}`)
+  }
+  return { before, after, requestedDelta, bubbleDelta, visualizerDelta, tailError }
+}
+
+async function visualizerAnchorSnapshot(target) {
+  return evaluate(target, `(() => {
+    const bubble = document.querySelector('.ui-pet-bubble');
+    const visualizer = document.querySelector('.ui-pet-audio-contour');
+    const bubbleBounds = bubble.getBoundingClientRect();
+    const tail = getComputedStyle(bubble, '::before');
+    return {
+      alphaX: Number(bubble.dataset.alphaAnchorX),
+      alphaY: Number(bubble.dataset.alphaAnchorY),
+      hitX: Number(bubble.dataset.alphaHitX),
+      hitY: Number(bubble.dataset.alphaHitY),
+      tailX: bubbleBounds.x + parseFloat(tail.left),
+      tailY: bubbleBounds.bottom + Math.abs(parseFloat(tail.bottom)),
+      visualizerX: Number(visualizer.dataset.visualAnchorX),
+      visualizerY: Number(visualizer.dataset.visualAnchorY)
+    };
+  })()`)
 }

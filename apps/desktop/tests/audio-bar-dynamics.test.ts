@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { advanceBarDynamics, barSpectrumTarget, spectrumPeak } from '../src/shared/audio-bar-dynamics'
+import { advanceBarDynamics, barSpectrumTarget, resampleLogFrequencyBands, spectrumPeak } from '../src/shared/audio-bar-dynamics'
 
 describe('pet audio bar dynamics', () => {
   it('gives adjacent bars distinct frequency-driven targets', () => {
@@ -15,5 +15,20 @@ describe('pet audio bar dynamics', () => {
     expect(rising).toBeGreaterThan(0.4)
     expect(0.8 - falling).toBeLessThan(0.2)
     expect(advanceBarDynamics(0, 0.8, 4)).not.toBe(rising)
+  })
+
+  it('maps the full audible analyser range into ordered logarithmic bands', () => {
+    const source = new Uint8Array(512)
+    source[2] = 220
+    source[64] = 180
+    source[320] = 240
+    const target = new Uint8Array(48)
+
+    resampleLogFrequencyBands(source, target, 48_000, 1024)
+
+    const activeBands = Array.from(target.entries()).filter(([, value]) => value > 0).map(([index]) => index)
+    expect(activeBands.length).toBeGreaterThanOrEqual(3)
+    expect(Math.min(...activeBands)).toBeLessThan(10)
+    expect(Math.max(...activeBands)).toBeGreaterThan(40)
   })
 })

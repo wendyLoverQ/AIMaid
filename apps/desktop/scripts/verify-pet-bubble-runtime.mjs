@@ -7,14 +7,20 @@ const port = 20600 + Math.floor(Math.random() * 200)
 const electronPath = resolve('node_modules/electron/dist/electron.exe')
 const outputDirectory = resolve('artifacts/pet-bubble-runtime')
 const profile = resolve(`artifacts/.pet-bubble-runtime-${Date.now()}`)
+const configRoot = resolve(profile, 'config')
+const dataRoot = process.env.AIMAID_RUNTIME_DATA_ROOT ?? resolve(profile, 'data')
 await mkdir(outputDirectory, { recursive: true })
+await mkdir(configRoot, { recursive: true })
+await writeFile(resolve(configRoot, 'pet-presentation.json'), JSON.stringify({
+  mode: 'live2d', paused: false, live2dRole: '符玄'
+}, null, 2))
 
 const app = spawn(electronPath, ['.', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`], {
   stdio: 'ignore', windowsHide: true,
   env: {
     ...process.env,
-    AIMAID_DATA_ROOT: resolve(profile, 'data'),
-    AIMAID_CONFIG_ROOT: resolve(profile, 'config'),
+    AIMAID_DATA_ROOT: dataRoot,
+    AIMAID_CONFIG_ROOT: configRoot,
     AIMAID_CACHE_ROOT: resolve(profile, 'cache'),
     AIMAID_LOG_ROOT: resolve(profile, 'logs')
   }
@@ -24,37 +30,32 @@ try {
   const target = await waitForTarget((candidate) => candidate.url.includes('window=pet'))
   const client = await connect(target.webSocketDebuggerUrl)
   await client.send('Page.enable')
-  await waitFor(() => evaluate(client, `document.querySelector('.ui-pet-item') !== null`))
+  await waitFor(() => evaluate(client, `document.querySelector('canvas[aria-label="Live2D 桌宠模型"]') !== null`))
   await showBubble(client, 'speech', '气泡位置、尾角与语音保持运行态验证。')
-  await waitFor(() => evaluate(client, `document.querySelector('.ui-pet-bubble') !== null`))
-  await delay(350)
-  const geometry = await evaluate(client, `(() => {
-    const bubble = document.querySelector('.ui-pet-bubble');
-    const item = document.querySelector('.ui-pet-item');
-    const rect = bubble.getBoundingClientRect();
-    const itemRect = item.getBoundingClientRect();
-    const tail = getComputedStyle(bubble, '::before');
-    return {
-      bubble: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-      item: { x: itemRect.x, y: itemRect.y, width: itemRect.width, height: itemRect.height },
-      tailLeft: parseFloat(tail.left),
-      tailWidth: parseFloat(tail.width)
-    };
-  })()`)
-  const tailRatio = (geometry.tailLeft + geometry.tailWidth / 2) / geometry.bubble.width
-  if (Math.abs((geometry.bubble.x + geometry.bubble.width / 2) - (geometry.item.x + geometry.item.width / 2)) > 1.5)
-    throw new Error(`Bubble is not centered over the pet item: ${JSON.stringify(geometry)}`)
-  if (tailRatio < 0.6 || tailRatio > 0.7)
-    throw new Error(`Bubble tail is outside the intended head anchor: ${JSON.stringify({ tailRatio, geometry })}`)
+  await waitFor(() => evaluate(client, `document.querySelector('.ui-pet-bubble[data-alpha-anchored]') !== null`))
+  await delay(500)
+  const before = await measureAnchor(client)
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: before.hit.x, y: before.hit.y, button: 'none', buttons: 0 })
+  await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: before.hit.x, y: before.hit.y, button: 'left', buttons: 1, clickCount: 1 })
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: before.hit.x + 120, y: before.hit.y + 48, button: 'left', buttons: 1 })
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: before.hit.x + 120, y: before.hit.y + 48, button: 'left', buttons: 0, clickCount: 1 })
+  await delay(700)
+  const after = await measureAnchor(client)
+  const alphaDelta = { x: after.alphaTop.x - before.alphaTop.x, y: after.alphaTop.y - before.alphaTop.y }
+  const tailDelta = { x: after.tailTip.x - before.tailTip.x, y: after.tailTip.y - before.tailTip.y }
+  if (Math.abs(alphaDelta.x - tailDelta.x) > 6 || Math.abs(alphaDelta.y - tailDelta.y) > 6)
+    throw new Error(`Bubble did not follow the Live2D alpha anchor: ${JSON.stringify({ before, after, alphaDelta, tailDelta })}`)
+  if (Math.abs(after.alphaTop.x - after.tailTip.x) > 6 || Math.abs(after.alphaTop.y - after.tailTip.y - 5) > 6)
+    throw new Error(`Bubble tail is detached from the Live2D alpha top: ${JSON.stringify({ before, after })}`)
 
   const screenshot = await client.send('Page.captureScreenshot', {
     format: 'png',
     captureBeyondViewport: true,
     clip: {
-      x: Math.max(0, geometry.bubble.x - 20),
-      y: Math.max(0, geometry.bubble.y - 20),
-      width: geometry.bubble.width + 40,
-      height: geometry.bubble.height + 70,
+      x: Math.max(0, after.bubble.x - 20),
+      y: Math.max(0, after.bubble.y - 20),
+      width: after.bubble.width + 40,
+      height: after.bubble.height + 70,
       scale: 1
     }
   })
@@ -69,7 +70,7 @@ try {
   const hiddenAfterRelease = await evaluate(client, `document.querySelector('.ui-pet-bubble') === null`)
   if (!hiddenAfterRelease) throw new Error('Speech bubble did not disappear after audio release')
 
-  const proof = { geometry, tailRatio, visibleWhileHeld, hiddenAfterRelease }
+  const proof = { before, after, alphaDelta, tailDelta, visibleWhileHeld, hiddenAfterRelease }
   await writeFile(resolve(outputDirectory, 'proof.json'), `${JSON.stringify(proof, null, 2)}\n`)
   console.log(JSON.stringify(proof, null, 2))
   client.close()
@@ -80,6 +81,26 @@ try {
 
 async function showBubble(client, kind, text) {
   await evaluate(client, `(() => { const payload = JSON.stringify({ text: ${JSON.stringify(text)}, kind: ${JSON.stringify(kind)}, nonce: crypto.randomUUID(), createdAt: Date.now() }); window.dispatchEvent(new StorageEvent('storage', { key: 'aimaid.pet-bubble', newValue: payload })); })()`)
+}
+
+async function measureAnchor(client) {
+  return evaluate(client, `(() => {
+    const bubble = document.querySelector('.ui-pet-bubble');
+    if (!(bubble instanceof HTMLElement)) throw new Error('Live2D bubble is missing');
+    const alphaTopX = Number(bubble.dataset.alphaAnchorX);
+    const alphaTopY = Number(bubble.dataset.alphaAnchorY);
+    const hitX = Number(bubble.dataset.alphaHitX);
+    const hitY = Number(bubble.dataset.alphaHitY);
+    if (![alphaTopX, alphaTopY, hitX, hitY].every(Number.isFinite)) throw new Error('Live2D alpha diagnostics are missing');
+    const bubbleRect = bubble.getBoundingClientRect();
+    const tail = getComputedStyle(bubble, '::before');
+    return {
+      alphaTop: { x: alphaTopX, y: alphaTopY },
+      hit: { x: hitX, y: hitY },
+      bubble: { x: bubbleRect.x, y: bubbleRect.y, width: bubbleRect.width, height: bubbleRect.height },
+      tailTip: { x: bubbleRect.x + parseFloat(tail.left), y: bubbleRect.bottom + Math.abs(parseFloat(tail.bottom)) }
+    };
+  })()`)
 }
 
 async function setHold(client, held) {

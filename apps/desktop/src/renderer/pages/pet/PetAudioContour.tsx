@@ -3,23 +3,31 @@ import { PetAudioContourCanvas } from '../../components/ui'
 import { ALPHA_CONTOUR_ANGLE_COUNT, buildOuterAlphaContour } from '../../../shared/alpha-contour'
 import type { AlphaContour } from '../../../shared/alpha-contour'
 import { advanceBarDynamics, barSpectrumTarget, spectrumPeak } from '../../../shared/audio-bar-dynamics'
-import { bottomBarIdentity, bottomBarSlots, createBottomBarLayout } from '../../../shared/music-visualizer'
-import type { BottomBarLayout } from '../../../shared/music-visualizer'
+import { bottomBarIdentity, bottomBarSlots, createBottomBarLayout, createRadialVisualizerLayout, isBackgroundMusicVisualizer } from '../../../shared/music-visualizer'
+import type { BottomBarLayout, RadialVisualizerLayout } from '../../../shared/music-visualizer'
 import type { MusicVisualizerStyle } from '../../../shared/music-visualizer'
-import { readPetMusicSpectrum } from './pet-music-playback'
+import { readPetMusicSpectrum, readPetMusicWaveform } from './pet-music-playback'
 
 const MASK_WIDTH = 160
 const MASK_REFRESH_MS = 120
 const SURROUND_PADDING = 72
 const BOTTOM_EXTENSION = 88
+const RADIAL_EXTENSION = 72
 
-export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visualizerStyle }: {
+type SurroundVisualizerStyle = 'surround-bars' | 'surround-line'
+
+export interface PetAudioAnchor { readonly clientX: number; readonly clientY: number }
+
+export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visualAnchor, visualizerStyle }: {
   sourceCanvasRef: React.RefObject<HTMLCanvasElement | null>
   readContour?: (() => AlphaContour | null) | undefined
   sourceKey: string
+  visualAnchor?: PetAudioAnchor | undefined
   visualizerStyle: MusicVisualizerStyle
 }): React.JSX.Element {
   const overlayRef = useRef<HTMLCanvasElement>(null)
+  const visualAnchorRef = useRef<PetAudioAnchor | undefined>(visualAnchor)
+  visualAnchorRef.current = visualAnchor
 
   useEffect(() => {
     const overlay = overlayRef.current
@@ -28,12 +36,14 @@ export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visua
     const context = overlay.getContext('2d')
     if (context === null) return
     const spectrum = new Uint8Array(ALPHA_CONTOUR_ANGLE_COUNT / 2)
+    const waveform = new Uint8Array(ALPHA_CONTOUR_ANGLE_COUNT)
     const dynamics = new Map<number, number>()
     let contour: AlphaContour | null = null
     let lastMaskAt = Number.NEGATIVE_INFINITY
     let animationId = 0
     let wasActive = false
     let bottomLayout: BottomBarLayout | null = null
+    let radialLayout: RadialVisualizerLayout | null = null
 
     const render = (now: number): void => {
       const source = sourceCanvasRef.current
@@ -58,6 +68,7 @@ export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visua
       }
       wasActive = true
       overlay.hidden = false
+      if (visualizerStyle === 'circular-wave') readPetMusicWaveform(waveform)
       if (hasAudio && now - lastMaskAt >= MASK_REFRESH_MS) {
         lastMaskAt = now
         const nextContour = readContour === undefined ? captureAlphaContour(source, maskCanvas) : readContour()
@@ -67,15 +78,34 @@ export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visua
         if (visualizerStyle === 'bottom-wave' && bottomLayout === null) {
           bottomLayout = createBottomBarLayout(contour, sourceBounds.width)
         }
-        const region = positionOverlay(overlay, sourceBounds, stageBounds, visualizerStyle)
+        if (isBackgroundMusicVisualizer(visualizerStyle) && radialLayout === null) {
+          radialLayout = createRadialVisualizerLayout(contour, sourceBounds.width, sourceBounds.height)
+        }
+        const anchor = visualAnchorRef.current
+        const region = radialLayout !== null
+          ? positionRadialOverlay(overlay, sourceBounds, stageBounds, radialLayout, anchor)
+          : visualizerStyle === 'bottom-wave' && bottomLayout !== null
+            ? positionBottomOverlay(overlay, sourceBounds, stageBounds, contour, bottomLayout, anchor)
+            : positionOverlay(overlay, sourceBounds, stageBounds, contour)
         resizeOverlay(overlay, region.width, region.height)
         const pixelRatio = overlay.width / region.width
         context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
         context.clearRect(0, 0, region.width, region.height)
         const x = sourceBounds.left - stageBounds.left - region.left
         const y = sourceBounds.top - stageBounds.top - region.top
-        if (visualizerStyle === 'bottom-wave' && bottomLayout !== null) drawBottomBars(context, contour, bottomLayout, spectrum, dynamics, x, y, sourceBounds.width, sourceBounds.height)
-        else if (visualizerStyle !== 'bottom-wave' && contour !== null) drawSurroundWave(context, contour, spectrum, dynamics, x, y, sourceBounds.width, sourceBounds.height, visualizerStyle)
+        if (anchor === undefined) {
+          delete overlay.dataset.visualAnchorX
+          delete overlay.dataset.visualAnchorY
+        } else {
+          overlay.dataset.visualAnchorX = anchor.clientX.toFixed(2)
+          overlay.dataset.visualAnchorY = anchor.clientY.toFixed(2)
+        }
+        if (visualizerStyle === 'bottom-wave' && bottomLayout !== null) drawBottomBars(context, contour, bottomLayout, spectrum, dynamics, x, y, sourceBounds.width, sourceBounds.height,
+          anchor === undefined ? undefined : anchor.clientX - stageBounds.left - region.left)
+        else if (visualizerStyle === 'surround-bars' || visualizerStyle === 'surround-line') drawSurroundWave(context, contour, spectrum, dynamics, x, y, sourceBounds.width, sourceBounds.height, visualizerStyle)
+        else if (radialLayout !== null && isBackgroundMusicVisualizer(visualizerStyle)) drawBackgroundVisualizer(context, visualizerStyle, radialLayout, spectrum, waveform, dynamics, now,
+          anchor?.clientX === undefined ? sourceBounds.left - stageBounds.left + radialLayout.normalizedCenterX * sourceBounds.width - region.left : anchor.clientX - stageBounds.left - region.left,
+          anchor?.clientY === undefined ? sourceBounds.top - stageBounds.top + radialLayout.normalizedCenterY * sourceBounds.height - region.top : anchor.clientY - stageBounds.top - region.top)
       }
       animationId = requestAnimationFrame(render)
     }
@@ -84,7 +114,8 @@ export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visua
     return () => cancelAnimationFrame(animationId)
   }, [readContour, sourceCanvasRef, sourceKey, visualizerStyle])
 
-  return <PetAudioContourCanvas ref={overlayRef} geometry="full" data-visualizer-style={visualizerStyle} aria-hidden="true" hidden/>
+  return <PetAudioContourCanvas ref={overlayRef} geometry="full" data-visualizer-style={visualizerStyle}
+    data-visualizer-layer={isBackgroundMusicVisualizer(visualizerStyle) ? 'background' : 'foreground'} aria-hidden="true" hidden/>
 }
 
 interface OverlayRegion { left: number; top: number; width: number; height: number }
@@ -93,18 +124,72 @@ function positionOverlay(
   overlay: HTMLCanvasElement,
   source: DOMRect,
   stage: DOMRect,
-  style: MusicVisualizerStyle
+  contour: AlphaContour
 ): OverlayRegion {
-  const padding = style === 'bottom-wave' ? 0 : SURROUND_PADDING
-  const extension = style === 'bottom-wave' ? BOTTOM_EXTENSION : SURROUND_PADDING
-  const desiredLeft = source.left - stage.left - padding
-  const desiredTop = source.top - stage.top - padding
-  const desiredRight = source.right - stage.left + padding
-  const desiredBottom = source.bottom - stage.top + extension
+  const contourLeft = Math.min(...contour.points.map((point) => point.x))
+  const contourRight = Math.max(...contour.points.map((point) => point.x))
+  const contourTop = Math.min(...contour.points.map((point) => point.y))
+  const contourBottom = Math.max(...contour.points.map((point) => point.y))
+  const desiredLeft = source.left - stage.left + contourLeft * source.width - SURROUND_PADDING
+  const desiredTop = source.top - stage.top + contourTop * source.height - SURROUND_PADDING
+  const desiredRight = source.left - stage.left + contourRight * source.width + SURROUND_PADDING
+  const desiredBottom = source.top - stage.top + contourBottom * source.height + SURROUND_PADDING
   const left = Math.max(0, Math.floor(desiredLeft))
   const top = Math.max(0, Math.floor(desiredTop))
   const right = Math.min(stage.width, Math.ceil(desiredRight))
   const bottom = Math.min(stage.height, Math.ceil(desiredBottom))
+  const region = { left, top, width: Math.max(1, right - left), height: Math.max(1, bottom - top) }
+  overlay.style.inset = 'auto'
+  overlay.style.left = `${region.left}px`
+  overlay.style.top = `${region.top}px`
+  overlay.style.width = `${region.width}px`
+  overlay.style.height = `${region.height}px`
+  return region
+}
+
+function positionBottomOverlay(
+  overlay: HTMLCanvasElement,
+  source: DOMRect,
+  stage: DOMRect,
+  contour: AlphaContour,
+  layout: BottomBarLayout,
+  anchor: PetAudioAnchor | undefined
+): OverlayRegion {
+  const contourLeft = Math.min(...contour.points.map((point) => point.x))
+  const contourRight = Math.max(...contour.points.map((point) => point.x))
+  const contourBottom = Math.max(...contour.points.map((point) => point.y))
+  const visibleWidth = Math.max(layout.spacing * 2, (contourRight - contourLeft) * source.width)
+  const centerX = anchor === undefined
+    ? source.left - stage.left + layout.normalizedCenterX * source.width
+    : anchor.clientX - stage.left
+  const baseline = source.top - stage.top + contourBottom * source.height + 8
+  const left = Math.max(0, Math.floor(centerX - visibleWidth / 2 - 12))
+  const top = Math.max(0, Math.floor(baseline - 12))
+  const right = Math.min(stage.width, Math.ceil(centerX + visibleWidth / 2 + 12))
+  const bottom = Math.min(stage.height, Math.ceil(baseline + BOTTOM_EXTENSION))
+  const region = { left, top, width: Math.max(1, right - left), height: Math.max(1, bottom - top) }
+  overlay.style.inset = 'auto'
+  overlay.style.left = `${region.left}px`
+  overlay.style.top = `${region.top}px`
+  overlay.style.width = `${region.width}px`
+  overlay.style.height = `${region.height}px`
+  return region
+}
+
+function positionRadialOverlay(
+  overlay: HTMLCanvasElement,
+  source: DOMRect,
+  stage: DOMRect,
+  layout: RadialVisualizerLayout,
+  anchor: PetAudioAnchor | undefined
+): OverlayRegion {
+  const centerX = anchor === undefined ? source.left - stage.left + layout.normalizedCenterX * source.width : anchor.clientX - stage.left
+  const centerY = anchor === undefined ? source.top - stage.top + layout.normalizedCenterY * source.height : anchor.clientY - stage.top
+  const extent = layout.radius + RADIAL_EXTENSION
+  const left = Math.max(0, Math.floor(centerX - extent))
+  const top = Math.max(0, Math.floor(centerY - extent))
+  const right = Math.min(stage.width, Math.ceil(centerX + extent))
+  const bottom = Math.min(stage.height, Math.ceil(centerY + extent))
   const region = { left, top, width: Math.max(1, right - left), height: Math.max(1, bottom - top) }
   overlay.style.inset = 'auto'
   overlay.style.left = `${region.left}px`
@@ -148,7 +233,7 @@ function drawSurroundWave(
   offsetY: number,
   width: number,
   height: number,
-  style: Exclude<MusicVisualizerStyle, 'bottom-wave'>
+  style: SurroundVisualizerStyle
 ): void {
   const centerX = offsetX + contour.center.x * width
   const centerY = offsetY + contour.center.y * height
@@ -209,12 +294,13 @@ function drawBottomBars(
   offsetX: number,
   offsetY: number,
   width: number,
-  height: number
+  height: number,
+  centerXOverride?: number
 ): void {
   const contourBottom = Math.max(...contour.points.map((point) => point.y))
-  const center = offsetX + layout.normalizedCenterX * width
+  const center = centerXOverride ?? offsetX + layout.normalizedCenterX * width
   const slots = bottomBarSlots(contour, width, layout.spacing)
-  const baseline = offsetY + contourBottom * height + 8
+  const baseline = snapToDevicePixel(context, offsetY + contourBottom * height + 8)
   const peak = spectrumPeak(spectrum)
   const path = new Path2D()
   for (const slot of slots) {
@@ -222,12 +308,103 @@ function drawBottomBars(
     const target = barSpectrumTarget(spectrum, peak, identity)
     const level = advanceBarDynamics(dynamics.get(identity) ?? 0, target, identity)
     dynamics.set(identity, level)
-    const x = center + slot * layout.spacing
+    const x = snapToDevicePixel(context, center + slot * layout.spacing)
     const length = 10 + level * 58
     path.moveTo(x, baseline)
-    path.lineTo(x, baseline + length)
+    path.lineTo(x, snapToDevicePixel(context, baseline + length))
   }
-  strokeVisualizer(context, path, 10, 6)
+  strokeVisualizer(context, path, 6, 6)
+}
+
+function drawBackgroundVisualizer(
+  context: CanvasRenderingContext2D,
+  style: Exclude<MusicVisualizerStyle, 'surround-bars' | 'surround-line' | 'bottom-wave'>,
+  layout: RadialVisualizerLayout,
+  spectrum: Uint8Array,
+  waveform: Uint8Array,
+  dynamics: Map<number, number>,
+  now: number,
+  centerX: number,
+  centerY: number
+): void {
+  if (style === 'radial-bars') {
+    drawRadialBars(context, layout.radius, spectrum, dynamics, centerX, centerY)
+    return
+  }
+  if (style === 'circular-wave') {
+    drawCircularWave(context, layout.radius, waveform, centerX, centerY)
+    return
+  }
+  drawPulseRings(context, layout.radius, spectrum, dynamics, now, centerX, centerY)
+}
+
+function drawRadialBars(
+  context: CanvasRenderingContext2D,
+  radius: number,
+  spectrum: Uint8Array,
+  dynamics: Map<number, number>,
+  centerX: number,
+  centerY: number
+): void {
+  const count = 72
+  const peak = spectrumPeak(spectrum)
+  const path = new Path2D()
+  for (let index = 0; index < count; index += 1) {
+    const angle = -Math.PI / 2 + index / count * Math.PI * 2
+    const target = barSpectrumTarget(spectrum, peak, index)
+    const level = advanceBarDynamics(dynamics.get(index) ?? 0, target, index)
+    dynamics.set(index, level)
+    const length = 7 + level * 42
+    path.moveTo(centerX + Math.cos(angle) * radius, centerY + Math.sin(angle) * radius)
+    path.lineTo(centerX + Math.cos(angle) * (radius + length), centerY + Math.sin(angle) * (radius + length))
+  }
+  trimDynamics(dynamics, count)
+  strokeVisualizer(context, path, 7, 4)
+}
+
+function drawCircularWave(
+  context: CanvasRenderingContext2D,
+  radius: number,
+  waveform: Uint8Array,
+  centerX: number,
+  centerY: number
+): void {
+  const path = new Path2D()
+  for (let index = 0; index < waveform.length; index += 1) {
+    const angle = -Math.PI / 2 + index / waveform.length * Math.PI * 2
+    const displacement = ((waveform[index]! - 128) / 128) * 28
+    const pointRadius = radius + displacement
+    const x = centerX + Math.cos(angle) * pointRadius
+    const y = centerY + Math.sin(angle) * pointRadius
+    if (index === 0) path.moveTo(x, y)
+    else path.lineTo(x, y)
+  }
+  path.closePath()
+  strokeVisualizer(context, path, 6, 3)
+}
+
+function drawPulseRings(
+  context: CanvasRenderingContext2D,
+  radius: number,
+  spectrum: Uint8Array,
+  dynamics: Map<number, number>,
+  now: number,
+  centerX: number,
+  centerY: number
+): void {
+  const bassBins = Math.min(12, spectrum.length)
+  let bass = 0
+  for (let index = 0; index < bassBins; index += 1) bass += spectrum[index]!
+  const target = bassBins === 0 ? 0 : bass / bassBins / 255
+  const level = advanceBarDynamics(dynamics.get(0) ?? 0, target, 0)
+  dynamics.set(0, level)
+  const phase = now / 1500 % 1
+  for (let index = 0; index < 3; index += 1) {
+    const progress = (phase + index / 3) % 1
+    const ring = new Path2D()
+    ring.arc(centerX, centerY, radius + progress * (38 + level * 24), 0, Math.PI * 2)
+    strokeAccent(context, ring, 3.5 - progress * 1.5, (1 - progress) * (0.2 + level * 0.58))
+  }
 }
 
 function trimDynamics(dynamics: Map<number, number>, count: number): void {
@@ -241,14 +418,34 @@ function strokeVisualizer(context: CanvasRenderingContext2D, path: Path2D, glowW
   context.lineCap = 'round'
   context.lineJoin = 'round'
   context.strokeStyle = accent
-  context.globalAlpha = 0.22
-  context.lineWidth = glowWidth
-  context.shadowColor = accent
-  context.shadowBlur = 8
-  context.stroke(path)
-  context.globalAlpha = 0.96
+  if (glowWidth > lineWidth) {
+    context.globalAlpha = 0.14
+    context.lineWidth = glowWidth
+    context.shadowColor = accent
+    context.shadowBlur = 4
+    context.stroke(path)
+  }
+  context.globalAlpha = 1
   context.lineWidth = lineWidth
-  context.shadowBlur = 5
+  context.shadowColor = 'transparent'
+  context.shadowBlur = 0
   context.stroke(path)
   context.restore()
+}
+
+function strokeAccent(context: CanvasRenderingContext2D, path: Path2D, lineWidth: number, alpha: number): void {
+  const accent = getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim()
+  if (accent === '') return
+  context.save()
+  context.strokeStyle = accent
+  context.globalAlpha = alpha
+  context.lineWidth = lineWidth
+  context.shadowBlur = 0
+  context.stroke(path)
+  context.restore()
+}
+
+function snapToDevicePixel(context: CanvasRenderingContext2D, value: number): number {
+  const ratio = Math.max(1, context.getTransform().a)
+  return Math.round(value * ratio) / ratio
 }

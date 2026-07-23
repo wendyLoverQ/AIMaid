@@ -100,6 +100,10 @@ export class PetRuntime {
     this.player.setUserScale(scale)
   }
 
+  setViewportPlacement(x: number, y: number): void {
+    this.player.setViewportPlacement(x, y)
+  }
+
   async handlePointerClick(clientX: number, clientY: number, ctrlKey: boolean, altKey: boolean): Promise<string | null> {
     if (this.state !== 'ready') return null
     if (altKey) {

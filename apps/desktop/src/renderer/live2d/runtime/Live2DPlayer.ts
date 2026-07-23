@@ -68,6 +68,8 @@ export class Live2DPlayer {
   private baseFitCalculated = false;
   private canvasWidth = 0;
   private canvasHeight = 0;
+  private placementX: number | null = null;
+  private placementY: number | null = null;
   private motionGroupCounts = new Map<string, number>();
   private motionGroupFiles = new Map<string, string[]>();
   private expressionNames: string[] = [];
@@ -812,6 +814,12 @@ export class Live2DPlayer {
 
   }
 
+  setViewportPlacement(x: number, y: number): void {
+    this.placementX = Number.isFinite(x) ? x : this.placementX;
+    this.placementY = Number.isFinite(y) ? y : this.placementY;
+    this.applyTransform('setViewportPlacement');
+  }
+
   private applyLipSync(): void {
     const coreModel = (this.live2dModel as any)?.internalModel?.coreModel;
     if (!coreModel) return;
@@ -978,8 +986,8 @@ export class Live2DPlayer {
 
     const nextScale = this.baseFitScale * this.userScale;
     this.live2dModel.scale.set(nextScale);
-    this.live2dModel.x = screenWidth / 2;
-    this.live2dModel.y = availableHeight / 2;
+    this.live2dModel.x = this.placementX ?? screenWidth / 2;
+    this.live2dModel.y = this.placementY ?? availableHeight / 2;
 
     this.logModelPlacement(nextScale);
   }

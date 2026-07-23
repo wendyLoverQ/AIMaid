@@ -65,7 +65,7 @@ public sealed class SettingsApplicationService :
             return OperationResult.Failure("settings.invalid_language", "界面语言必须是 zh-CN、en、es 或 ja。");
         if (key == "comic_bubble_style" && value is not ("" or "normal" or "soft" or "lively" or "close"))
             return OperationResult.Failure("settings.invalid_bubble_style", "气泡主题值无效。");
-        if (key == "music_visualizer_style" && value is not ("surround-bars" or "surround-line" or "bottom-wave"))
+        if (key == "music_visualizer_style" && value is not ("surround-bars" or "surround-line" or "bottom-wave" or "radial-bars" or "circular-wave" or "pulse-rings"))
             return OperationResult.Failure("settings.invalid_music_visualizer_style", "音乐音浪样式值无效。");
         if (key == "disturbance_mode" && value is not ("normal" or "quiet" or "focus" or "game" or "sleep"))
             return OperationResult.Failure("settings.invalid_disturbance", "勿扰模式值无效。");

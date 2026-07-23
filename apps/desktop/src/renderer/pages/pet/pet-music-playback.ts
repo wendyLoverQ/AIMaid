@@ -1,4 +1,5 @@
 import type { IpcEventEnvelope } from '../../../shared/ipc'
+import { resampleLogFrequencyBands } from '../../../shared/audio-bar-dynamics'
 import { publishAudioLipSync } from '../../shared/audio-lipsync'
 import { bridge } from '../../shared/bridge'
 
@@ -11,11 +12,19 @@ interface MusicPlaybackState {
 }
 
 let activeAnalyser: AnalyserNode | null = null
+let activeFrequencyData: Uint8Array<ArrayBuffer> | null = null
 
 export function readPetMusicSpectrum(target: Uint8Array<ArrayBuffer>): boolean {
-  if (activeAnalyser === null) return false
-  activeAnalyser.getByteFrequencyData(target)
+  if (activeAnalyser === null || activeFrequencyData === null) return false
+  activeAnalyser.getByteFrequencyData(activeFrequencyData)
+  resampleLogFrequencyBands(activeFrequencyData, target, activeAnalyser.context.sampleRate, activeAnalyser.fftSize)
   return target.some((value) => value > 0)
+}
+
+export function readPetMusicWaveform(target: Uint8Array<ArrayBuffer>): boolean {
+  if (activeAnalyser === null) return false
+  activeAnalyser.getByteTimeDomainData(target)
+  return true
 }
 
 export function startPetMusicPlayback(): () => void {
@@ -34,6 +43,7 @@ export function startPetMusicPlayback(): () => void {
     audio = null
     playbackUrl = ''
     activeAnalyser = null
+    activeFrequencyData = null
     analyser = null
     void audioContext?.close()
     audioContext = null
@@ -68,13 +78,14 @@ export function startPetMusicPlayback(): () => void {
     const source = context.createMediaElementSource(element)
     const nextAnalyser = context.createAnalyser()
     nextAnalyser.fftSize = 1024
-    nextAnalyser.smoothingTimeConstant = 0.72
+    nextAnalyser.smoothingTimeConstant = 0.55
     source.connect(nextAnalyser)
     nextAnalyser.connect(context.destination)
     audio = element
     audioContext = context
     analyser = nextAnalyser
     activeAnalyser = nextAnalyser
+    activeFrequencyData = new Uint8Array(nextAnalyser.frequencyBinCount)
     await context.resume()
     await element.play()
     if (!disposed && audio === element && analyser === nextAnalyser) stopLipSync = publishAudioLipSync('music', nextAnalyser)
@@ -108,8 +119,10 @@ export function startPetMusicPlayback(): () => void {
         stopLipSync = null
         audio.pause()
         activeAnalyser = null
+        activeFrequencyData = null
       } else if (state.isPlaying) {
         activeAnalyser = analyser
+        activeFrequencyData = analyser === null ? null : new Uint8Array(analyser.frequencyBinCount)
         void audioContext?.resume().then(() => audio?.play()).then(() => {
           if (analyser !== null && stopLipSync === null) stopLipSync = publishAudioLipSync('music', analyser)
         }).catch((reason: unknown) => {

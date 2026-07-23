@@ -76,10 +76,12 @@
 .ui-time { color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
 .ui-media-image, .ui-media-canvas { display: block; width: 100%; height: 100%; }
 .ui-media-image { object-fit: inherit; }
-.ui-transparent-stage { position: relative; display: block; width: 100%; height: 100%; padding: 0; overflow: hidden; background: transparent; user-select: none; }
+.ui-transparent-stage { position: relative; isolation: isolate; display: block; width: 100%; height: 100%; padding: 0; overflow: hidden; background: transparent; user-select: none; }
 .ui-transparent-canvas { position: absolute; left: 50%; bottom: 0; display: block; width: 90.3571428571%; height: 91.8367346939%; transform: translateX(-50%); background: transparent; cursor: grab; }
 .ui-transparent-canvas:active { cursor: grabbing; }
+.ui-transparent-canvas[data-mode="live2d"] { inset: 0; width: 100%; height: 100%; transform: none; pointer-events: none; }
 .ui-pet-audio-contour { position: absolute; z-index: 1; top: 0; left: 0; display: block; width: 1px; height: 1px; background: transparent; pointer-events: none; }
+.ui-pet-audio-contour[data-visualizer-layer="background"] { z-index: -1; }
 .ui-pet-panel { position: absolute; left: 50%; top: 50%; width: 560px; height: 980px; overflow: visible; transform: translate(-50%, -50%); transform-origin: center; }
 .ui-pet-item { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .ui-pet-item > .ui-transparent-canvas { overflow: visible; }

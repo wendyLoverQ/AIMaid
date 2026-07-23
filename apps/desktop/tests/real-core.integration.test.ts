@@ -83,7 +83,7 @@ describe('real C# Core integration', () => {
     await firstManager.start()
     await firstClient.start()
     await firstClient.invoke('request-visualizer-save-before-restart', {
-      type: 'settings.save', payload: { values: { music_visualizer_style: 'bottom-wave' } }
+      type: 'settings.save', payload: { values: { music_visualizer_style: 'pulse-rings' } }
     }, new AbortController().signal)
     await firstClient.stop()
     await firstManager.stop()
@@ -97,7 +97,7 @@ describe('real C# Core integration', () => {
         type: 'settings.get', payload: { keys: ['music_visualizer_style'] }
       }, new AbortController().signal) as { settings: Array<{ key: string; value: string }> }
       expect(persisted.settings).toContainEqual(expect.objectContaining({
-        key: 'music_visualizer_style', value: 'bottom-wave'
+        key: 'music_visualizer_style', value: 'pulse-rings'
       }))
     } finally {
       await secondClient.stop()
