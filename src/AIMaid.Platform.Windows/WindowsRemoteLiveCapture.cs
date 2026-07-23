@@ -374,7 +374,7 @@ internal static class WindowsRemoteLiveCapture
             if (string.IsNullOrWhiteSpace(response.Body)) continue;
             var body = RelevantEmbeddedWindow(response.Body);
             var matches = Regex.Matches(body,
-                @"""(?:cover|room_cover|cover_url)""\s*:\s*(?:\{.{0,2500}?""url_list""\s*:\s*\[\s*)?""(?<url>https?://[^""]+\.(?:jpe?g|png|webp)(?:\?[^""]*)?)""",
+                @"""(?:cover|room_cover|cover_url)""\s*:\s*(?:\{.{0,2500}?""url_list""\s*:\s*\[\s*)?""(?<url>https?://[^""]{1,4000})""",
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline);
             if (matches.Count > 0)
                 return DecodeEmbeddedJsonString(matches[^1].Groups["url"].Value);
