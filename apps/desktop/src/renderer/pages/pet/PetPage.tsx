@@ -427,7 +427,16 @@ export default function PetPage(): React.JSX.Element {
         }
         const value = response.payload as { matched?: boolean; triggerId?: string; bodyPart?: string; text?: string; audioPath?: string; reason?: string; generationId?: string; contextHash?: string; category?: string };
         if (value.matched !== true || typeof value.audioPath !== 'string' || value.audioPath.length === 0) {
-            showBubble('当前点击语音缓存尚未准备好。', 'feedback');
+            if (value.reason === 'cache_generating')
+                showBubble('当前点击语音缓存正在生成。', 'feedback');
+            else if (value.reason === 'audio_missing') {
+                showBubble('点击语音缓存文件缺失，正在重新准备。', 'feedback');
+                void ensureVoiceCache(false, true);
+            }
+            else {
+                showBubble(value.reason === 'cache_failed' ? '点击语音缓存生成失败，正在重新准备。' : '当前点击语音缓存尚未准备好。', 'feedback');
+                void ensureVoiceCache(false);
+            }
             return;
         }
         let played = false;
@@ -453,7 +462,7 @@ export default function PetPage(): React.JSX.Element {
                 ...(context.normalizedY === undefined ? {} : { normalizedY: context.normalizedY })
             }
         });
-    }, [showBubble]);
+    }, [ensureVoiceCache, showBubble]);
     return <TransparentStage ref={stageRef} data-display-mode={presentation?.mode ?? 'loading'} onContextMenu={(event) => {
             event.preventDefault();
             if (!hitTestRef.current(event.clientX, event.clientY))
