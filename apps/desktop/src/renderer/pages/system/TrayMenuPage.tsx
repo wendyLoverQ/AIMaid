@@ -25,9 +25,10 @@ export function TrayMenuPage(): React.JSX.Element {
   const [music, setMusic] = useState<MusicPlaybackState | null>(null)
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)
+  const [coreVersion, setCoreVersion] = useState('')
 
   useEffect(() => {
-    void Promise.allSettled([loadMasterAudio(), loadCurrentMusic()]).then(([audioResult, musicResult]) => {
+    void Promise.allSettled([loadMasterAudio(), loadCurrentMusic(), loadCoreVersion()]).then(([audioResult, musicResult, coreResult]) => {
       if (audioResult.status === 'fulfilled') {
         confirmedAudio.current = audioResult.value
         setAudio(audioResult.value)
@@ -36,6 +37,7 @@ export function TrayMenuPage(): React.JSX.Element {
       }
       if (musicResult.status === 'fulfilled') setMusic(musicResult.value)
       else setError(messageOf(musicResult.reason, '当前音乐读取失败。'))
+      if (coreResult.status === 'fulfilled') setCoreVersion(coreResult.value)
       setReady(true)
     })
     return bridge.events.subscribe(
@@ -121,6 +123,8 @@ export function TrayMenuPage(): React.JSX.Element {
     <Button onClick={() => run('reset-position')}>位置回归</Button>
     <Button onClick={() => run('hide')}>隐藏</Button>
     <Button variant="danger" onClick={() => run('quit')}>退出</Button>
+    <Divider />
+    <Text size="xs" tone="muted">v{coreVersion || '...'}</Text>
   </TrayMenuSurface>
 }
 
@@ -137,6 +141,16 @@ async function loadCurrentMusic(): Promise<MusicPlaybackState | null> {
   const response = await bridge.core.invoke({ type: 'music.current', payload: {} })
   if (!response.success) throw new Error(response.error?.message ?? '当前音乐读取失败。')
   return isPlaybackState(response.payload) && response.payload.url !== '' ? response.payload : null
+}
+
+async function loadCoreVersion(): Promise<string> {
+  const response = await bridge.core.status()
+  if (!response.success) throw new Error(response.error?.message ?? 'Core 状态读取失败。')
+  const payload = response.payload
+  if (payload !== null && typeof payload === 'object' && 'coreVersion' in payload && typeof payload.coreVersion === 'string') {
+    return payload.coreVersion
+  }
+  throw new Error('Core 版本号不存在。')
 }
 
 function updateMusicFromEvent(event: IpcEventEnvelope, update: (state: MusicPlaybackState | null) => void): void {
