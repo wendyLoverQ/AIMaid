@@ -38,6 +38,9 @@ public sealed class PetVoiceMenuApplicationService(
     private readonly ConcurrentDictionary<string, Task> backgroundGenerations = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, byte> startupPlayedRoles = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, string> activeForegroundGenerations = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object foregroundSync = new();
+    private CancellationTokenSource? foregroundCancellation;
+    private string foregroundOwner = "";
     private CancellationTokenSource? periodScheduleCancellation;
     private Task? periodSchedule;
     private static long nextDocumentId = DateTimeOffset.UtcNow.Ticks;
@@ -167,30 +170,52 @@ public sealed class PetVoiceMenuApplicationService(
         var currentKey = string.Empty;
         var contextHash = string.Empty;
         var generationId = Guid.NewGuid().ToString("N");
-        await generationGate.WaitAsync(cancellationToken);
+        var generationCancellation = AcquireForegroundGeneration(roleId, intimacyLevel);
+        var generationToken = generationCancellation.Token;
+        await generationGate.WaitAsync(generationToken);
         try
         {
-            character = await characters.GetAsync(roleId, cancellationToken);
+            character = await characters.GetAsync(roleId, generationToken);
             if (character is null || !character.IsEnabled)
                 return OperationResult<PetVoiceCacheEnsureResultDto>.Failure("pet_voice.role_invalid", "当前语音角色不存在或已停用。");
             if (string.IsNullOrWhiteSpace(character.TemplateCardJson))
             {
-                var generatedCard = await templateCards.HandleAsync(new GenerateTemplateCardCommand(roleId, false), cancellationToken);
+                var generatedCard = await templateCards.HandleAsync(new GenerateTemplateCardCommand(roleId, false), generationToken);
                 if (!generatedCard.Succeeded)
                     return OperationResult<PetVoiceCacheEnsureResultDto>.Failure(
                         "pet_voice.template_not_ready", generatedCard.ErrorMessage ?? "当前角色卡生成失败，无法生成语音缓存。");
                 character = generatedCard.Value!;
             }
 
-            await PurgeExpiredAsync(cancellationToken);
-            await CleanupOrphanedDerivedAudioAsync(cancellationToken);
-            currentKey = await GetCurrentCacheKeyAsync(0, cancellationToken);
-            contextHash = await ComputeContextHashAsync(character, intimacyLevel, currentKey, cancellationToken);
+            await PurgeExpiredAsync(generationToken);
+            await CleanupOrphanedDerivedAudioAsync(generationToken);
+            currentKey = await GetCurrentCacheKeyAsync(0, generationToken);
+            contextHash = await ComputeContextHashAsync(character, intimacyLevel, currentKey, generationToken);
+            var readyGeneration = await FindReadyGenerationAsync(roleId, intimacyLevel, currentKey, contextHash, generationToken);
+            if (readyGeneration is not null)
+            {
+                var readyEntries = await LoadEntriesAsync(roleId, intimacyLevel, currentKey, generationToken);
+                if (IsCompleteGeneration(readyEntries, readyGeneration.GenerationId, contextHash))
+                {
+                    if (includeNextPeriod)
+                    {
+                        var nextKey = await GetCurrentCacheKeyAsync(1, generationToken);
+                        var backgroundKey = $"{character.RoleId}:{intimacyLevel}:{nextKey}";
+                        _ = backgroundGenerations.GetOrAdd(backgroundKey, _ => GenerateNextPeriodAsync(character, intimacyLevel, nextKey, backgroundKey));
+                    }
+                    var currentPeriod = await GetCurrentPeriodAsync(generationToken);
+                    SchedulePeriodBoundary(currentPeriod);
+                    return OperationResult<PetVoiceCacheEnsureResultDto>.Success(new(
+                        readyGeneration.GenerationId, roleId, intimacyLevel, currentKey, contextHash, Plans.Count, 0, true,
+                        currentPeriod.StartAt, currentPeriod.EndAt, currentPeriod.NextCacheKey, false, "ready",
+                        $"{character.Name} 的 {FormatIntimacy(intimacyLevel)} 语音缓存已准备好。"));
+                }
+            }
             activeForegroundGenerations[GenerationContextKey(roleId, intimacyLevel, currentKey, contextHash)] = generationId;
-            await PublishStatusAsync(generationId, character, intimacyLevel, currentKey, contextHash, "pending", 0, true, "缓存生成已排队。", "", "", cancellationToken);
-            await PublishStatusAsync(generationId, character, intimacyLevel, currentKey, contextHash, "generating_lines", 0, true, "正在生成缓存文案。", "", "", cancellationToken);
-            var generated = await GenerateMissingAsync(character, intimacyLevel, currentKey, contextHash, generationId, true, cancellationToken);
-            var entries = (await LoadEntriesAsync(roleId, intimacyLevel, currentKey, cancellationToken))
+            await PublishStatusAsync(generationId, character, intimacyLevel, currentKey, contextHash, "pending", 0, true, "缓存生成已排队。", "", "", generationToken);
+            await PublishStatusAsync(generationId, character, intimacyLevel, currentKey, contextHash, "generating_lines", 0, true, "正在生成缓存文案。", "", "", generationToken);
+            var generated = await GenerateMissingAsync(character, intimacyLevel, currentKey, contextHash, generationId, true, generationToken);
+            var entries = (await LoadEntriesAsync(roleId, intimacyLevel, currentKey, generationToken))
                 .Where(entry => entry.ContextHash.Equals(contextHash, StringComparison.OrdinalIgnoreCase)).ToArray();
             var ready = CountCompleted(entries) == Plans.Count;
             if (!ready)
@@ -199,16 +224,16 @@ public sealed class PetVoiceMenuApplicationService(
 
             if (includeNextPeriod)
             {
-                var nextKey = await GetCurrentCacheKeyAsync(1, cancellationToken);
+                var nextKey = await GetCurrentCacheKeyAsync(1, generationToken);
                 var backgroundKey = $"{character.RoleId}:{intimacyLevel}:{nextKey}";
                 _ = backgroundGenerations.GetOrAdd(backgroundKey, _ => GenerateNextPeriodAsync(character, intimacyLevel, nextKey, backgroundKey));
             }
-            await PublishStatusAsync(generationId, character, intimacyLevel, currentKey, contextHash, "ready", Plans.Count, true, "当前语音缓存已准备好。", "", "", cancellationToken);
-            SchedulePeriodBoundary(await GetCurrentPeriodAsync(cancellationToken));
+            await PublishStatusAsync(generationId, character, intimacyLevel, currentKey, contextHash, "ready", Plans.Count, true, "当前语音缓存已准备好。", "", "", generationToken);
+            SchedulePeriodBoundary(await GetCurrentPeriodAsync(generationToken));
             return OperationResult<PetVoiceCacheEnsureResultDto>.Success(new(
                 generationId, roleId, intimacyLevel, currentKey, contextHash, Plans.Count, generated, true,
-                (await GetCurrentPeriodAsync(cancellationToken)).StartAt, (await GetCurrentPeriodAsync(cancellationToken)).EndAt,
-                (await GetCurrentPeriodAsync(cancellationToken)).NextCacheKey, false, "ready",
+                (await GetCurrentPeriodAsync(generationToken)).StartAt, (await GetCurrentPeriodAsync(generationToken)).EndAt,
+                (await GetCurrentPeriodAsync(generationToken)).NextCacheKey, false, "ready",
                 $"{character.Name} 的 {FormatIntimacy(intimacyLevel)} 语音缓存已准备好。"));
         }
         catch (OperationCanceledException)
@@ -221,14 +246,44 @@ public sealed class PetVoiceMenuApplicationService(
         catch (Exception exception)
         {
             if (character is not null && currentKey.Length > 0)
+            {
+                await PersistFailureWhenNoPriorGenerationAsync(generationId, character, intimacyLevel, currentKey, contextHash,
+                    exception.Message, CancellationToken.None);
                 await PublishStatusAsync(generationId, character, intimacyLevel, currentKey, contextHash, "failed", 0, true,
                     exception.Message, "pet_voice.cache_generation_failed", exception.Message, CancellationToken.None);
+            }
             return OperationResult<PetVoiceCacheEnsureResultDto>.Failure("pet_voice.cache_generation_failed", exception.Message);
         }
         finally
         {
             if (currentKey.Length > 0) activeForegroundGenerations.TryRemove(GenerationContextKey(roleId, intimacyLevel, currentKey, contextHash), out _);
             generationGate.Release();
+            ReleaseForegroundGeneration(generationCancellation);
+        }
+    }
+
+    private CancellationTokenSource AcquireForegroundGeneration(string roleId, int intimacyLevel)
+    {
+        var owner = $"{roleId}:{intimacyLevel}";
+        lock (foregroundSync)
+        {
+            if (foregroundCancellation is not null && foregroundOwner.Equals(owner, StringComparison.OrdinalIgnoreCase))
+                return foregroundCancellation;
+            foregroundCancellation?.Cancel();
+            foregroundCancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+            foregroundOwner = owner;
+            return foregroundCancellation;
+        }
+    }
+
+    private void ReleaseForegroundGeneration(CancellationTokenSource cancellation)
+    {
+        lock (foregroundSync)
+        {
+            if (!ReferenceEquals(foregroundCancellation, cancellation)) return;
+            foregroundCancellation = null;
+            foregroundOwner = "";
+            cancellation.Dispose();
         }
     }
 
@@ -259,6 +314,7 @@ public sealed class PetVoiceMenuApplicationService(
     public async ValueTask DisposeAsync()
     {
         lifetime.Cancel();
+        lock (foregroundSync) foregroundCancellation?.Cancel();
         periodScheduleCancellation?.Cancel();
         if (periodSchedule is not null)
         {
@@ -522,6 +578,21 @@ public sealed class PetVoiceMenuApplicationService(
         return null;
     }
 
+    // The table has one manifest per role/level/period.  A failed first attempt is durable;
+    // an existing Ready manifest is intentionally untouched so a failed replacement cannot erase it.
+    private async Task PersistFailureWhenNoPriorGenerationAsync(string generationId, CharacterDto character, int intimacyLevel,
+        string cacheKey, string contextHash, string errorMessage, CancellationToken cancellationToken)
+    {
+        if ((await LoadGenerationIdsAsync(character.RoleId, intimacyLevel, cacheKey, cancellationToken)).Count > 0) return;
+        var now = DateTimeOffset.Now;
+        var period = await GetPeriodForCacheKeyAsync(cacheKey, cancellationToken);
+        var failed = new VoiceCacheGenerationDocument(generationId, character.RoleId, intimacyLevel, cacheKey, contextHash,
+            PetVoiceTriggerCatalog.Version, "failed", Plans.Count, 0, period.StartAt, period.EndAt,
+            "pet_voice.cache_generation_failed", errorMessage, now, now);
+        await atomic.ApplyAsync([new AtomicMutation(AtomicMutationKind.UpsertDomain, "voice_cache_generation", generationId,
+            JsonSerializer.Serialize(failed, JsonOptions), now)], cancellationToken);
+    }
+
     private async Task<(int Entries, int Files, int Generations)> DeleteCacheEntriesAsync(
         string roleId, int intimacyLevel, string cacheKey, CancellationToken cancellationToken)
     {
@@ -664,8 +735,12 @@ public sealed class PetVoiceMenuApplicationService(
         using var document = JsonDocument.Parse(json[start..(end + 1)]);
         if (!document.RootElement.TryGetProperty("lines", out var lines) || lines.ValueKind != JsonValueKind.Array)
             throw new InvalidDataException("缓存文案模型返回结果缺少 lines 数组。");
-        return lines.EnumerateArray().Select(item => new GeneratedLine(
-            ReadString(item, "cacheKey"), ReadString(item, "text"), ReadString(item, "voiceStyle"))).ToArray();
+        return lines.EnumerateArray().Select(item =>
+        {
+            var key = ReadString(item, "key");
+            return new GeneratedLine(string.IsNullOrWhiteSpace(key) ? ReadString(item, "cacheKey") : key,
+                ReadString(item, "text"), ReadString(item, "voiceStyle"));
+        }).ToArray();
     }
 
     private static void ValidateGeneratedBatch(IReadOnlyList<GeneratedLine> lines, IReadOnlyList<PetVoiceTriggerPlan> requested)
@@ -714,6 +789,14 @@ public sealed class PetVoiceMenuApplicationService(
 
     private static int CountCompleted(IReadOnlyList<VoiceCacheDocument> entries)
         => Plans.Count(plan => entries.Any(item => SameSlot(item, plan) && item.IsEnabled && File.Exists(item.AudioPath)));
+
+    private static bool IsCompleteGeneration(IReadOnlyList<VoiceCacheDocument> entries, string generationId, string contextHash)
+        => entries.Count == Plans.Count && entries.All(item => item.IsEnabled &&
+            item.GenerationId.Equals(generationId, StringComparison.OrdinalIgnoreCase) &&
+            item.ContextHash.Equals(contextHash, StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(item.Text) && !string.IsNullOrWhiteSpace(item.VoiceId) &&
+            File.Exists(item.AudioPath) && new FileInfo(item.AudioPath).Length > 0) &&
+           Plans.All(plan => entries.Count(item => SameSlot(item, plan)) == 1);
 
     private static string GetIntimacySettingKey(string roleId)
         => roleId.Length == 0 ? IntimacyKey : $"{IntimacyKey}:{roleId}";
