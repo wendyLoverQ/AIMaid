@@ -1,0 +1,214 @@
+[
+  {
+    "name": "ActionTagDefinitions",
+    "internalTable": false
+  },
+  {
+    "name": "AgentCapabilities",
+    "internalTable": false
+  },
+  {
+    "name": "AgentToolCalls",
+    "internalTable": false
+  },
+  {
+    "name": "AiConversations",
+    "internalTable": false
+  },
+  {
+    "name": "AppRuntimeStates",
+    "internalTable": false
+  },
+  {
+    "name": "AppSettings",
+    "internalTable": false
+  },
+  {
+    "name": "ChatCommandLaunchers",
+    "internalTable": false
+  },
+  {
+    "name": "ChatMessages",
+    "internalTable": false
+  },
+  {
+    "name": "CoreBackgroundTasks",
+    "internalTable": false
+  },
+  {
+    "name": "CryptoMarketEvents",
+    "internalTable": false
+  },
+  {
+    "name": "CryptoMarketProviderConfigurations",
+    "internalTable": false
+  },
+  {
+    "name": "CryptoMarketWatchlistItems",
+    "internalTable": false
+  },
+  {
+    "name": "DbColumnComments",
+    "internalTable": false
+  },
+  {
+    "name": "DesktopContextSnapshots",
+    "internalTable": false
+  },
+  {
+    "name": "DisturbanceSettings",
+    "internalTable": false
+  },
+  {
+    "name": "LlmBusinessModelConfigs",
+    "internalTable": false
+  },
+  {
+    "name": "LlmCallLogs",
+    "internalTable": false
+  },
+  {
+    "name": "LlmChatConversations",
+    "internalTable": false
+  },
+  {
+    "name": "LlmChatMessages",
+    "internalTable": false
+  },
+  {
+    "name": "LlmProviderSelections",
+    "internalTable": false
+  },
+  {
+    "name": "LlmSourcePrompts",
+    "internalTable": false
+  },
+  {
+    "name": "MaidStates",
+    "internalTable": false
+  },
+  {
+    "name": "NotebookAttachments",
+    "internalTable": false
+  },
+  {
+    "name": "NotebookNotes",
+    "internalTable": false
+  },
+  {
+    "name": "ProactiveBroadcastSourceSettings",
+    "internalTable": false
+  },
+  {
+    "name": "ProactiveBroadcastTriggerLogs",
+    "internalTable": false
+  },
+  {
+    "name": "ProactiveTriggerRules",
+    "internalTable": false
+  },
+  {
+    "name": "ProactiveTriggerStates",
+    "internalTable": false
+  },
+  {
+    "name": "ReminderLogs",
+    "internalTable": false
+  },
+  {
+    "name": "Reminders",
+    "internalTable": false
+  },
+  {
+    "name": "RemoteDownloadTasks",
+    "internalTable": false
+  },
+  {
+    "name": "RemotePlayHistories",
+    "internalTable": false
+  },
+  {
+    "name": "RemoteSiteConfigs",
+    "internalTable": false
+  },
+  {
+    "name": "RemoteVideoItems",
+    "internalTable": false
+  },
+  {
+    "name": "RemoteVideoSettings",
+    "internalTable": false
+  },
+  {
+    "name": "TimerRecords",
+    "internalTable": false
+  },
+  {
+    "name": "UserProfiles",
+    "internalTable": false
+  },
+  {
+    "name": "VaultItemHistories",
+    "internalTable": false
+  },
+  {
+    "name": "VaultItems",
+    "internalTable": false
+  },
+  {
+    "name": "VideoAlbums",
+    "internalTable": false
+  },
+  {
+    "name": "VideoItems",
+    "internalTable": false
+  },
+  {
+    "name": "VideoPlaybackHistories",
+    "internalTable": false
+  },
+  {
+    "name": "VideoSubtitleBindings",
+    "internalTable": false
+  },
+  {
+    "name": "VideoTagDefinitions",
+    "internalTable": false
+  },
+  {
+    "name": "VoiceAssets",
+    "internalTable": false
+  },
+  {
+    "name": "VoiceCacheDedupeLogs",
+    "internalTable": false
+  },
+  {
+    "name": "VoiceConversations",
+    "internalTable": false
+  },
+  {
+    "name": "VoiceRoleAudioCaches",
+    "internalTable": false
+  },
+  {
+    "name": "VoiceRoleBindings",
+    "internalTable": false
+  },
+  {
+    "name": "VoiceRoleCards",
+    "internalTable": false
+  },
+  {
+    "name": "VoiceRoles",
+    "internalTable": false
+  },
+  {
+    "name": "VoiceRoleVoices",
+    "internalTable": false
+  },
+  {
+    "name": "VoiceTriggerLogs",
+    "internalTable": false
+  }
+]

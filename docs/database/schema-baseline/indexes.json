@@ -1,0 +1,37 @@
+[
+  {
+    "name": "IX_AppSettings_Key",
+    "table": "AppSettings",
+    "sql": "CREATE UNIQUE INDEX IX_AppSettings_Key ON AppSettings(Key)"
+  },
+  {
+    "name": "IX_ChatMessages_ConversationId_Id",
+    "table": "ChatMessages",
+    "sql": "CREATE INDEX IX_ChatMessages_ConversationId_Id ON ChatMessages(ConversationId, Id)"
+  },
+  {
+    "name": "IX_CoreBackgroundTasks_Type_UpdatedAt",
+    "table": "CoreBackgroundTasks",
+    "sql": "CREATE INDEX IX_CoreBackgroundTasks_Type_UpdatedAt ON CoreBackgroundTasks(TaskType, UpdatedAt DESC)"
+  },
+  {
+    "name": "IX_ProactiveTriggerRules_RuleId",
+    "table": "ProactiveTriggerRules",
+    "sql": "CREATE UNIQUE INDEX IX_ProactiveTriggerRules_RuleId ON ProactiveTriggerRules(RuleId)"
+  },
+  {
+    "name": "IX_ProactiveTriggerStates_RuleId",
+    "table": "ProactiveTriggerStates",
+    "sql": "CREATE UNIQUE INDEX IX_ProactiveTriggerStates_RuleId ON ProactiveTriggerStates(RuleId)"
+  },
+  {
+    "name": "IX_TimerRecords_RecordId",
+    "table": "TimerRecords",
+    "sql": "CREATE UNIQUE INDEX IX_TimerRecords_RecordId ON TimerRecords(RecordId)"
+  },
+  {
+    "name": "IX_VoiceRoleCards_RoleId",
+    "table": "VoiceRoleCards",
+    "sql": "CREATE UNIQUE INDEX IX_VoiceRoleCards_RoleId ON VoiceRoleCards(RoleId)"
+  }
+]

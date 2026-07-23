@@ -1,0 +1,4786 @@
+[
+  {
+    "table": "ActionTagDefinitions",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "ActionTagDefinitions",
+    "name": "Tag",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ActionTagDefinitions",
+    "name": "DisplayName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ActionTagDefinitions",
+    "name": "ResourcePath",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ActionTagDefinitions",
+    "name": "IsEnabled",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ActionTagDefinitions",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentCapabilities",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "AgentCapabilities",
+    "name": "CapabilityName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentCapabilities",
+    "name": "DisplayName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentCapabilities",
+    "name": "Description",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentCapabilities",
+    "name": "ExecutorType",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentCapabilities",
+    "name": "ConfigJson",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentCapabilities",
+    "name": "ArgsSchemaJson",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentCapabilities",
+    "name": "ResultPolicy",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "'simple_status'",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentCapabilities",
+    "name": "RiskLevel",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "'low'",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentCapabilities",
+    "name": "RequireConfirm",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentCapabilities",
+    "name": "Enabled",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "1",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentCapabilities",
+    "name": "SortOrder",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentCapabilities",
+    "name": "ChatCommandLauncherId",
+    "type": "INTEGER",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentCapabilities",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentCapabilities",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentToolCalls",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "AgentToolCalls",
+    "name": "ConversationId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentToolCalls",
+    "name": "ParentToolCallId",
+    "type": "INTEGER",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentToolCalls",
+    "name": "CapabilityName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentToolCalls",
+    "name": "ExecutorType",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentToolCalls",
+    "name": "ArgsJson",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "'{}'",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentToolCalls",
+    "name": "Status",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "'pending'",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentToolCalls",
+    "name": "ExitCode",
+    "type": "INTEGER",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentToolCalls",
+    "name": "Stdout",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentToolCalls",
+    "name": "Stderr",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentToolCalls",
+    "name": "StartedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentToolCalls",
+    "name": "FinishedAt",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentToolCalls",
+    "name": "DurationMs",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentToolCalls",
+    "name": "ErrorMessage",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentToolCalls",
+    "name": "ConfirmedByUser",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentToolCalls",
+    "name": "ResultPolicy",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentToolCalls",
+    "name": "DisplayResult",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentToolCalls",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AgentToolCalls",
+    "name": "RejectedByUser",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AiConversations",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "AiConversations",
+    "name": "Provider",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AiConversations",
+    "name": "Content",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AiConversations",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AppRuntimeStates",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "AppRuntimeStates",
+    "name": "LastRole",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AppRuntimeStates",
+    "name": "LastModel",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AppRuntimeStates",
+    "name": "LastVoiceId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AppRuntimeStates",
+    "name": "LastInteractionAt",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AppRuntimeStates",
+    "name": "DisturbanceMode",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AppRuntimeStates",
+    "name": "LastProactiveTriggerId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AppRuntimeStates",
+    "name": "TtsStatus",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AppRuntimeStates",
+    "name": "OllamaStatus",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AppRuntimeStates",
+    "name": "LastLlmLatencyMs",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AppRuntimeStates",
+    "name": "LastTtsLatencyMs",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AppRuntimeStates",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AppRuntimeStates",
+    "name": "AgentStateJson",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "'{}'",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AppSettings",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "AppSettings",
+    "name": "Key",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AppSettings",
+    "name": "Value",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "AppSettings",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "'1970-01-01T00:00:00+00:00'",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ChatCommandLaunchers",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "ChatCommandLaunchers",
+    "name": "CommandText",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ChatCommandLaunchers",
+    "name": "DisplayName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ChatCommandLaunchers",
+    "name": "ExePath",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ChatCommandLaunchers",
+    "name": "Arguments",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ChatCommandLaunchers",
+    "name": "WorkingDirectory",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ChatCommandLaunchers",
+    "name": "Enabled",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ChatCommandLaunchers",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ChatMessages",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "ChatMessages",
+    "name": "ConversationId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ChatMessages",
+    "name": "Role",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ChatMessages",
+    "name": "Content",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ChatMessages",
+    "name": "CharacterId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ChatMessages",
+    "name": "ModelName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ChatMessages",
+    "name": "Source",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "'normal_chat'",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ChatMessages",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ChatMessages",
+    "name": "MetadataJson",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CoreBackgroundTasks",
+    "name": "TaskId",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "CoreBackgroundTasks",
+    "name": "TaskType",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CoreBackgroundTasks",
+    "name": "State",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CoreBackgroundTasks",
+    "name": "Progress",
+    "type": "REAL",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CoreBackgroundTasks",
+    "name": "Message",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CoreBackgroundTasks",
+    "name": "ResultJson",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CoreBackgroundTasks",
+    "name": "Error",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CoreBackgroundTasks",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CoreBackgroundTasks",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketEvents",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "CryptoMarketEvents",
+    "name": "EventType",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketEvents",
+    "name": "Source",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketEvents",
+    "name": "Network",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketEvents",
+    "name": "Symbol",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketEvents",
+    "name": "Address",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketEvents",
+    "name": "TransactionHash",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketEvents",
+    "name": "Amount",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketEvents",
+    "name": "Price",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketEvents",
+    "name": "DedupeKey",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketEvents",
+    "name": "PayloadJson",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketEvents",
+    "name": "OccurredAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketEvents",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketProviderConfigurations",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "CryptoMarketProviderConfigurations",
+    "name": "IsEnabled",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketProviderConfigurations",
+    "name": "ServiceUrl",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketProviderConfigurations",
+    "name": "TimeoutSeconds",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketProviderConfigurations",
+    "name": "LastHealthStatus",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketProviderConfigurations",
+    "name": "LastHealthLatencyMs",
+    "type": "INTEGER",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketProviderConfigurations",
+    "name": "LastCheckedAt",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketProviderConfigurations",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketWatchlistItems",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "CryptoMarketWatchlistItems",
+    "name": "Symbol",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketWatchlistItems",
+    "name": "BaseAsset",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketWatchlistItems",
+    "name": "QuoteAsset",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketWatchlistItems",
+    "name": "MarketType",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketWatchlistItems",
+    "name": "IsEnabled",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketWatchlistItems",
+    "name": "SortOrder",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketWatchlistItems",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "CryptoMarketWatchlistItems",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "DbColumnComments",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "DbColumnComments",
+    "name": "TableName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "DbColumnComments",
+    "name": "ColumnName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "DbColumnComments",
+    "name": "CommentZh",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "DbColumnComments",
+    "name": "CommentEn",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "DbColumnComments",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "DesktopContextSnapshots",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "DesktopContextSnapshots",
+    "name": "CapturedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "DesktopContextSnapshots",
+    "name": "TimePeriod",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "DesktopContextSnapshots",
+    "name": "ForegroundWindowTitle",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "DesktopContextSnapshots",
+    "name": "ForegroundProcessName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "DesktopContextSnapshots",
+    "name": "AppCategory",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "DesktopContextSnapshots",
+    "name": "IdleSeconds",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "DesktopContextSnapshots",
+    "name": "IsFullscreen",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "DesktopContextSnapshots",
+    "name": "LastInteractionAt",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "DisturbanceSettings",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "DisturbanceSettings",
+    "name": "Mode",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "DisturbanceSettings",
+    "name": "QuietHoursEnabled",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "DisturbanceSettings",
+    "name": "QuietHoursStart",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "DisturbanceSettings",
+    "name": "QuietHoursEnd",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "DisturbanceSettings",
+    "name": "SuppressWhenFullscreen",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "DisturbanceSettings",
+    "name": "MaxProactivePerHour",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "DisturbanceSettings",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmBusinessModelConfigs",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "LlmBusinessModelConfigs",
+    "name": "BusinessKey",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmBusinessModelConfigs",
+    "name": "DisplayName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmBusinessModelConfigs",
+    "name": "Description",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmBusinessModelConfigs",
+    "name": "Provider",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "'Gemini'",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmBusinessModelConfigs",
+    "name": "ModelKey",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "'Gemini'",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmBusinessModelConfigs",
+    "name": "IsEnabled",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "1",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmBusinessModelConfigs",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmBusinessModelConfigs",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "CompletedAt",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "ConversationId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "CorrelationId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "Source",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "Provider",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "Model",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "Endpoint",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "RequestUrl",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "SystemPrompt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "UserPrompt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "RequestJson",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "ResponseStatusCode",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "ResponseId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "PreviousResponseId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "RawResponseJson",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "ResponseText",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "ParsedResponseJson",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "AudioPath",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "VoiceId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "Error",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "DurationMs",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "PromptTokens",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "CompletionTokens",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmCallLogs",
+    "name": "TotalTokens",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmChatConversations",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "LlmChatConversations",
+    "name": "ConversationId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmChatConversations",
+    "name": "RoleId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmChatConversations",
+    "name": "Provider",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmChatConversations",
+    "name": "Model",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmChatConversations",
+    "name": "Summary",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmChatConversations",
+    "name": "LastResponseId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmChatConversations",
+    "name": "IsActive",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmChatConversations",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmChatConversations",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmChatMessages",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "LlmChatMessages",
+    "name": "MessageId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmChatMessages",
+    "name": "ConversationId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmChatMessages",
+    "name": "Role",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmChatMessages",
+    "name": "Content",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmChatMessages",
+    "name": "VoiceStyle",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmChatMessages",
+    "name": "Provider",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmChatMessages",
+    "name": "Model",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmChatMessages",
+    "name": "ResponseId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmChatMessages",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmProviderSelections",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "LlmProviderSelections",
+    "name": "DefaultProvider",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmProviderSelections",
+    "name": "SelectedProvider",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmProviderSelections",
+    "name": "LocalQwenModel",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmProviderSelections",
+    "name": "GeminiModel",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmProviderSelections",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmSourcePrompts",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "LlmSourcePrompts",
+    "name": "SourceKey",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmSourcePrompts",
+    "name": "Purpose",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmSourcePrompts",
+    "name": "SystemPromptTemplate",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmSourcePrompts",
+    "name": "UserPromptTemplate",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmSourcePrompts",
+    "name": "OutputSchemaJson",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmSourcePrompts",
+    "name": "IsEnabled",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "1",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmSourcePrompts",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "LlmSourcePrompts",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "MaidStates",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "MaidStates",
+    "name": "MaidId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "MaidStates",
+    "name": "ImagePath",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "MaidStates",
+    "name": "Name",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "MaidStates",
+    "name": "Mood",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "MaidStates",
+    "name": "Favorability",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "MaidStates",
+    "name": "CompanionshipSeconds",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "MaidStates",
+    "name": "InteractionCount",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "MaidStates",
+    "name": "LastInteractionTime",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "MaidStates",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "MaidStates",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "MaidStates",
+    "name": "IsCurrent",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "NotebookAttachments",
+    "name": "Id",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "NotebookAttachments",
+    "name": "NoteId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "NotebookAttachments",
+    "name": "OriginalName",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "NotebookAttachments",
+    "name": "StoredPath",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "NotebookAttachments",
+    "name": "MimeType",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "NotebookAttachments",
+    "name": "SizeBytes",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "NotebookAttachments",
+    "name": "Width",
+    "type": "INTEGER",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "NotebookAttachments",
+    "name": "Height",
+    "type": "INTEGER",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "NotebookAttachments",
+    "name": "Sha256",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "NotebookAttachments",
+    "name": "IsDeleted",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "NotebookAttachments",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "NotebookNotes",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "NotebookNotes",
+    "name": "NoteId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "NotebookNotes",
+    "name": "Title",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "NotebookNotes",
+    "name": "ContentXaml",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "NotebookNotes",
+    "name": "ImagePathsJson",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "NotebookNotes",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "NotebookNotes",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "NotebookNotes",
+    "name": "ContentRich",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "NotebookNotes",
+    "name": "ContentPlainText",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "NotebookNotes",
+    "name": "IsPinned",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "NotebookNotes",
+    "name": "IsDeleted",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastSourceSettings",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "ProactiveBroadcastSourceSettings",
+    "name": "SourceKey",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastSourceSettings",
+    "name": "DisplayName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastSourceSettings",
+    "name": "Enabled",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastSourceSettings",
+    "name": "FrequencyMinutes",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastSourceSettings",
+    "name": "CooldownMinutes",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastSourceSettings",
+    "name": "MaxItems",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastSourceSettings",
+    "name": "ParameterJson",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastSourceSettings",
+    "name": "Priority",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "50",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastSourceSettings",
+    "name": "MinScore",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "60",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastSourceSettings",
+    "name": "LastSnapshot",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastSourceSettings",
+    "name": "LastSnapshotHash",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastSourceSettings",
+    "name": "LastScore",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastSourceSettings",
+    "name": "LastSelectReason",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastSourceSettings",
+    "name": "LastBroadcastMessage",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastSourceSettings",
+    "name": "LastBroadcastMessageHash",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastSourceSettings",
+    "name": "LastCollectedAt",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastSourceSettings",
+    "name": "LastBroadcastAt",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastSourceSettings",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastTriggerLogs",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "ProactiveBroadcastTriggerLogs",
+    "name": "TriggeredAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastTriggerLogs",
+    "name": "EventId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastTriggerLogs",
+    "name": "EventType",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastTriggerLogs",
+    "name": "EventSource",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastTriggerLogs",
+    "name": "RoleId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastTriggerLogs",
+    "name": "RoleDisplayName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastTriggerLogs",
+    "name": "VoiceId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastTriggerLogs",
+    "name": "IntimacyLevel",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastTriggerLogs",
+    "name": "AiProvider",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastTriggerLogs",
+    "name": "ProcessName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastTriggerLogs",
+    "name": "WindowTitle",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastTriggerLogs",
+    "name": "Scene",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastTriggerLogs",
+    "name": "SelectedSourceKeys",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastTriggerLogs",
+    "name": "CandidatesJson",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastTriggerLogs",
+    "name": "PayloadJson",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastTriggerLogs",
+    "name": "Responded",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastTriggerLogs",
+    "name": "Spoke",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastTriggerLogs",
+    "name": "Message",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastTriggerLogs",
+    "name": "VoiceTrigger",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastTriggerLogs",
+    "name": "AudioPath",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastTriggerLogs",
+    "name": "Result",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastTriggerLogs",
+    "name": "Reason",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveBroadcastTriggerLogs",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveTriggerRules",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "ProactiveTriggerRules",
+    "name": "RuleId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveTriggerRules",
+    "name": "Enabled",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveTriggerRules",
+    "name": "Event",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveTriggerRules",
+    "name": "ConditionJson",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveTriggerRules",
+    "name": "Priority",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveTriggerRules",
+    "name": "CooldownSeconds",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveTriggerRules",
+    "name": "DisturbanceLevel",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveTriggerRules",
+    "name": "AllowTts",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveTriggerRules",
+    "name": "ActionTag",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveTriggerRules",
+    "name": "TextTemplatesJson",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveTriggerRules",
+    "name": "Source",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveTriggerRules",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveTriggerRules",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveTriggerStates",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "ProactiveTriggerStates",
+    "name": "RuleId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveTriggerStates",
+    "name": "LastTriggeredAt",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveTriggerStates",
+    "name": "TriggerCount",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveTriggerStates",
+    "name": "LastResult",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ProactiveTriggerStates",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ReminderLogs",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "ReminderLogs",
+    "name": "ReminderId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ReminderLogs",
+    "name": "TriggeredAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ReminderLogs",
+    "name": "Result",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "ReminderLogs",
+    "name": "PlayedTts",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "Reminders",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "Reminders",
+    "name": "ReminderId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "Reminders",
+    "name": "Title",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "Reminders",
+    "name": "Message",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "Reminders",
+    "name": "DueAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "Reminders",
+    "name": "Repeat",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "Reminders",
+    "name": "Enabled",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "Reminders",
+    "name": "AllowTts",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "Reminders",
+    "name": "LastTriggeredAt",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "Reminders",
+    "name": "NextDueAt",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "Reminders",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "Reminders",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteDownloadTasks",
+    "name": "TaskId",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "RemoteDownloadTasks",
+    "name": "VideoItemId",
+    "type": "INTEGER",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteDownloadTasks",
+    "name": "OriginalUrl",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteDownloadTasks",
+    "name": "Title",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteDownloadTasks",
+    "name": "AuthorName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteDownloadTasks",
+    "name": "SiteName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteDownloadTasks",
+    "name": "OutputPath",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteDownloadTasks",
+    "name": "QualityPreference",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteDownloadTasks",
+    "name": "Status",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "'Queued'",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteDownloadTasks",
+    "name": "Progress",
+    "type": "REAL",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteDownloadTasks",
+    "name": "SpeedText",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteDownloadTasks",
+    "name": "EtaText",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteDownloadTasks",
+    "name": "ErrorMessage",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteDownloadTasks",
+    "name": "FileSize",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteDownloadTasks",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteDownloadTasks",
+    "name": "StartedAt",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteDownloadTasks",
+    "name": "FinishedAt",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemotePlayHistories",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "RemotePlayHistories",
+    "name": "VideoItemId",
+    "type": "INTEGER",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemotePlayHistories",
+    "name": "OriginalUrl",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemotePlayHistories",
+    "name": "Title",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemotePlayHistories",
+    "name": "AuthorName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemotePlayHistories",
+    "name": "SiteName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemotePlayHistories",
+    "name": "PlayAction",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemotePlayHistories",
+    "name": "CoverUrl",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemotePlayHistories",
+    "name": "CachePath",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemotePlayHistories",
+    "name": "PlayedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteSiteConfigs",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "RemoteSiteConfigs",
+    "name": "SiteName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteSiteConfigs",
+    "name": "DomainPattern",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteSiteConfigs",
+    "name": "CookieFilePath",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteSiteConfigs",
+    "name": "UserAgent",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteSiteConfigs",
+    "name": "Referer",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteSiteConfigs",
+    "name": "QualityPreference",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "'best'",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteSiteConfigs",
+    "name": "IsEnabled",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "1",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteSiteConfigs",
+    "name": "Remark",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteSiteConfigs",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteSiteConfigs",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteSiteConfigs",
+    "name": "SupportedActions",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "'DirectStream,CachePlay,Download'",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteSiteConfigs",
+    "name": "DefaultPlayAction",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "'DirectStream'",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteSiteConfigs",
+    "name": "CookieContent",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteSiteConfigs",
+    "name": "CookieContentFormat",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "'Auto'",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteSiteConfigs",
+    "name": "CookieUpdatedAt",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteSiteConfigs",
+    "name": "CookieRemark",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteSiteConfigs",
+    "name": "DownloadRootOverride",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteSiteConfigs",
+    "name": "AdapterKey",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoItems",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "RemoteVideoItems",
+    "name": "SiteName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoItems",
+    "name": "Extractor",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoItems",
+    "name": "VideoId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoItems",
+    "name": "OriginalUrl",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoItems",
+    "name": "Title",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoItems",
+    "name": "AuthorName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoItems",
+    "name": "AuthorId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoItems",
+    "name": "Duration",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoItems",
+    "name": "DurationText",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoItems",
+    "name": "CoverUrl",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoItems",
+    "name": "CoverPath",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoItems",
+    "name": "PublishTime",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoItems",
+    "name": "Description",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoItems",
+    "name": "LocalFilePath",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoItems",
+    "name": "DownloadStatus",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "'None'",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoItems",
+    "name": "LastResolvedAt",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoItems",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoItems",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoSettings",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "RemoteVideoSettings",
+    "name": "DownloadRoot",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoSettings",
+    "name": "CacheRoot",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoSettings",
+    "name": "DefaultQualityPreference",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "'best'",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoSettings",
+    "name": "FileNameTemplate",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "'{site}\\{author}\\{title} [{id}].{ext}'",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoSettings",
+    "name": "DownloadThumbnail",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "1",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoSettings",
+    "name": "DownloadInfoJson",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "1",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoSettings",
+    "name": "DownloadSubtitles",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoSettings",
+    "name": "DownloadDanmaku",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoSettings",
+    "name": "OverwriteExisting",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "1",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoSettings",
+    "name": "AutoImportToVideoLibrary",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "1",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoSettings",
+    "name": "MaxConcurrentDownloads",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "3",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoSettings",
+    "name": "CacheRetentionHours",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "24",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoSettings",
+    "name": "CacheMaxSizeGb",
+    "type": "REAL",
+    "notNull": true,
+    "defaultValue": "10",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "RemoteVideoSettings",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "TimerRecords",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "TimerRecords",
+    "name": "SavedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "TimerRecords",
+    "name": "Mode",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "TimerRecords",
+    "name": "DisplayText",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "TimerRecords",
+    "name": "DurationSeconds",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "TimerRecords",
+    "name": "Status",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "TimerRecords",
+    "name": "RecordId",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "UserProfiles",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "UserProfiles",
+    "name": "PreferredRole",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "UserProfiles",
+    "name": "PreferredModel",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "UserProfiles",
+    "name": "PreferredVoiceId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "UserProfiles",
+    "name": "DislikedPhrasesJson",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "UserProfiles",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VaultItemHistories",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "VaultItemHistories",
+    "name": "ItemId",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VaultItemHistories",
+    "name": "FieldName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VaultItemHistories",
+    "name": "OldValueEncrypted",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VaultItemHistories",
+    "name": "NewValueEncrypted",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VaultItemHistories",
+    "name": "ChangeRemark",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VaultItemHistories",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VaultItems",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "VaultItems",
+    "name": "ItemType",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VaultItems",
+    "name": "Name",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VaultItems",
+    "name": "Category",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VaultItems",
+    "name": "Account",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VaultItems",
+    "name": "PasswordEncrypted",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VaultItems",
+    "name": "Url",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VaultItems",
+    "name": "Platform",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VaultItems",
+    "name": "ApiKeyEncrypted",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VaultItems",
+    "name": "SecretEncrypted",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VaultItems",
+    "name": "ChainType",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VaultItems",
+    "name": "WalletAddress",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VaultItems",
+    "name": "PrivateKeyEncrypted",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VaultItems",
+    "name": "MnemonicEncrypted",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VaultItems",
+    "name": "ServerAddress",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VaultItems",
+    "name": "ServerPort",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VaultItems",
+    "name": "Remark",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VaultItems",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VaultItems",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoAlbums",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "VideoAlbums",
+    "name": "Name",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoAlbums",
+    "name": "Description",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoAlbums",
+    "name": "CoverVideoId",
+    "type": "INTEGER",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoAlbums",
+    "name": "SortOrder",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoAlbums",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoAlbums",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoAlbums",
+    "name": "CoverPath",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "VideoItems",
+    "name": "SourceType",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "'LocalFile'",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "Title",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "FileName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "FilePath",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "OriginalUrl",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "ResolvedPlayUrl",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "CoverPath",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "DurationSeconds",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "LastPositionSeconds",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "IsFavorite",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "IsCompleted",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "Tags",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "SubtitlePath",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "SubtitleFolderId",
+    "type": "INTEGER",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "LastPlayedAt",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "FileSize",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "FileModifiedAt",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "Remark",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "CoverStatus",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "'Pending'",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "PreviewStatus",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "'None'",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "PreviewIndexPath",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "PreviewGeneratedAt",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "PreviewError",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "AlbumId",
+    "type": "INTEGER",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "BaseName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "Extension",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoItems",
+    "name": "LastWriteTime",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoPlaybackHistories",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "VideoPlaybackHistories",
+    "name": "VideoItemId",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoPlaybackHistories",
+    "name": "PositionSeconds",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoPlaybackHistories",
+    "name": "DurationSeconds",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoPlaybackHistories",
+    "name": "PlayedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoSubtitleBindings",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "VideoSubtitleBindings",
+    "name": "VideoId",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoSubtitleBindings",
+    "name": "SubtitlePath",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoSubtitleBindings",
+    "name": "MatchType",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "'ExactBaseName'",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoSubtitleBindings",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoTagDefinitions",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "VideoTagDefinitions",
+    "name": "Name",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VideoTagDefinitions",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceAssets",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "VoiceAssets",
+    "name": "VoiceId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceAssets",
+    "name": "DisplayName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceAssets",
+    "name": "VoiceFolderPath",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceAssets",
+    "name": "IsEnabled",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "1",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceAssets",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceAssets",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheDedupeLogs",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "VoiceCacheDedupeLogs",
+    "name": "CacheKey",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheDedupeLogs",
+    "name": "RoleId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheDedupeLogs",
+    "name": "TriggerType",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheDedupeLogs",
+    "name": "Scene",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheDedupeLogs",
+    "name": "Tier",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheDedupeLogs",
+    "name": "Text",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheDedupeLogs",
+    "name": "VoiceStyle",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheDedupeLogs",
+    "name": "DedupeStatus",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheDedupeLogs",
+    "name": "DuplicateReason",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheDedupeLogs",
+    "name": "AttemptIndex",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheDedupeLogs",
+    "name": "Source",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceCacheDedupeLogs",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceConversations",
+    "name": "ConversationId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "VoiceConversations",
+    "name": "VoiceRoleId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceConversations",
+    "name": "Title",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceConversations",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceConversations",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleAudioCaches",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "VoiceRoleAudioCaches",
+    "name": "CacheKind",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleAudioCaches",
+    "name": "CacheKey",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleAudioCaches",
+    "name": "RoleId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleAudioCaches",
+    "name": "DisplayName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleAudioCaches",
+    "name": "VoiceId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleAudioCaches",
+    "name": "Style",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleAudioCaches",
+    "name": "IntimacyLevel",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleAudioCaches",
+    "name": "TierId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleAudioCaches",
+    "name": "TierName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleAudioCaches",
+    "name": "TriggerId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleAudioCaches",
+    "name": "Category",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleAudioCaches",
+    "name": "BodyPart",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleAudioCaches",
+    "name": "Emotion",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleAudioCaches",
+    "name": "Text",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleAudioCaches",
+    "name": "TextHash",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleAudioCaches",
+    "name": "AudioPath",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleAudioCaches",
+    "name": "ExpiresAt",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleAudioCaches",
+    "name": "IsEnabled",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleAudioCaches",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleAudioCaches",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleBindings",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "VoiceRoleBindings",
+    "name": "TargetType",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleBindings",
+    "name": "TargetKey",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleBindings",
+    "name": "RoleId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleBindings",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleBindings",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleCards",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "VoiceRoleCards",
+    "name": "RoleId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleCards",
+    "name": "Name",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleCards",
+    "name": "VoiceName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleCards",
+    "name": "RoleTitle",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleCards",
+    "name": "CardPath",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleCards",
+    "name": "SourceCardJson",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleCards",
+    "name": "CardSummary",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleCards",
+    "name": "CardSchemaVersion",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleCards",
+    "name": "PreferredVoiceId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleCards",
+    "name": "ValidationStatus",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "'unknown'",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleCards",
+    "name": "ValidationMessage",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleCards",
+    "name": "LastValidatedAt",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleCards",
+    "name": "IsEnabled",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "1",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleCards",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleCards",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleCards",
+    "name": "TemplateCardJson",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleCards",
+    "name": "TemplateCardGeneratedAt",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleCards",
+    "name": "TemplateCardSourceHash",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleCards",
+    "name": "TemplateCardGenerationStatus",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "'missing'",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleCards",
+    "name": "TemplateCardGenerationMessage",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleCards",
+    "name": "TemplateCardLastAttemptAt",
+    "type": "TEXT",
+    "notNull": false,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleCards",
+    "name": "TemplateCardIterationCount",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleCards",
+    "name": "AvatarPath",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleVoices",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "VoiceRoleVoices",
+    "name": "RoleId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleVoices",
+    "name": "VoiceId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleVoices",
+    "name": "Style",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleVoices",
+    "name": "IsDefault",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleVoices",
+    "name": "IsEnabled",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleVoices",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoleVoices",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoles",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "VoiceRoles",
+    "name": "RoleId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoles",
+    "name": "DisplayName",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoles",
+    "name": "AvatarPath",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": "''",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoles",
+    "name": "SortOrder",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "0",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoles",
+    "name": "IsEnabled",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": "1",
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoles",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceRoles",
+    "name": "UpdatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceTriggerLogs",
+    "name": "Id",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 1
+  },
+  {
+    "table": "VoiceTriggerLogs",
+    "name": "CreatedAt",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceTriggerLogs",
+    "name": "Source",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceTriggerLogs",
+    "name": "TriggerId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceTriggerLogs",
+    "name": "RoleId",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceTriggerLogs",
+    "name": "Category",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceTriggerLogs",
+    "name": "BodyPart",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceTriggerLogs",
+    "name": "Played",
+    "type": "INTEGER",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceTriggerLogs",
+    "name": "Reason",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceTriggerLogs",
+    "name": "Text",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  },
+  {
+    "table": "VoiceTriggerLogs",
+    "name": "AudioPath",
+    "type": "TEXT",
+    "notNull": true,
+    "defaultValue": null,
+    "primaryKeyOrder": 0
+  }
+]

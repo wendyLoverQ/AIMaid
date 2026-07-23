@@ -1,0 +1,198 @@
+[
+  {
+    "Key": "action_tag",
+    "Value": "ActionTagDefinitions"
+  },
+  {
+    "Key": "agent_capability",
+    "Value": "AgentCapabilities"
+  },
+  {
+    "Key": "agent_tool_call",
+    "Value": "AgentToolCalls"
+  },
+  {
+    "Key": "ai_conversation",
+    "Value": "AiConversations"
+  },
+  {
+    "Key": "app_runtime_state",
+    "Value": "AppRuntimeStates"
+  },
+  {
+    "Key": "chat_command_launcher",
+    "Value": "ChatCommandLaunchers"
+  },
+  {
+    "Key": "db_column_comment",
+    "Value": "DbColumnComments"
+  },
+  {
+    "Key": "desktop_context_snapshot",
+    "Value": "DesktopContextSnapshots"
+  },
+  {
+    "Key": "disturbance_settings",
+    "Value": "DisturbanceSettings"
+  },
+  {
+    "Key": "llm_business_model",
+    "Value": "LlmBusinessModelConfigs"
+  },
+  {
+    "Key": "llm_call_audit",
+    "Value": "LlmCallLogs"
+  },
+  {
+    "Key": "llm_chat_conversation",
+    "Value": "LlmChatConversations"
+  },
+  {
+    "Key": "llm_chat_message",
+    "Value": "LlmChatMessages"
+  },
+  {
+    "Key": "llm_provider_selection",
+    "Value": "LlmProviderSelections"
+  },
+  {
+    "Key": "llm_source_prompt",
+    "Value": "LlmSourcePrompts"
+  },
+  {
+    "Key": "maid_state",
+    "Value": "MaidStates"
+  },
+  {
+    "Key": "market_event",
+    "Value": "CryptoMarketEvents"
+  },
+  {
+    "Key": "market_provider",
+    "Value": "CryptoMarketProviderConfigurations"
+  },
+  {
+    "Key": "market_watchlist",
+    "Value": "CryptoMarketWatchlistItems"
+  },
+  {
+    "Key": "notebook",
+    "Value": "NotebookNotes"
+  },
+  {
+    "Key": "notebook_attachment",
+    "Value": "NotebookAttachments"
+  },
+  {
+    "Key": "proactive_audit",
+    "Value": "ProactiveBroadcastTriggerLogs"
+  },
+  {
+    "Key": "proactive_rule",
+    "Value": "ProactiveTriggerRules"
+  },
+  {
+    "Key": "proactive_source",
+    "Value": "ProactiveBroadcastSourceSettings"
+  },
+  {
+    "Key": "proactive_state",
+    "Value": "ProactiveTriggerStates"
+  },
+  {
+    "Key": "reminder",
+    "Value": "Reminders"
+  },
+  {
+    "Key": "reminder_history",
+    "Value": "ReminderLogs"
+  },
+  {
+    "Key": "remote_site",
+    "Value": "RemoteSiteConfigs"
+  },
+  {
+    "Key": "remote_video_download",
+    "Value": "RemoteDownloadTasks"
+  },
+  {
+    "Key": "remote_video_item",
+    "Value": "RemoteVideoItems"
+  },
+  {
+    "Key": "remote_video_play",
+    "Value": "RemotePlayHistories"
+  },
+  {
+    "Key": "remote_video_settings",
+    "Value": "RemoteVideoSettings"
+  },
+  {
+    "Key": "timer_record",
+    "Value": "TimerRecords"
+  },
+  {
+    "Key": "user_profile",
+    "Value": "UserProfiles"
+  },
+  {
+    "Key": "vault",
+    "Value": "VaultItems"
+  },
+  {
+    "Key": "vault_history",
+    "Value": "VaultItemHistories"
+  },
+  {
+    "Key": "video",
+    "Value": "VideoItems"
+  },
+  {
+    "Key": "video_album",
+    "Value": "VideoAlbums"
+  },
+  {
+    "Key": "video_play_history",
+    "Value": "VideoPlaybackHistories"
+  },
+  {
+    "Key": "video_subtitle",
+    "Value": "VideoSubtitleBindings"
+  },
+  {
+    "Key": "video_tag",
+    "Value": "VideoTagDefinitions"
+  },
+  {
+    "Key": "voice_asset",
+    "Value": "VoiceAssets"
+  },
+  {
+    "Key": "voice_cache_dedupe",
+    "Value": "VoiceCacheDedupeLogs"
+  },
+  {
+    "Key": "voice_conversation",
+    "Value": "VoiceConversations"
+  },
+  {
+    "Key": "voice_role",
+    "Value": "VoiceRoles"
+  },
+  {
+    "Key": "voice_role_audio_cache",
+    "Value": "VoiceRoleAudioCaches"
+  },
+  {
+    "Key": "voice_role_binding",
+    "Value": "VoiceRoleBindings"
+  },
+  {
+    "Key": "voice_role_voice",
+    "Value": "VoiceRoleVoices"
+  },
+  {
+    "Key": "voice_trigger_log",
+    "Value": "VoiceTriggerLogs"
+  }
+]

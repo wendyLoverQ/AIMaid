@@ -26,3 +26,13 @@
 /*.zip
 /*.diff
 /窗口相关代码搜索结果.md
+# SQLite database files and sidecars are runtime data, never repository artifacts.
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
