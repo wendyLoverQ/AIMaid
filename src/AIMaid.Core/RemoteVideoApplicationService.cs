@@ -1073,7 +1073,7 @@ public sealed partial class RemoteVideoApplicationService
 
     private static string NormalizeCookie(string value, string domainPattern)
     {
-        if (!value.Contains('\n') && value.Contains("\\n", StringComparison.Ordinal))
+        if (value.Contains("\\n", StringComparison.Ordinal))
         {
             value = value.Replace("\\r\\n", "\n", StringComparison.Ordinal)
                 .Replace("\\n", "\n", StringComparison.Ordinal);

@@ -206,7 +206,7 @@ internal static class WindowsRemoteCreatorCapture
 
     private static void ApplyCookies(CoreWebView2CookieManager manager, string cookieText)
     {
-        if (!cookieText.Contains('\n') && cookieText.Contains("\\n", StringComparison.Ordinal))
+        if (cookieText.Contains("\\n", StringComparison.Ordinal))
             cookieText = cookieText.Replace("\\r\\n", "\n", StringComparison.Ordinal)
                 .Replace("\\n", "\n", StringComparison.Ordinal);
         foreach (var line in cookieText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
