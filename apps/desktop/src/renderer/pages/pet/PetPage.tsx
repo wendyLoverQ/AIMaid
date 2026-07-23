@@ -113,7 +113,7 @@ export default function PetPage(): React.JSX.Element {
         const task = (async (): Promise<Record<string, unknown> | null> => {
             if (announce)
                 showBubble('正在准备当前角色的点击语音缓存…', 'feedback');
-            const response = await bridge.core.invoke({ type: 'pet.voice_cache.ensure', payload: { includeNextPeriod: true, forceRefresh } }, 120_000);
+            const response = await bridge.core.invoke({ type: 'pet.voice_cache.ensure', payload: { includeNextPeriod: true, forceRefresh } });
             if (!response.success || response.payload === null) {
                 showBubble(response.error?.message ?? '点击语音缓存生成失败。', 'error');
                 return null;

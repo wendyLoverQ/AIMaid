@@ -8,9 +8,6 @@ export const CORE_LONG_REQUEST_TIMEOUT_MS = 120_000
 const LONG_RUNNING_CORE_REQUEST_TYPES = new Set<string>([
   'chat.send',
   'tts.speak',
-  'pet.voice_cache.ensure',
-  'pet.voice_cache.clear',
-  'pet.voice_intimacy.cycle',
   'asr.transcribe',
   'agent.execute',
   'agent.decide',

@@ -71,7 +71,7 @@ public sealed class PetVoiceMenuApplicationService(
         await settings.SetManyAsync(
             new Dictionary<string, string> { [GetIntimacySettingKey(state.RoleId)] = next.ToString(CultureInfo.InvariantCulture) },
             cancellationToken);
-        var generation = await EnsureAsync(state.RoleId, next, includeNextPeriod: true, cancellationToken);
+        var generation = await QueueEnsureAsync(state.RoleId, next, includeNextPeriod: true, forceRefresh: false, cancellationToken);
         if (!generation.Succeeded)
             return OperationResult<PetVoiceMenuStateDto>.Failure(generation.ErrorCode!, generation.ErrorMessage!);
         return OperationResult<PetVoiceMenuStateDto>.Success(state with { IntimacyLevel = next, IntimacyLabel = FormatIntimacy(next) });
@@ -86,7 +86,7 @@ public sealed class PetVoiceMenuApplicationService(
         if (state.RoleId.Length == 0)
             return OperationResult<PetVoiceCacheEnsureResultDto>.Failure("pet_voice.role_missing", "尚未选择当前语音角色。");
         if (forceRefresh) CancelForegroundGeneration(state.RoleId, state.IntimacyLevel);
-        return await EnsureAsync(state.RoleId, state.IntimacyLevel, includeNextPeriod, cancellationToken, forceRefresh);
+        return await QueueEnsureAsync(state.RoleId, state.IntimacyLevel, includeNextPeriod, forceRefresh, cancellationToken);
     }
 
     public async Task<OperationResult<PetVoiceCacheClearResultDto>> ClearCurrentCacheAsync(CancellationToken cancellationToken = default)
@@ -97,7 +97,7 @@ public sealed class PetVoiceMenuApplicationService(
         CancelForegroundGeneration(state.RoleId, state.IntimacyLevel);
         var cacheKey = await GetCurrentCacheKeyAsync(0, cancellationToken);
         var deleted = await DeleteCacheEntriesAsync(state.RoleId, state.IntimacyLevel, cacheKey, cancellationToken);
-        var ensured = await EnsureAsync(state.RoleId, state.IntimacyLevel, includeNextPeriod: false, cancellationToken);
+        var ensured = await QueueEnsureAsync(state.RoleId, state.IntimacyLevel, includeNextPeriod: false, forceRefresh: true, cancellationToken);
         if (!ensured.Succeeded)
             return OperationResult<PetVoiceCacheClearResultDto>.Failure(ensured.ErrorCode!, ensured.ErrorMessage!);
         var value = ensured.Value!;
@@ -275,6 +275,74 @@ public sealed class PetVoiceMenuApplicationService(
             generationGate.Release();
             ReleaseForegroundGeneration(generationCancellation);
         }
+    }
+
+    private async Task<OperationResult<PetVoiceCacheEnsureResultDto>> QueueEnsureAsync(
+        string roleId,
+        int intimacyLevel,
+        bool includeNextPeriod,
+        bool forceRefresh,
+        CancellationToken cancellationToken)
+    {
+        if (!forceRefresh)
+        {
+            var ready = await TryGetReadyCacheAsync(roleId, intimacyLevel, includeNextPeriod, cancellationToken);
+            if (ready is not null) return OperationResult<PetVoiceCacheEnsureResultDto>.Success(ready);
+        }
+
+        var character = await characters.GetAsync(roleId, cancellationToken);
+        if (character is null || !character.IsEnabled)
+            return OperationResult<PetVoiceCacheEnsureResultDto>.Failure("pet_voice.role_invalid", "当前语音角色不存在或已停用。");
+
+        var cacheKey = await GetCurrentCacheKeyAsync(0, cancellationToken);
+        var contextHash = await ComputeContextHashAsync(character, intimacyLevel, cacheKey, cancellationToken);
+        var period = await GetCurrentPeriodAsync(cancellationToken);
+        var taskKey = $"current:{roleId}:{intimacyLevel}";
+
+        Task task;
+        if (forceRefresh && backgroundGenerations.TryGetValue(taskKey, out var existing))
+        {
+            CancelForegroundGeneration(roleId, intimacyLevel);
+            task = existing.ContinueWith(
+                _ => RunQueuedEnsureAsync(roleId, intimacyLevel, includeNextPeriod, forceRefresh: true),
+                CancellationToken.None,
+                TaskContinuationOptions.None,
+                TaskScheduler.Default).Unwrap();
+            backgroundGenerations[taskKey] = task;
+        }
+        else
+        {
+            task = backgroundGenerations.GetOrAdd(taskKey,
+                _ => RunQueuedEnsureAsync(roleId, intimacyLevel, includeNextPeriod, forceRefresh));
+        }
+        TrackQueuedGeneration(taskKey, task);
+
+        return OperationResult<PetVoiceCacheEnsureResultDto>.Success(new(
+            "", roleId, intimacyLevel, cacheKey, contextHash, Plans.Count, 0, false,
+            period.StartAt, period.EndAt, period.NextCacheKey, false, "pending",
+            $"{character.Name} 的 {FormatIntimacy(intimacyLevel)} 语音缓存已开始后台生成。"));
+    }
+
+    private async Task RunQueuedEnsureAsync(
+        string roleId,
+        int intimacyLevel,
+        bool includeNextPeriod,
+        bool forceRefresh)
+    {
+        try
+        {
+            await EnsureAsync(roleId, intimacyLevel, includeNextPeriod, lifetime.Token, forceRefresh);
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private void TrackQueuedGeneration(string taskKey, Task task)
+    {
+        _ = task.ContinueWith(completed =>
+        {
+            if (backgroundGenerations.TryGetValue(taskKey, out var current) && ReferenceEquals(current, completed))
+                backgroundGenerations.TryRemove(taskKey, out _);
+        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
 
     private async Task<PetVoiceCacheEnsureResultDto?> TryGetReadyCacheAsync(
