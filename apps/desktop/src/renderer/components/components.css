@@ -95,7 +95,7 @@
   text-align: center;
   pointer-events: none;
 }
-.pet-music-lyrics__current { margin: 0; overflow-wrap: anywhere; text-shadow: 0 1px 4px rgba(255, 255, 255, 0.72); }
+.pet-music-lyrics__current { margin: 0; overflow-wrap: anywhere; text-shadow: none; }
 .pet-music-lyrics__current { color: var(--color-accent); font-size: clamp(18px, 1.8vw, 26px); font-weight: var(--font-weight-semibold); line-height: 1.42; }
 .ui-pet-panel { position: absolute; left: 50%; top: 50%; width: 560px; height: 980px; overflow: visible; transform: translate(-50%, -50%); transform-origin: center; }
 .ui-pet-item { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
