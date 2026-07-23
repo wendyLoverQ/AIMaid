@@ -211,6 +211,23 @@ public sealed class PetVoiceCatalogTests
         Assert.AreEqual("audio_missing", playback.Value.Reason);
     }
 
+    [TestMethod]
+    public async Task ResolvePlayback_ClickHeadReadsTheMatchingReadyCacheSlot()
+    {
+        using var fixture = new VoiceCacheFixture(CreateLinesJson());
+        var ensured = await fixture.Service.EnsureCurrentCacheAsync(includeNextPeriod: false);
+
+        var playback = await fixture.Service.ResolvePlaybackAsync(new PlayPetVoiceCommand("click", "head"));
+
+        Assert.IsTrue(ensured.Succeeded, ensured.ErrorMessage);
+        Assert.IsTrue(playback.Succeeded, playback.ErrorMessage);
+        Assert.IsTrue(playback.Value!.Matched);
+        Assert.AreEqual("cache_match", playback.Value.Reason);
+        Assert.AreEqual("click", playback.Value.TriggerId);
+        Assert.AreEqual("head", playback.Value.BodyPart);
+        Assert.AreEqual(ensured.Value!.GenerationId, playback.Value.GenerationId);
+    }
+
     private static string CreateLinesJson(string prefix = "语音缓存测试台词", int count = 9)
     {
         var lines = PetVoiceTriggerCatalog.Plans.Take(count).Select((plan, index) => new
