@@ -18,6 +18,9 @@ import type { PetPresentationAction, PetPresentationSnapshot } from '../shared/p
 import type { AgentConfirmationRequest } from '../shared/business'
 import type { HotkeyAction, PlatformSettingsSnapshot } from '../shared/system-settings'
 
+const IPC_TRANSPORT_GRACE_MS = 5_000
+const IPC_DIALOG_TIMEOUT_MS = 600_000
+
 const windowKind = readWindowKind(process.argv)
 const appVersion = readArgument(process.argv, '--aimaid-version=') ?? '0.0.0'
 const subscriptions = new Set<Unsubscribe>()
@@ -30,13 +33,14 @@ function invoke<T = unknown>(type: IpcRequestType, payload: unknown, timeoutMs =
     const timer = setTimeout(() => {
       if (settled) return
       settled = true
-      cancel(request.requestId)
+      clearTimeout(timer)
+      if (type === 'core.invoke') cancel(request.requestId)
       resolve({
         requestId: request.requestId,
         type,
         payload: null,
         success: false,
-        error: { code: 'IPC_TIMEOUT', message: `Request timed out after ${timeoutMs}ms`, retryable: true },
+        error: { code: type === 'core.invoke' ? 'IPC_TRANSPORT_TIMEOUT' : 'IPC_TIMEOUT', message: `IPC response timed out after ${timeoutMs}ms`, retryable: true },
         timestamp: Date.now()
       })
     }, clampTimeout(timeoutMs))
@@ -107,7 +111,7 @@ if (canRequest(windowKind, 'window.toggleMaximize')) {
 
 const coreApi: AIMaidApi['core'] = {}
 if (canRequest(windowKind, 'core.invoke')) coreApi.invoke = (request: CoreRequest, timeoutMs?: number, requestId?: string) =>
-  invoke('core.invoke', request, timeoutMs ?? coreRequestTimeoutMs(request.type), requestId)
+  invoke('core.invoke', request, timeoutMs ?? coreRequestTimeoutMs(request.type) + IPC_TRANSPORT_GRACE_MS, requestId)
 if (canRequest(windowKind, 'core.status')) coreApi.status = () => invoke<CoreStatus>('core.status', {})
 if (canRequest(windowKind, 'core.restart')) coreApi.restart = () => invoke<CoreStatus>('core.restart', {}, 30_000)
 if (WINDOW_CAPABILITIES[windowKind].events) coreApi.subscribe = subscribe
@@ -124,9 +128,9 @@ const systemSettingsApi: AIMaidApi['systemSettings'] = canRequest(windowKind, 's
 
 const dialogApi: AIMaidApi['dialog'] = canRequest(windowKind, 'dialog.openFile') || canRequest(windowKind, 'dialog.openDirectory') || canRequest(windowKind, 'dialog.saveFile')
   ? Object.freeze({
-      openFile: (filters = [], multiSelect = false) => invoke('dialog.openFile', { filters, multiSelect }),
-      openDirectory: () => invoke<{ canceled: boolean; filePaths: string[] }>('dialog.openDirectory', {}),
-      saveFile: (defaultPath, filters = []) => invoke<{ canceled: boolean; filePath?: string }>('dialog.saveFile', { defaultPath, filters })
+      openFile: (filters = [], multiSelect = false) => invoke('dialog.openFile', { filters, multiSelect }, IPC_DIALOG_TIMEOUT_MS),
+      openDirectory: () => invoke<{ canceled: boolean; filePaths: string[] }>('dialog.openDirectory', {}, IPC_DIALOG_TIMEOUT_MS),
+      saveFile: (defaultPath, filters = []) => invoke<{ canceled: boolean; filePath?: string }>('dialog.saveFile', { defaultPath, filters }, IPC_DIALOG_TIMEOUT_MS)
     })
   : undefined
 const shellApi: AIMaidApi['shell'] = canRequest(windowKind, 'shell.showItemInFolder') || canRequest(windowKind, 'shell.openExternal')

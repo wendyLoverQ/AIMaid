@@ -1,7 +1,7 @@
 import { app, dialog, ipcMain, screen, shell } from 'electron'
-import type { IpcMainEvent, IpcMainInvokeEvent, OpenDialogOptions } from 'electron'
+import type { IpcMainEvent, IpcMainInvokeEvent, OpenDialogOptions, WebContents } from 'electron'
 import { canRequest } from '../../shared/capabilities'
-import { coreRequestTimeoutMs, isCoreRequest } from '../../shared/core'
+import { isCoreRequest } from '../../shared/core'
 import {
   IPC_CHANNELS,
   errorResponse,
@@ -32,7 +32,13 @@ import type { SpeechAudioService } from '../services/speech-audio-service'
 interface ActiveRequest {
   controller: AbortController
   senderId: number
-  timer: ReturnType<typeof setTimeout>
+  cancelRequested: boolean
+}
+
+interface SenderRequests {
+  contents: WebContents
+  requestIds: Set<string>
+  cleanup: () => void
 }
 
 interface HighFrequencyLogStats {
@@ -47,6 +53,7 @@ export class IpcRouter {
   private readonly activeRequests = new Map<string, ActiveRequest>()
   private readonly recentRequestIds = new Map<string, number>()
   private readonly requestOwners = new Map<string, number>()
+  private readonly senderRequests = new Map<number, SenderRequests>()
   private readonly highFrequencyLogStats = new Map<string, HighFrequencyLogStats>()
   private restartPromise: Promise<void> | undefined
   private installed = false
@@ -79,13 +86,14 @@ export class IpcRouter {
     ipcMain.removeHandler(IPC_CHANNELS.invoke)
     ipcMain.off(IPC_CHANNELS.send, this.handleSend)
     for (const request of this.activeRequests.values()) {
-      clearTimeout(request.timer)
       request.controller.abort(new Error('Application is shutting down'))
     }
     this.activeRequests.clear()
     this.agentConfirmation.cancelAll('应用正在退出。')
     this.recentRequestIds.clear()
     this.requestOwners.clear()
+    for (const sender of this.senderRequests.values()) sender.cleanup()
+    this.senderRequests.clear()
     this.highFrequencyLogStats.clear()
     this.installed = false
   }
@@ -192,15 +200,17 @@ export class IpcRouter {
       this.events.unsubscribe(event.sender.id, value.requestId)
       return
     }
-    if (this.requestOwners.get(value.requestId) !== event.sender.id) return
     const active = this.activeRequests.get(value.requestId)
-    if (active !== undefined && active.senderId === event.sender.id) {
-      clearTimeout(active.timer)
-      active.controller.abort(abortError('Request cancelled by renderer'))
-      this.activeRequests.delete(value.requestId)
-    } else {
-      void this.coreClient.cancel(value.requestId).catch((error: unknown) => this.log.error('ipc', 'Core cancellation failed', error))
+    if (this.requestOwners.get(value.requestId) !== event.sender.id || active === undefined || active.senderId !== event.sender.id) {
+      this.log.debug('ipc', 'Ignored cancellation for an inactive request', { requestId: value.requestId, senderId: event.sender.id })
+      return
     }
+    if (active.cancelRequested) {
+      this.log.debug('ipc', 'Ignored duplicate cancellation', { requestId: value.requestId, senderId: event.sender.id })
+      return
+    }
+    active.cancelRequested = true
+    active.controller.abort(abortError('Request cancelled by renderer'))
   }
 
   private authorize(event: IpcMainInvokeEvent, request: IpcRequestEnvelope): WindowKind | undefined {
@@ -352,7 +362,7 @@ export class IpcRouter {
         return this.systemSettings.setBubbleStyle(readStringAllowEmpty(request.payload, 'style', 16))
       case 'core.invoke':
         if (!isCoreRequest(request.payload)) throw new TypeError('Invalid Core request payload')
-        return this.invokeCore(event.sender.id, request.requestId, request.payload)
+        return this.invokeCore(event.sender, request.requestId, request.payload)
       case 'pet.ready':
         this.petWindows.rendererReady(event.sender)
         return { ready: true }
@@ -386,21 +396,60 @@ export class IpcRouter {
     }
   }
 
-  private async invokeCore(senderId: number, requestId: string, payload: Parameters<CoreClient['invoke']>[1]): Promise<unknown> {
+  private async invokeCore(sender: WebContents, requestId: string, payload: Parameters<CoreClient['invoke']>[1]): Promise<unknown> {
+    const senderId = sender.id
     const controller = new AbortController()
-    const timeoutMs = coreRequestTimeoutMs(payload.type)
-    const timer = setTimeout(() => controller.abort(abortError(`Core request timed out after ${timeoutMs}ms`)), timeoutMs)
-    this.activeRequests.set(requestId, { controller, senderId, timer })
+    this.activeRequests.set(requestId, { controller, senderId, cancelRequested: false })
     this.requestOwners.set(requestId, senderId)
-    setTimeout(() => this.requestOwners.delete(requestId), 300_000).unref()
+    this.addSenderRequest(sender, requestId)
     try {
       return payload.type === 'agent.execute'
         ? await this.agentConfirmation.execute(payload.payload, controller.signal)
         : await this.coreClient.invoke(requestId, payload, controller.signal)
     } finally {
-      clearTimeout(timer)
       this.activeRequests.delete(requestId)
+      this.requestOwners.delete(requestId)
+      this.removeSenderRequest(senderId, requestId)
     }
+  }
+
+  private addSenderRequest(sender: WebContents, requestId: string): void {
+    let entry = this.senderRequests.get(sender.id)
+    if (entry === undefined) {
+      const cleanup = (): void => this.cleanupSender(sender.id, sender)
+      entry = { contents: sender, requestIds: new Set(), cleanup }
+      this.senderRequests.set(sender.id, entry)
+      sender.once('destroyed', cleanup)
+      sender.once('render-process-gone', cleanup)
+    }
+    entry.requestIds.add(requestId)
+  }
+
+  private removeSenderRequest(senderId: number, requestId: string): void {
+    const entry = this.senderRequests.get(senderId)
+    if (entry === undefined) return
+    entry.requestIds.delete(requestId)
+    if (entry.requestIds.size === 0) {
+      entry.contents.removeListener('destroyed', entry.cleanup)
+      entry.contents.removeListener('render-process-gone', entry.cleanup)
+      this.senderRequests.delete(senderId)
+    }
+  }
+
+  private cleanupSender(senderId: number, sender: WebContents): void {
+    const entry = this.senderRequests.get(senderId)
+    if (entry === undefined || entry.contents !== sender) return
+    for (const requestId of entry.requestIds) {
+      const active = this.activeRequests.get(requestId)
+      if (active === undefined || active.senderId !== senderId) continue
+      active.cancelRequested = true
+      active.controller.abort(abortError('Renderer was destroyed'))
+      this.activeRequests.delete(requestId)
+      this.requestOwners.delete(requestId)
+    }
+    sender.removeListener('destroyed', entry.cleanup)
+    sender.removeListener('render-process-gone', entry.cleanup)
+    this.senderRequests.delete(senderId)
   }
 
   private async restartCore(): Promise<void> {
@@ -529,10 +578,10 @@ function readPetWindowUpdate(payload: unknown): PetWindowUpdate {
 function toIpcError(error: unknown): IpcError {
   if (error instanceof TypeError) return ipcError('IPC_INVALID_ARGUMENT', error.message)
   if (error instanceof CoreRemoteError) {
-    return { code: error.code, message: error.message, retryable: false, details: error.details }
+    return { code: error.code, message: error.message, retryable: error.code === 'REQUEST_TIMEOUT', details: error.details }
   }
   if (error instanceof CoreClientError) return ipcError(error.code, error.message, error.code === 'REQUEST_TIMEOUT')
-  if (error instanceof Error && error.name === 'AbortError') return ipcError('IPC_CANCELLED', error.message, true)
+  if (error instanceof IpcAbortError) return ipcError('IPC_CANCELLED', error.message)
   if (error instanceof Error) return ipcError('IPC_REQUEST_FAILED', error.message)
   return ipcError('IPC_REQUEST_FAILED', 'Unknown request failure')
 }
@@ -541,10 +590,15 @@ function ipcError(code: string, message: string, retryable = false): IpcError {
   return { code, message, retryable }
 }
 
-function abortError(message: string): Error {
-  const error = new Error(message)
-  error.name = 'AbortError'
-  return error
+class IpcAbortError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'IpcAbortError'
+  }
+}
+
+function abortError(message: string): IpcAbortError {
+  return new IpcAbortError(message)
 }
 
 function elapsedMs(startedAt: number): number {
