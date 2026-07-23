@@ -564,8 +564,8 @@ public sealed class AgentApplicationService :
                 description = item.Description,
                 argsSchema = JsonSerializer.Deserialize<JsonElement>(item.ArgsSchemaJson),
                 riskLevel = item.RiskLevel
-            })),
-            ["recentMessagesJson"] = JsonSerializer.Serialize(recent.Select(item => new { role = item.Role, content = item.Content })),
+            }), JsonConfig.Audit),
+            ["recentMessagesJson"] = JsonSerializer.Serialize(recent.Select(item => new { role = item.Role, content = item.Content }), JsonConfig.Audit),
             ["userMessage"] = command.Content,
             ["toolResultJson"] = command.ToolResultJson,
             ["toolStep"] = Math.Max(1, command.ToolStep).ToString(),

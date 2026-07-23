@@ -262,7 +262,59 @@ public sealed class JsonSerializationTests
     }
 
     /// <summary>
-    /// 测试七：验证空 ArgsJson 不会导致异常。
+    /// 测试九：capabilitiesJson 中文在系统提示词嵌入后不会产生双重转义（\\\\uXXXX）。
+    /// </summary>
+    [TestMethod]
+    public void CapabilitiesJson_InSystemPrompt_NoDoubleUnicodeEscape()
+    {
+        // 模拟 capabilitiesJson 构造（和 ExtendedDomainApplicationService 一致）
+        var capabilities = new[]
+        {
+            new
+            {
+                capability = "weather_query",
+                displayName = "查询天气",
+                description = "查询指定城市当前天气",
+                argsSchema = JsonSerializer.Deserialize<JsonElement>(
+                    """{"type":"object","properties":{"city":{"type":"string"}}}"""),
+                riskLevel = "low"
+            }
+        };
+
+        // 使用 JsonConfig.Audit（UnsafeRelaxedJsonEscaping）序列化
+        var capabilitiesJson = JsonSerializer.Serialize(capabilities, JsonConfig.Audit);
+
+        // 嵌入系统提示词模板
+        var systemPrompt = $"你是一个助手。可用能力：{capabilitiesJson}";
+
+        // 模拟 LLM 请求体构造（和 AiProviderHttpClient 一致）
+        var payload = new Dictionary<string, object?>
+        {
+            ["model"] = "test-model",
+            ["messages"] = new[] { new { role = "system", content = systemPrompt } },
+            ["stream"] = false
+        };
+
+        var requestJson = JsonSerializer.Serialize(payload, JsonConfig.Audit);
+
+        // Assert: 最终请求体中不得出现 \\uXXXX（双重转义）
+        Assert.IsFalse(requestJson.Contains("\\\\u"),
+            "系统提示词中的 capability 中文 JSON 不应产生 \\\\uXXXX 双重转义");
+
+        // Assert: 最终请求体可被正常解析
+        using var doc = JsonDocument.Parse(requestJson);
+        var root = doc.RootElement;
+        Assert.IsTrue(root.TryGetProperty("messages", out var msgs));
+        var content = msgs[0].GetProperty("content").GetString();
+        Assert.IsNotNull(content);
+
+        // Assert: 系统提示词中应包含 displayName 中文原文
+        Assert.IsTrue(content!.Contains("查询天气"),
+            "系统提示词中应包含中文 displayName 原文");
+    }
+
+    /// <summary>
+    /// 测试八：验证空 ArgsJson 不会导致异常。
     /// </summary>
     [TestMethod]
     public void EmptyArgsJson_SerializesAsNull()
