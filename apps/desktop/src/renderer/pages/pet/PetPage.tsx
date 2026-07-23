@@ -399,6 +399,8 @@ function PngSequenceMode({ canvasRef, presentation, scale, onFirstFrame, registe
         let animationId = 0;
         let startedAt = performance.now() - frameRef.current * 1000 / presentation.pngSourceFps;
         let lastDisplayTick = 0;
+        let lastCanvasWidth = canvas.width;
+        let lastCanvasHeight = canvas.height;
         const load = (index: number): HTMLImageElement => {
             const normalized = (index + presentation.pngFrames.length) % presentation.pngFrames.length;
             const url = presentation.pngFrames[normalized]!.url;
@@ -431,6 +433,11 @@ function PngSequenceMode({ canvasRef, presentation, scale, onFirstFrame, registe
         const render = (now: number): void => {
             if (disposed)
                 return;
+            if (canvas.width !== lastCanvasWidth || canvas.height !== lastCanvasHeight) {
+                lastCanvasWidth = canvas.width;
+                lastCanvasHeight = canvas.height;
+                draw(frameRef.current);
+            }
             if (!presentation.paused) {
                 const displayInterval = 1000 / presentation.pngFps;
                 if (now - lastDisplayTick >= displayInterval) {
@@ -448,7 +455,7 @@ function PngSequenceMode({ canvasRef, presentation, scale, onFirstFrame, registe
         };
         animationId = requestAnimationFrame(render);
         return () => { disposed = true; cancelAnimationFrame(animationId); cacheRef.current.clear(); };
-    }, [onFirstFrame, presentation.paused, presentation.pngFps, presentation.pngFrames, presentation.pngRole, presentation.pngSourceFps, scale]);
+    }, [onFirstFrame, presentation.paused, presentation.pngFps, presentation.pngFrames, presentation.pngRole, presentation.pngSourceFps]);
     const backingScale = scale * Math.min(window.devicePixelRatio || 1, 2);
     const canvasWidth = Math.max(1, Math.round(PET_CANVAS_WIDTH * backingScale));
     const canvasHeight = Math.max(1, Math.round(PET_CANVAS_HEIGHT * backingScale));
@@ -462,19 +469,32 @@ function useDrawCanvasImage(
     scale: number,
     onFirstFrame: () => void
 ): void {
+    const loadedImageRef = useRef<HTMLImageElement | null>(null);
     useEffect(() => {
         const canvas = ref.current;
         if (canvas === null || url === null)
             return;
+        loadedImageRef.current = null;
         const image = new Image();
         image.crossOrigin = 'anonymous';
         image.onload = () => {
+            loadedImageRef.current = image;
             drawPetImage(canvas, image);
             onFirstFrame();
         };
         image.src = url;
-        return () => { image.onload = null; };
-    }, [onFirstFrame, ref, scale, url]);
+        return () => {
+            image.onload = null;
+            if (loadedImageRef.current === image)
+                loadedImageRef.current = null;
+        };
+    }, [onFirstFrame, ref, url]);
+    useEffect(() => {
+        const canvas = ref.current;
+        const image = loadedImageRef.current;
+        if (canvas !== null && image !== null)
+            drawPetImage(canvas, image);
+    }, [ref, scale]);
 }
 function drawPetImage(canvas: HTMLCanvasElement, image: HTMLImageElement): void {
     const width = canvas.width;

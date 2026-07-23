@@ -1,6 +1,6 @@
 import type { PetWindowUpdate } from '../../shared/pet'
 import { PET_BASE_WINDOW_HEIGHT, PET_BASE_WINDOW_WIDTH } from '../../shared/pet-geometry'
-import { easeOutCubic, PET_HOLD_GROWTH_PER_MS, PET_HOLD_RELEASE_MS } from '../../shared/pet-hold-scale'
+import { calculatePetHoldGeometry, easeOutCubic, PET_HOLD_GROWTH_PER_MS, PET_HOLD_RELEASE_MS } from '../../shared/pet-hold-scale'
 
 const STORAGE_KEY = 'aimaid.pet-item-state.v1'
 const MIN_SCALE = 0.25
@@ -48,6 +48,8 @@ export class PetItemInteractionController {
   private holdReleaseFrame: number | null = null
   private holdStartedAt: number | null = null
   private holdScale = 1
+  private holdOriginX = 0.5
+  private holdOriginY = 0.5
   private ignoringMouse = true
   private lastHitState: boolean | undefined
 
@@ -177,23 +179,22 @@ export class PetItemInteractionController {
   }
 
   private startHoldScale(clientX: number, clientY: number): void {
-    if (!this.supportsHoldScale()) return
     this.cancelHoldFrames()
-    const bounds = this.options.item.getBoundingClientRect()
-    const originX = bounds.width > 0 ? (clientX - bounds.left) / bounds.width * 100 : 50
-    const originY = bounds.height > 0 ? (clientY - bounds.top) / bounds.height * 100 : 50
-    this.options.item.style.transformOrigin = `${originX}% ${originY}%`
-    this.options.item.style.willChange = 'transform'
     this.holdScale = 1
+    this.applyItemTransform()
+    const bounds = this.options.item.getBoundingClientRect()
+    this.holdOriginX = bounds.width > 0 ? (clientX - bounds.left) / bounds.width : 0.5
+    this.holdOriginY = bounds.height > 0 ? (clientY - bounds.top) / bounds.height : 0.5
+    this.options.item.dataset.holdScaling = ''
+    this.setImageBreathingEnabled(false)
     this.holdStartedAt = performance.now()
-    this.applyHoldScale()
     this.holdGrowFrame = requestAnimationFrame(this.growHoldScale)
   }
 
   private readonly growHoldScale = (now: number): void => {
     if (this.holdStartedAt === null) return
     this.holdScale = 1 + (now - this.holdStartedAt) * PET_HOLD_GROWTH_PER_MS
-    this.applyHoldScale()
+    this.applyItemTransform()
     this.holdGrowFrame = requestAnimationFrame(this.growHoldScale)
   }
 
@@ -211,7 +212,7 @@ export class PetItemInteractionController {
     const release = (now: number): void => {
       const progress = Math.min(1, (now - releaseStartedAt) / PET_HOLD_RELEASE_MS)
       this.holdScale = releaseStartedScale + (1 - releaseStartedScale) * easeOutCubic(progress)
-      this.applyHoldScale()
+      this.applyItemTransform()
       if (progress < 1) this.holdReleaseFrame = requestAnimationFrame(release)
       else this.finishHoldRelease()
     }
@@ -221,9 +222,11 @@ export class PetItemInteractionController {
   private finishHoldRelease(): void {
     this.holdReleaseFrame = null
     this.holdScale = 1
-    this.options.item.style.transformOrigin = 'center'
-    this.options.item.style.willChange = ''
-    this.applyHoldScale()
+    this.holdOriginX = 0.5
+    this.holdOriginY = 0.5
+    delete this.options.item.dataset.holdScaling
+    this.setImageBreathingEnabled(true)
+    this.applyItemTransform()
   }
 
   private resetHoldScale(): void {
@@ -239,13 +242,9 @@ export class PetItemInteractionController {
     this.holdReleaseFrame = null
   }
 
-  private supportsHoldScale(): boolean {
-    const mode = this.options.item.closest<HTMLElement>('[data-display-mode]')?.dataset.displayMode
-    return mode === 'image' || mode === 'png-sequence'
-  }
-
-  private applyHoldScale(): void {
-    this.options.item.style.transform = `translate(-50%, -50%) scale(${this.holdScale})`
+  private setImageBreathingEnabled(enabled: boolean): void {
+    const canvas = this.options.item.querySelector<HTMLElement>('.ui-transparent-canvas[data-mode="image"]')
+    if (canvas !== null) canvas.style.animation = enabled ? '' : 'none'
   }
 
   private queueSave(): void {
@@ -269,12 +268,17 @@ export class PetItemInteractionController {
   }
 
   private applyItemTransform(): void {
-    this.options.item.style.left = `calc(50% + ${this.offsetX}px)`
-    this.options.item.style.top = `calc(50% + ${this.offsetY}px)`
-    this.options.item.style.width = `${Math.round(PET_BASE_WINDOW_WIDTH * this.scale)}px`
-    this.options.item.style.height = `${Math.round(PET_BASE_WINDOW_HEIGHT * this.scale)}px`
-    this.applyHoldScale()
-    this.options.onScale(this.scale)
+    const baseWidth = PET_BASE_WINDOW_WIDTH * this.scale
+    const baseHeight = PET_BASE_WINDOW_HEIGHT * this.scale
+    const { width, height, originShiftX, originShiftY } = calculatePetHoldGeometry(
+      baseWidth, baseHeight, this.holdScale, this.holdOriginX, this.holdOriginY
+    )
+    this.options.item.style.left = `calc(50% + ${this.offsetX + originShiftX}px)`
+    this.options.item.style.top = `calc(50% + ${this.offsetY + originShiftY}px)`
+    this.options.item.style.width = `${Math.round(width)}px`
+    this.options.item.style.height = `${Math.round(height)}px`
+    this.options.item.style.transform = 'translate(-50%, -50%)'
+    this.options.onScale(this.scale * this.holdScale)
   }
 }
 
