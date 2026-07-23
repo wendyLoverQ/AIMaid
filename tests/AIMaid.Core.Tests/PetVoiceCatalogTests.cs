@@ -279,6 +279,23 @@ public sealed class PetVoiceCatalogTests
         Assert.AreEqual(ensured.Value!.GenerationId, playback.Value.GenerationId);
     }
 
+    [TestMethod]
+    public async Task StartupVoice_IsMarkedPlayedOnlyAfterASuccessfulPlaybackReport()
+    {
+        using var fixture = new VoiceCacheFixture(CreateLinesJson());
+        await fixture.Service.EnsureCurrentCacheAsync(includeNextPeriod: false);
+        var first = await fixture.Service.ResolvePlaybackAsync(new PlayPetVoiceCommand("startup.welcome", "default", "pet.startup"));
+        Assert.IsTrue(first.Value!.Matched);
+        await fixture.Service.ReportPlaybackAsync(new ReportPetVoicePlaybackCommand("startup.welcome", "default", first.Value.Text,
+            first.Value.AudioPath, true, "cache_match", "pet.startup", first.Value.GenerationId, first.Value.ContextHash, first.Value.Category));
+
+        var second = await fixture.Service.ResolvePlaybackAsync(new PlayPetVoiceCommand("startup.welcome", "default", "pet.startup"));
+
+        Assert.IsTrue(second.Succeeded, second.ErrorMessage);
+        Assert.IsFalse(second.Value!.Matched);
+        Assert.AreEqual("startup_already_played", second.Value.Reason);
+    }
+
     private static string CreateLinesJson(string prefix = "语音缓存测试台词", int count = 9)
     {
         var lines = PetVoiceTriggerCatalog.Plans.Take(count).Select((plan, index) => new

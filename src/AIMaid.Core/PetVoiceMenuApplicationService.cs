@@ -790,7 +790,7 @@ public sealed class PetVoiceMenuApplicationService(
         var normalized = value.Trim().ToLowerInvariant();
         return normalized switch
         {
-            "hair" or "head" or "face" or "chest" or "body" or "hand" or "leg" or "foot" or "long_press" or "hover" => normalized,
+            "default" or "hair" or "head" or "face" or "chest" or "body" or "hand" or "leg" or "foot" or "long_press" or "hover" => normalized,
             "bust" => "chest",
             "torso" or "waist" or "upper_body" or "lower_body" => "body",
             "arm" or "arms" => "hand",
