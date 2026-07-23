@@ -100,15 +100,19 @@ export class PetRuntime {
     this.player.setUserScale(scale)
   }
 
-  async handlePointerClick(clientX: number, clientY: number, ctrlKey: boolean, altKey: boolean): Promise<void> {
-    if (this.state !== 'ready') return
+  async handlePointerClick(clientX: number, clientY: number, ctrlKey: boolean, altKey: boolean): Promise<string | null> {
+    if (this.state !== 'ready') return null
     if (altKey) {
       this.player.resetOutfit()
-      return
+      return null
     }
     const bodyPart = this.player.resolveAutoHitArea(clientX, clientY) ?? 'other'
-    if (ctrlKey) this.player.cycleOutfit(bodyPart)
-    else await this.player.playClickMotion(bodyPart)
+    if (ctrlKey) {
+      this.player.cycleOutfit(bodyPart)
+      return null
+    }
+    await this.player.playClickMotion(bodyPart)
+    return bodyPart
   }
 
   dispose(): void {

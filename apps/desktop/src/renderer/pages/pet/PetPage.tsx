@@ -19,6 +19,7 @@ import { PetBubble } from './PetBubble';
 import { captureAlphaContour, PetAudioContour } from './PetAudioContour';
 import { startPetMusicPlayback } from './pet-music-playback';
 import { playLocalAudioPaths, synthesizeAndPlayPages } from '../chat/tts-playback';
+import { playCachedAudio } from '../chat/tts-playback';
 import { usePetBubbleQueue, type PetBubbleQueue } from './usePetBubbleQueue';
 type PetHitTest = (clientX: number, clientY: number) => boolean;
 type PetPointerClick = (event: MouseEvent) => void;
@@ -44,6 +45,7 @@ export default function PetPage(): React.JSX.Element {
     const panelRef = useRef<HTMLDivElement>(null);
     const itemRef = useRef<HTMLDivElement>(null);
     const visualCanvasRef = useRef<HTMLCanvasElement>(null);
+    const presentationRef = useRef<PetPresentationSnapshot | null>(null);
     const liveContourReaderRef = useRef<(() => AlphaContour | null) | null>(null);
     const hitTestRef = useRef<PetHitTest>(() => false);
     const pointerClickRef = useRef<PetPointerClick>(() => undefined);
@@ -87,6 +89,34 @@ export default function PetPage(): React.JSX.Element {
     useEffect(() => {
         void refreshPresentation();
     }, [refreshPresentation]);
+    useEffect(() => { presentationRef.current = presentation; }, [presentation]);
+    const ensureVoiceCache = useCallback(async (announce: boolean): Promise<void> => {
+        if (announce)
+            showBubble('正在准备当前角色的点击语音缓存…', 'feedback');
+        const response = await bridge.core.invoke({ type: 'pet.voice_cache.ensure', payload: { includeNextPeriod: true } }, 120_000);
+        if (!response.success || response.payload === null) {
+            showBubble(response.error?.message ?? '点击语音缓存生成失败。', 'error');
+            return;
+        }
+        if (announce) {
+            const value = response.payload as { message?: string };
+            showBubble(value.message ?? '点击语音缓存已准备好。', 'feedback');
+        }
+    }, [showBubble]);
+    useEffect(() => {
+        void ensureVoiceCache(false);
+        return bridge.events.subscribe(['character.changed', 'settings.changed'], (event) => {
+            const envelope = isRecord(event.payload) ? event.payload : null;
+            const data = envelope !== null && isRecord(envelope.data) ? envelope.data : null;
+            if (event.type === 'character.changed') {
+                void ensureVoiceCache(true);
+                return;
+            }
+            const keys = data !== null && Array.isArray(data.keys) ? data.keys : [];
+            if (keys.some((key) => key === 'voice_cache_period_hours' || key === 'user_config:App:VoiceCache:LazyCachePeriodHours'))
+                void ensureVoiceCache(true);
+        });
+    }, [ensureVoiceCache]);
     useEffect(() => {
         const panel = panelRef.current;
         if (panel === null)
@@ -100,7 +130,15 @@ export default function PetPage(): React.JSX.Element {
             dragEnd: () => { void bridge.pet.dragEnd(); },
             updateWindow: (update) => { void bridge.pet.updateWindow(update); },
             onScale: setRenderScale,
-            onClick: (event) => pointerClickRef.current(event)
+            onClick: (event) => {
+                if (presentationRef.current?.mode === 'live2d') {
+                    pointerClickRef.current(event);
+                    return;
+                }
+                const canvas = visualCanvasRef.current;
+                if (canvas !== null)
+                    void playPetClickVoice(resolveImageBodyPart(canvas, event.clientX, event.clientY));
+            }
         });
         interactionRef.current = interaction;
         const unsubscribe = bridge.pet.onLifecycle((event) => {
@@ -183,6 +221,7 @@ export default function PetPage(): React.JSX.Element {
                         const panelBounds = panel.getBoundingClientRect();
                         const sourceBounds = source.getBoundingClientRect();
                         const alphaTopPoint = contour.points.reduce((highest, point) => point.y < highest.y ? point : highest);
+
                         const alphaTop = sourceBounds.top + alphaTopPoint.y * sourceBounds.height;
                         const alphaTopX = sourceBounds.left + alphaTopPoint.x * sourceBounds.width;
                         targetBottom = panelBounds.bottom - alphaTop + BUBBLE_ALPHA_GAP + BUBBLE_TAIL_HEIGHT;
@@ -190,6 +229,7 @@ export default function PetPage(): React.JSX.Element {
                         currentBottom ??= targetBottom;
                         currentLeft ??= targetLeft;
                         bubbleSurface.dataset.alphaAnchored = '';
+
                     }
                 }
             }
@@ -261,6 +301,7 @@ export default function PetPage(): React.JSX.Element {
     }
     async function cycleVoiceIntimacy(): Promise<void> {
         setMenu(null);
+        showBubble('正在切换好感度并准备对应语音缓存…', 'feedback');
         const response = await bridge.core.invoke({ type: 'pet.voice_intimacy.cycle', payload: {} });
         if (!response.success || response.payload === null) {
             showBubble(response.error?.message ?? '好感度切换失败。', 'error');
@@ -275,14 +316,48 @@ export default function PetPage(): React.JSX.Element {
     }
     async function clearVoiceCache(): Promise<void> {
         setMenu(null);
+        showBubble('正在清理并重新生成当前语音缓存…', 'feedback');
         const response = await bridge.core.invoke({ type: 'pet.voice_cache.clear', payload: {} });
         if (!response.success || response.payload === null) {
             showBubble(response.error?.message ?? '语音缓存清理失败。', 'error');
             return;
         }
-        const value = response.payload as { deletedEntries?: number; deletedFiles?: number };
-        showBubble(`语音缓存已清理：${value.deletedEntries ?? 0} 条记录，${value.deletedFiles ?? 0} 个文件。`, 'feedback');
+        const value = response.payload as { message?: string; deletedEntries?: number; deletedFiles?: number; generatedEntries?: number };
+        showBubble(value.message ?? `语音缓存已清理并重生成：删除 ${value.deletedEntries ?? 0} 条，生成 ${value.generatedEntries ?? 0} 条。`, 'feedback');
     }
+    const playPetClickVoice = useCallback(async (bodyPart: string): Promise<void> => {
+        const mode = presentationRef.current?.mode ?? 'unknown';
+        const response = await bridge.core.invoke({ type: 'pet.voice.play', payload: { triggerId: 'click', bodyPart, source: `pet.${mode}` } });
+        if (!response.success || response.payload === null) {
+            showBubble(response.error?.message ?? '点击语音读取失败。', 'error');
+            return;
+        }
+        const value = response.payload as { matched?: boolean; triggerId?: string; bodyPart?: string; text?: string; audioPath?: string; reason?: string };
+        if (value.matched !== true || typeof value.audioPath !== 'string' || value.audioPath.length === 0) {
+            showBubble('当前点击语音缓存尚未准备好。', 'feedback');
+            return;
+        }
+        let played = false;
+        let reason = 'play_failed';
+        try {
+            played = await playCachedAudio(value.audioPath);
+            reason = played ? 'cache_match' : 'suppressed_audio_busy_or_muted';
+            if (played && typeof value.text === 'string' && value.text.length > 0)
+                showBubble(value.text, 'speech');
+        }
+        catch (error) {
+            reason = error instanceof Error ? error.message : String(error);
+            showBubble(`点击语音播放失败：${reason}`, 'error');
+        }
+        await bridge.core.invoke({
+            type: 'pet.voice.playback.report',
+            payload: {
+                triggerId: value.triggerId ?? 'click', bodyPart: value.bodyPart ?? bodyPart,
+                text: value.text ?? '', audioPath: value.audioPath, played, reason,
+                source: `pet.${mode}`
+            }
+        });
+    }, [showBubble]);
     return <TransparentStage ref={stageRef} data-display-mode={presentation?.mode ?? 'loading'} onContextMenu={(event) => {
             event.preventDefault();
             if (!hitTestRef.current(event.clientX, event.clientY))
@@ -296,7 +371,7 @@ export default function PetPage(): React.JSX.Element {
         {presentation === null ? <Container>{error ?? '正在读取桌宠显示模式…'}</Container> : null}
         {presentation?.mode === 'image' ? <ImageMode canvasRef={visualCanvasRef} presentation={presentation} scale={renderScale} onAdvance={() => void execute('next-image')} onFirstFrame={revealPetWindow} registerHitTest={registerHitTest}/> : null}
         {presentation?.mode === 'png-sequence' ? <PngSequenceMode canvasRef={visualCanvasRef} presentation={presentation} scale={renderScale} onFirstFrame={revealPetWindow} registerHitTest={registerHitTest}/> : null}
-        {presentation?.mode === 'live2d' ? <Live2DMode canvasRef={visualCanvasRef} role={presentation.live2dRole} scale={renderScale} registerHitTest={registerHitTest} registerPointerClick={registerPointerClick} registerContourReader={registerLiveContourReader} showBubble={showBubble}/> : null}
+        {presentation?.mode === 'live2d' ? <Live2DMode canvasRef={visualCanvasRef} role={presentation.live2dRole} scale={renderScale} registerHitTest={registerHitTest} registerPointerClick={registerPointerClick} registerContourReader={registerLiveContourReader} showBubble={showBubble} playVoice={playPetClickVoice}/> : null}
       </PetItemSurface>
       <PetBubble message={bubble} speechHeld={speechHeld} onExpired={expireBubble}/>
     </PetPanelSurface>
@@ -529,6 +604,26 @@ function isOpaqueCanvasPoint(canvas: HTMLCanvasElement, clientX: number, clientY
         return false;
     }
 }
+function resolveImageBodyPart(canvas: HTMLCanvasElement, clientX: number, clientY: number): string {
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0)
+        return 'body';
+    const x = (clientX - rect.left) / rect.width;
+    const y = (clientY - rect.top) / rect.height;
+    const areas = [
+        { id: 'face', x: 0.34, y: 0.10, width: 0.32, height: 0.15, priority: 140 },
+        { id: 'hair', x: 0.26, y: 0.00, width: 0.48, height: 0.13, priority: 130 },
+        { id: 'chest', x: 0.34, y: 0.26, width: 0.32, height: 0.18, priority: 130 },
+        { id: 'head', x: 0.30, y: 0.04, width: 0.40, height: 0.18, priority: 120 },
+        { id: 'foot', x: 0.18, y: 0.76, width: 0.64, height: 0.22, priority: 100 },
+        { id: 'hand', x: 0.08, y: 0.25, width: 0.84, height: 0.22, priority: 90 },
+        { id: 'leg', x: 0.25, y: 0.48, width: 0.50, height: 0.30, priority: 80 },
+        { id: 'body', x: 0.25, y: 0.20, width: 0.50, height: 0.34, priority: 70 }
+    ];
+    return areas
+        .filter((area) => x >= area.x && x <= area.x + area.width && y >= area.y && y <= area.y + area.height)
+        .sort((left, right) => right.priority - left.priority || left.width * left.height - right.width * right.height)[0]?.id ?? 'body';
+}
 function PetContextMenu({ position, presentation, voiceMenu, execute, open, cycleVoiceIntimacy, clearVoiceCache, showCurrentConversation, close }: {
     position: {
         x: number;
@@ -574,7 +669,7 @@ function PetContextMenu({ position, presentation, voiceMenu, execute, open, cycl
     return <ContextMenuSurface label="桌宠菜单" items={items} position={position} footer={`版本 ${bridge.app.version}`} onClose={close}/>;
 }
 function modeLabel(mode: PetPresentationSnapshot['mode']): string { return mode === 'image' ? '图片' : mode === 'png-sequence' ? 'PNG' : 'Live2D'; }
-function Live2DMode({ canvasRef, role, scale, registerHitTest, registerPointerClick, registerContourReader, showBubble }: {
+function Live2DMode({ canvasRef, role, scale, registerHitTest, registerPointerClick, registerContourReader, showBubble, playVoice }: {
     canvasRef: React.RefObject<HTMLCanvasElement | null>;
     role: string;
     scale: number;
@@ -582,6 +677,7 @@ function Live2DMode({ canvasRef, role, scale, registerHitTest, registerPointerCl
     registerPointerClick: (click: PetPointerClick | null) => void;
     registerContourReader: (reader: (() => AlphaContour | null) | null) => void;
     showBubble: PetBubbleQueue['show'];
+    playVoice: (bodyPart: string) => Promise<void>;
 }): React.JSX.Element {
     const runtimeRef = useRef<PetRuntime | null>(null);
     useEffect(() => {
@@ -599,9 +695,11 @@ function Live2DMode({ canvasRef, role, scale, registerHitTest, registerPointerCl
         runtime.setScale(scale);
         registerHitTest((x, y) => runtime.containsPoint(x, y));
         registerPointerClick((event) => {
-            void runtime.handlePointerClick(event.clientX, event.clientY, event.ctrlKey, event.altKey).catch((reason: unknown) => {
-                showBubble(reason instanceof Error ? reason.message : String(reason), 'error');
-            });
+            void runtime.handlePointerClick(event.clientX, event.clientY, event.ctrlKey, event.altKey)
+                .then((bodyPart) => bodyPart === null ? undefined : playVoice(bodyPart))
+                .catch((reason: unknown) => {
+                    showBubble(reason instanceof Error ? reason.message : String(reason), 'error');
+                });
         });
         return () => {
             registerHitTest(null);
@@ -610,7 +708,7 @@ function Live2DMode({ canvasRef, role, scale, registerHitTest, registerPointerCl
             runtimeRef.current = null;
             runtime.dispose();
         };
-    }, [canvasRef, registerContourReader, registerHitTest, registerPointerClick, showBubble]);
+    }, [canvasRef, playVoice, registerContourReader, registerHitTest, registerPointerClick, showBubble]);
     useEffect(() => {
         const runtime = runtimeRef.current;
         if (runtime === null)
