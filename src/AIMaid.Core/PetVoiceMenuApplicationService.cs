@@ -512,6 +512,7 @@ public sealed class PetVoiceMenuApplicationService(
     {
         var result = new Dictionary<string, GeneratedLine>(StringComparer.OrdinalIgnoreCase);
         var forbidden = existing.Select(item => item.Text).Where(text => !string.IsNullOrWhiteSpace(text)).ToList();
+        Exception? lastFailure = null;
         for (var attempt = 1; attempt <= 3 && result.Count < missing.Count; attempt++)
         {
             var remaining = missing.Where(plan => !result.ContainsKey(plan.Key)).ToArray();
@@ -540,32 +541,40 @@ public sealed class PetVoiceMenuApplicationService(
                 ["forbiddenSimilarLinesJson"] = JsonSerializer.Serialize(forbidden.Concat(result.Values.Select(line => line.Text))),
                 ["attemptIndex"] = attempt.ToString(CultureInfo.InvariantCulture),
                 ["maxAttempts"] = "3",
-                ["retryReason"] = attempt == 1 ? "首次生成" : "补齐缺失或重复台词",
+                ["retryReason"] = attempt == 1 ? "首次生成" : lastFailure?.Message ?? "补齐缺失或重复台词",
                 ["replacementCount"] = remaining.Length.ToString(CultureInfo.InvariantCulture)
             };
-            var raw = new StringBuilder();
-            await foreach (var delta in aiProvider.StreamChatAsync(new AiChatRequest(
-                               $"lazy_voice_{character.RoleId}_{cacheKey}_{Guid.NewGuid():N}",
-                               "生成固定触发语音缓存台词", character.RoleId,
-                               await LoadCacheModelAsync(cancellationToken), [],
-                               SourceKey: "lazy_voice_lines", TemplateValues: values,
-                               RequireJsonResponse: true, Temperature: 0.8, MaxTokens: 2048, StreamResponse: false), cancellationToken))
-                raw.Append(delta);
-            var generated = ParseLines(raw.ToString());
-            ValidateGeneratedBatch(generated, remaining);
-            var remainingByKey = remaining.ToDictionary(plan => plan.Key, StringComparer.OrdinalIgnoreCase);
-            foreach (var line in generated)
+            try
             {
-                if (!remainingByKey.TryGetValue(line.CacheKey, out var plan) || !IsAllowedTextLength(line.Text, plan)) continue;
-                if (line.VoiceStyle.Trim().ToLowerInvariant() is not ("normal" or "soft" or "lively" or "close")) continue;
-                var fingerprint = NormalizeFingerprint(line.Text);
-                if (fingerprint.Length == 0 || forbidden.Concat(result.Values.Select(value => value.Text))
-                        .Any(text => NormalizeFingerprint(text).Equals(fingerprint, StringComparison.OrdinalIgnoreCase) || IsHighlySimilar(text, line.Text))) continue;
-                result[line.CacheKey] = line;
+                var raw = new StringBuilder();
+                await foreach (var delta in aiProvider.StreamChatAsync(new AiChatRequest(
+                                   $"lazy_voice_{character.RoleId}_{cacheKey}_{Guid.NewGuid():N}",
+                                   "生成固定触发语音缓存台词", character.RoleId,
+                                   await LoadCacheModelAsync(cancellationToken), [],
+                                   SourceKey: "lazy_voice_lines", TemplateValues: values,
+                                   RequireJsonResponse: true, Temperature: 0.8, MaxTokens: 2048, StreamResponse: false), cancellationToken))
+                    raw.Append(delta);
+                var generated = ParseLines(raw.ToString());
+                ValidateGeneratedBatch(generated, remaining);
+                var remainingByKey = remaining.ToDictionary(plan => plan.Key, StringComparer.OrdinalIgnoreCase);
+                foreach (var line in generated)
+                {
+                    if (!remainingByKey.TryGetValue(line.CacheKey, out var plan) || !IsAllowedTextLength(line.Text, plan)) continue;
+                    if (line.VoiceStyle.Trim().ToLowerInvariant() is not ("normal" or "soft" or "lively" or "close")) continue;
+                    var fingerprint = NormalizeFingerprint(line.Text);
+                    if (fingerprint.Length == 0 || forbidden.Concat(result.Values.Select(value => value.Text))
+                            .Any(text => NormalizeFingerprint(text).Equals(fingerprint, StringComparison.OrdinalIgnoreCase) || IsHighlySimilar(text, line.Text))) continue;
+                    result[line.CacheKey] = line;
+                }
+                lastFailure = result.Count == missing.Count
+                    ? null
+                    : new InvalidDataException($"第 {attempt} 次缓存文案仍缺少 {missing.Count - result.Count} 条合格台词。");
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (Exception exception) { lastFailure = exception; }
         }
         if (result.Count != missing.Count)
-            throw new InvalidDataException($"缓存文案生成不完整：{result.Count}/{missing.Count}。");
+            throw new InvalidDataException($"缓存文案连续 3 次生成仍不完整：{result.Count}/{missing.Count}。", lastFailure);
         return result;
     }
 
@@ -580,18 +589,33 @@ public sealed class PetVoiceMenuApplicationService(
         await parallel.WaitAsync(cancellationToken);
         try
         {
-            var source = await tts.SynthesizeAsync(text, voiceId, style, cancellationToken);
-            if (!Path.IsPathFullyQualified(source) || !File.Exists(source))
-                throw new FileNotFoundException("TTS 合成完成后没有返回可读取的本地音频文件。", source);
-            Directory.CreateDirectory(stagingDirectory);
-            var extension = Path.GetExtension(source);
-            if (string.IsNullOrWhiteSpace(extension)) extension = ".wav";
-            if (extension.ToLowerInvariant() is not (".wav" or ".mp3" or ".ogg"))
-                throw new InvalidDataException($"TTS 返回了不支持的音频扩展名：{extension}");
-            var target = Path.Combine(stagingDirectory, $"{Guid.NewGuid():N}{extension}");
-            File.Copy(source, target, overwrite: false);
-            ValidateAudioFile(target);
-            return target;
+            Exception? lastFailure = null;
+            for (var attempt = 1; attempt <= 3; attempt++)
+            {
+                string? target = null;
+                try
+                {
+                    var source = await tts.SynthesizeAsync(text, voiceId, style, cancellationToken);
+                    if (!Path.IsPathFullyQualified(source) || !File.Exists(source))
+                        throw new FileNotFoundException("TTS 合成完成后没有返回可读取的本地音频文件。", source);
+                    Directory.CreateDirectory(stagingDirectory);
+                    var extension = Path.GetExtension(source);
+                    if (string.IsNullOrWhiteSpace(extension)) extension = ".wav";
+                    if (extension.ToLowerInvariant() is not (".wav" or ".mp3" or ".ogg"))
+                        throw new InvalidDataException($"TTS 返回了不支持的音频扩展名：{extension}");
+                    target = Path.Combine(stagingDirectory, $"{Guid.NewGuid():N}{extension}");
+                    File.Copy(source, target, overwrite: false);
+                    ValidateAudioFile(target);
+                    return target;
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+                catch (Exception exception)
+                {
+                    lastFailure = exception;
+                    if (target is not null && File.Exists(target)) File.Delete(target);
+                }
+            }
+            throw new InvalidOperationException("TTS 连续 3 次合成或音频校验失败。", lastFailure);
         }
         finally { parallel.Release(); }
     }
