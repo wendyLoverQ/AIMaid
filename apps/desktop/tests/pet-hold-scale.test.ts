@@ -28,4 +28,13 @@ describe('pet hold scale', () => {
       originShiftY: -245
     })
   })
+
+  it('keeps the Live2D render surface stable while its model scale changes', () => {
+    expect(calculatePetHoldGeometry(560, 980, 2, 0.25, 0.75, false)).toEqual({
+      width: 560,
+      height: 980,
+      originShiftX: 0,
+      originShiftY: 0
+    })
+  })
 })

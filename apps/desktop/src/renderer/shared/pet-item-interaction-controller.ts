@@ -270,8 +270,9 @@ export class PetItemInteractionController {
   private applyItemTransform(): void {
     const baseWidth = PET_BASE_WINDOW_WIDTH * this.scale
     const baseHeight = PET_BASE_WINDOW_HEIGHT * this.scale
+    const displayMode = this.options.item.closest<HTMLElement>('[data-display-mode]')?.dataset.displayMode
     const { width, height, originShiftX, originShiftY } = calculatePetHoldGeometry(
-      baseWidth, baseHeight, this.holdScale, this.holdOriginX, this.holdOriginY
+      baseWidth, baseHeight, this.holdScale, this.holdOriginX, this.holdOriginY, displayMode !== 'live2d'
     )
     this.options.item.style.left = `calc(50% + ${this.offsetX + originShiftX}px)`
     this.options.item.style.top = `calc(50% + ${this.offsetY + originShiftY}px)`
