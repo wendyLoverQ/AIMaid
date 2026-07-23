@@ -29,6 +29,8 @@ export const bridge = Object.freeze({
     minimize: (): Promise<IpcResponseEnvelope> => requireCapability(window.aimaid.window.minimize, 'window.minimize')(),
     toggleMaximize: (): Promise<IpcResponseEnvelope<{ maximized: boolean }>> =>
       requireCapability(window.aimaid.window.toggleMaximize, 'window.toggleMaximize')()
+    ,setBackgroundColor: (color: string): Promise<IpcResponseEnvelope> =>
+      requireCapability(window.aimaid.window.setBackgroundColor, 'window.setBackgroundColor')(color)
   }),
   core: Object.freeze({
     invoke: (request: CoreRequest, timeoutMs?: number, requestId?: string): Promise<IpcResponseEnvelope> =>

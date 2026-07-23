@@ -108,6 +108,9 @@ if (canRequest(windowKind, 'window.minimize')) windowApi.minimize = () => invoke
 if (canRequest(windowKind, 'window.toggleMaximize')) {
   windowApi.toggleMaximize = () => invoke<{ maximized: boolean }>('window.toggleMaximize', {})
 }
+if (canRequest(windowKind, 'window.setBackgroundColor')) {
+  windowApi.setBackgroundColor = (color) => invoke('window.setBackgroundColor', { color })
+}
 
 const coreApi: AIMaidApi['core'] = {}
 if (canRequest(windowKind, 'core.invoke')) coreApi.invoke = (request: CoreRequest, timeoutMs?: number, requestId?: string) =>

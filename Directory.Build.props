@@ -1,8 +1,8 @@
 <Project>
   <PropertyGroup>
-    <InformationalVersion>2026.7.24.1.60</InformationalVersion>
-    <AssemblyVersion>2026.7.24.60</AssemblyVersion>
-    <FileVersion>2026.7.24.60</FileVersion>
+    <InformationalVersion>2026.7.24.2.61</InformationalVersion>
+    <AssemblyVersion>2026.7.24.61</AssemblyVersion>
+    <FileVersion>2026.7.24.61</FileVersion>
     <DefaultItemExcludes>$(DefaultItemExcludes);artifacts/**</DefaultItemExcludes>
   </PropertyGroup>
 </Project>

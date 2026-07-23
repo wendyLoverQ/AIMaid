@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain, screen, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron'
 import type { IpcMainEvent, IpcMainInvokeEvent, OpenDialogOptions, WebContents } from 'electron'
 import { canRequest } from '../../shared/capabilities'
 import { isCoreRequest } from '../../shared/core'
@@ -262,6 +262,13 @@ export class IpcRouter {
         return { window: sourceKind }
       case 'window.toggleMaximize':
         return { maximized: this.windows.toggleMaximize(sourceKind, { requestId: request.requestId, sourceWindow: sourceKind, trigger: request.type }) }
+      case 'window.setBackgroundColor': {
+        const color = readBackgroundColor(request.payload)
+        const senderWindow = BrowserWindow.fromWebContents(event.sender)
+        if (senderWindow === null || senderWindow.isDestroyed()) throw new Error('Sender window is unavailable')
+        senderWindow.setBackgroundColor(color)
+        return { color }
+      }
       case 'dialog.openFile': {
         const filters = readFilters(request.payload)
         const multiSelect = readOptionalBoolean(request.payload, 'multiSelect')
@@ -595,6 +602,26 @@ class IpcAbortError extends Error {
     super(message)
     this.name = 'IpcAbortError'
   }
+}
+
+function readBackgroundColor(payload: unknown): string {
+  const color = readString(payload, 'color', 32)
+  const hex = /^#[0-9a-f]{6}(?:[0-9a-f]{2})?$/iu
+  if (!hex.test(color) && !isValidRgbColor(color)) throw new TypeError('Invalid background color')
+  return color
+}
+
+function isValidRgbColor(value: string): boolean {
+  const match = value.match(/^rgba?\((.*)\)$/iu)
+  if (match === null) return false
+  const parts = match[1]!.split(',').map((part) => part.trim())
+  if (parts.length !== 3 && parts.length !== 4) return false
+  const validChannel = (part: string): boolean => {
+    if (/^\d{1,3}%$/u.test(part)) return Number.parseInt(part, 10) <= 100
+    return /^\d{1,3}$/u.test(part) && Number.parseInt(part, 10) <= 255
+  }
+  if (!parts.slice(0, 3).every(validChannel)) return false
+  return parts.length === 3 || /^(?:0|1|0?\.\d+)$/u.test(parts[3]!)
 }
 
 function abortError(message: string): IpcAbortError {

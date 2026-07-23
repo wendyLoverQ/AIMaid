@@ -315,7 +315,7 @@ describe('phase 4 PetWindow integration', () => {
   it('does not expose a browser window before its first rendered frame', () => {
     const factory = readFileSync(resolve(import.meta.dirname, '../src/main/windows/window-factory.ts'), 'utf8')
     const manager = readFileSync(resolve(import.meta.dirname, '../src/main/windows/window-manager.ts'), 'utf8')
-    expect(factory).toContain("backgroundColor: definition.options.backgroundColor ?? '#e7e9eb'")
+    expect(factory).toContain("backgroundColor: definition.options.backgroundColor ?? DEFAULT_WINDOW_BACKGROUND")
     expect(manager).toContain("window.once('ready-to-show', showLoadedWindow)")
     expect(manager).not.toContain("window.webContents.once('did-finish-load', showLoadedWindow)")
     expect(manager).toContain("window.once('ready-to-show', ready)")

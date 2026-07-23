@@ -6,6 +6,7 @@ import type { Logger } from '../logging/logger'
 import type { WindowDefinition } from './window-registry'
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url))
+const DEFAULT_WINDOW_BACKGROUND = '#e7e9eb'
 
 export class WindowFactory {
   private readonly preloadPath = join(currentDirectory, '../preload/index.cjs')
@@ -19,7 +20,7 @@ export class WindowFactory {
   create(definition: WindowDefinition): BrowserWindow {
     const window = new BrowserWindow({
       ...definition.options,
-      backgroundColor: definition.options.backgroundColor ?? '#e7e9eb',
+      backgroundColor: definition.options.backgroundColor ?? DEFAULT_WINDOW_BACKGROUND,
       title: `AIMaid - ${definition.id}`,
       icon: this.iconPath,
       webPreferences: {

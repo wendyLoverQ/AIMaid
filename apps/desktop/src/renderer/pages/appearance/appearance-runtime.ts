@@ -1,4 +1,5 @@
 import type { AppearanceConfigurationDto } from '../../../shared/business'
+import { syncWindowBackgroundColor } from '../../shared/window-background'
 
 const STORAGE_KEY = 'aimaid.appearance.current'
 const CHANGE_EVENT = 'aimaid-appearance-changed'
@@ -77,6 +78,7 @@ function applyAppearance(configuration: AppearanceConfigurationDto, colors: read
   root.style.setProperty('--duration-slow', configuration.animationsEnabled ? '280ms' : '0ms')
   root.dataset.headerStyle = configuration.headerStyle
   root.style.colorScheme = 'only light'
+  syncWindowBackgroundColor()
 }
 
 function isSupportedPalette(colors: readonly [string, string, string, string]): boolean {

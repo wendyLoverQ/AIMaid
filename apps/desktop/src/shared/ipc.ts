@@ -17,6 +17,7 @@ export const IPC_REQUEST_TYPES = [
   'window.focus',
   'window.minimize',
   'window.toggleMaximize',
+  'window.setBackgroundColor',
   'dialog.openFile',
   'dialog.openDirectory',
   'dialog.saveFile',

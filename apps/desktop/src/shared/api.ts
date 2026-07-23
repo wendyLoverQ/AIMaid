@@ -20,6 +20,7 @@ export interface AIMaidApi {
     focus?: () => Promise<IpcResponseEnvelope>
     minimize?: () => Promise<IpcResponseEnvelope>
     toggleMaximize?: () => Promise<IpcResponseEnvelope<{ maximized: boolean }>>
+    setBackgroundColor?: (color: string) => Promise<IpcResponseEnvelope>
   }
   readonly core: {
     invoke?: (request: CoreRequest, timeoutMs?: number, requestId?: string) => Promise<IpcResponseEnvelope>
