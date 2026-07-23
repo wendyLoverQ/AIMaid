@@ -5,6 +5,7 @@ using System.Text.Json;
 using AIMaid.Contracts.Domains;
 using AIMaid.Contracts.Market;
 using AIMaid.Core;
+using AIMaid.Infrastructure;
 
 namespace AIMaid.CoreHost.Runtime;
 
@@ -112,7 +113,7 @@ public sealed class BinanceMarketApplicationService(IDomainDocumentStore store, 
     {
         var value = (await settings.GetAsync(ProviderSettingKey, cancellationToken))?.Value;
         if (string.IsNullOrWhiteSpace(value)) return null;
-        var configuration = JsonSerializer.Deserialize<ProviderConfiguration>(value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var configuration = JsonSerializer.Deserialize<ProviderConfiguration>(value, JsonConfig.Web);
         if (configuration is null || !configuration.IsEnabled) return null;
         if (!Uri.TryCreate(configuration.ServiceUrl.TrimEnd('/') + '/', UriKind.Absolute, out var baseUri) || baseUri.Scheme is not ("http" or "https"))
             throw new InvalidDataException("AI Provider 行情服务地址无效。");

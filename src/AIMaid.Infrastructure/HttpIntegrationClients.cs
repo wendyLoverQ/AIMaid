@@ -16,11 +16,7 @@ public sealed class AiProviderRequestException(
 
 public sealed class AiProviderHttpClient : IAiProviderClient
 {
-    private static readonly JsonSerializerOptions AuditJsonOptions = new()
-    {
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        WriteIndented = false
-    };
+    private static readonly JsonSerializerOptions AuditJsonOptions = JsonConfig.Audit;
 
     private readonly HttpClient httpClient;
     private readonly AiProviderOptions options;
@@ -87,7 +83,7 @@ public sealed class AiProviderHttpClient : IAiProviderClient
 
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, options.Endpoint)
         {
-            Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+            Content = new StringContent(requestJson, Encoding.UTF8, "application/json")
         };
         if (!string.IsNullOrWhiteSpace(options.ApiKey)) httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiKey);
 
@@ -171,11 +167,10 @@ public sealed class AiProviderHttpClient : IAiProviderClient
     {
         try
         {
-            var decoded = Regex.Unescape(responseText);
             await auditStore.UpdateAsync(auditId, new LlmCallAuditCompletion(
                 ResponseStatusCode: statusCode,
                 ResponseId: responseId,
-                ResponseText: decoded,
+                ResponseText: responseText,
                 RawResponseJson: responseText,
                 Error: error,
                 DurationMs: durationMs,

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AIMaid.Core;
 
 namespace AIMaid.CoreHost.Protocol;
 
@@ -6,10 +7,7 @@ public sealed class ProtocolWriter
 {
     private readonly TextWriter output;
     private readonly SemaphoreSlim gate = new(1, 1);
-    private readonly JsonSerializerOptions options = new(JsonSerializerDefaults.Web)
-    {
-        WriteIndented = false
-    };
+    private readonly JsonSerializerOptions options = JsonConfig.Web;
 
     public ProtocolWriter(TextWriter output) => this.output = output;
 

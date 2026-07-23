@@ -48,6 +48,8 @@ public sealed class CoreProtocolHost(
     string coreVersion,
     TextWriter error)
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     private static readonly HashSet<string> RequestTypes = new(StringComparer.Ordinal)
     {
         "system.handshake", "system.health", "system.window.fit_virtual_desktop", "system.window.center_on_client_rect", "system.shutdown", "system.cancel", "system.stream", "settings.get", "settings.save", "chat.history", "chat.send", "chat.update_metadata", "tts.speak", "asr.transcribe",
@@ -390,7 +392,7 @@ public sealed class CoreProtocolHost(
                     break;
                 case "script.save": {
                     if (!request.Payload.TryGetProperty("launcher", out var launcherElement)) throw new ArgumentException("缺少 launcher。");
-                    var launcher = launcherElement.Deserialize<ChatCommandLauncherDto>(new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? throw new ArgumentException("快捷脚本字段不完整。");
+                    var launcher = launcherElement.Deserialize<ChatCommandLauncherDto>(JsonOptions) ?? throw new ArgumentException("快捷脚本字段不完整。");
                     await HandleValueResultAsync(request, await scripts.HandleAsync(new SaveChatCommandLauncherCommand(launcher), source.Token), source.Token);
                     break;
                 }
@@ -402,7 +404,7 @@ public sealed class CoreProtocolHost(
                     break;
                 case "timer_record.save": {
                     if (!request.Payload.TryGetProperty("record", out var recordElement)) throw new ArgumentException("缺少 record。");
-                    var record = recordElement.Deserialize<TimerRecordDto>(new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? throw new ArgumentException("计时记录字段不完整。");
+                    var record = recordElement.Deserialize<TimerRecordDto>(JsonOptions) ?? throw new ArgumentException("计时记录字段不完整。");
                     await HandleResultAsync(request, await domains.HandleAsync(new SaveTimerRecordCommand(record), source.Token), source.Token);
                     break;
                 }
@@ -417,7 +419,7 @@ public sealed class CoreProtocolHost(
                     break;
                 case "remote_site.save": {
                     if (!request.Payload.TryGetProperty("site", out var siteElement)) throw new ArgumentException("缺少 site。");
-                    var site = siteElement.Deserialize<RemoteSiteDto>(new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? throw new ArgumentException("站点配置字段不完整。");
+                    var site = siteElement.Deserialize<RemoteSiteDto>(JsonOptions) ?? throw new ArgumentException("站点配置字段不完整。");
                     var cookie = request.Payload.TryGetProperty("plainCookie", out var cookieElement) && cookieElement.ValueKind == JsonValueKind.String ? cookieElement.GetString() : null;
                     await HandleResultAsync(request, await domains.HandleAsync(new SaveRemoteSiteCommand(site, cookie), source.Token), source.Token);
                     break;
@@ -473,7 +475,7 @@ public sealed class CoreProtocolHost(
                     break;
                 case "remote_video.settings.save": {
                     if (!request.Payload.TryGetProperty("settings", out var remoteSettingsElement)) throw new ArgumentException("缺少 settings。");
-                    var remoteSettings = remoteSettingsElement.Deserialize<RemoteVideoSettingsDto>(new JsonSerializerOptions(JsonSerializerDefaults.Web))
+                    var remoteSettings = remoteSettingsElement.Deserialize<RemoteVideoSettingsDto>(JsonOptions)
                         ?? throw new ArgumentException("远程视频设置字段不完整。");
                     await writer.SuccessAsync(request, await remoteVideos.SaveSettingsAsync(remoteSettings, source.Token), source.Token);
                     break;
@@ -498,7 +500,7 @@ public sealed class CoreProtocolHost(
                     break;
                 case "appearance.save": {
                     if (!request.Payload.TryGetProperty("configuration", out var appearanceElement)) throw new ArgumentException("缺少 configuration。");
-                    var configuration = appearanceElement.Deserialize<AppearanceConfigurationDto>(new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? throw new ArgumentException("外观设置字段不完整。");
+                    var configuration = appearanceElement.Deserialize<AppearanceConfigurationDto>(JsonOptions) ?? throw new ArgumentException("外观设置字段不完整。");
                     await HandleResultAsync(request, await domains.HandleAsync(new SaveAppearanceConfigurationCommand(configuration), source.Token), source.Token);
                     break;
                 }
@@ -508,7 +510,7 @@ public sealed class CoreProtocolHost(
                     break;
                 case "disturbance_settings.save": {
                     if (!request.Payload.TryGetProperty("settings", out var disturbanceElement)) throw new ArgumentException("缺少 settings。");
-                    var disturbance = disturbanceElement.Deserialize<DisturbanceSettingsDto>(new JsonSerializerOptions(JsonSerializerDefaults.Web))
+                    var disturbance = disturbanceElement.Deserialize<DisturbanceSettingsDto>(JsonOptions)
                         ?? throw new ArgumentException("勿扰设置字段不完整。");
                     await HandleResultAsync(request, await proactive.HandleAsync(new SaveDisturbanceSettingsCommand(disturbance), source.Token), source.Token);
                     break;
@@ -755,7 +757,7 @@ public sealed class CoreProtocolHost(
     {
         if (!request.Payload.TryGetProperty("character", out var element) || element.ValueKind != JsonValueKind.Object)
             throw new ArgumentException("character.save 缺少角色数据。");
-        var character = element.Deserialize<CharacterDto>(new JsonSerializerOptions(JsonSerializerDefaults.Web))
+        var character = element.Deserialize<CharacterDto>(JsonOptions)
             ?? throw new ArgumentException("character.save 角色数据无效。");
         await HandleResultAsync(request, await characters.HandleAsync(new UpdateCharacterCommand(character), cancellationToken), cancellationToken);
     }
@@ -785,7 +787,9 @@ public sealed class CoreProtocolHost(
                 ["description"] = capability.Description,
                 ["executorType"] = capability.ExecutorType,
                 ["riskLevel"] = capability.RiskLevel,
-                ["argsJson"] = command.ArgsJson
+                ["argsJson"] = string.IsNullOrWhiteSpace(command.ArgsJson)
+                    ? null
+                    : JsonSerializer.Deserialize<JsonElement>(command.ArgsJson)
             }, cancellationToken);
             return;
         }
@@ -834,13 +838,13 @@ public sealed class CoreProtocolHost(
     {
         var value = (await settingsStore.GetAsync(CryptoProviderSettingKey, cancellationToken))?.Value;
         return string.IsNullOrWhiteSpace(value) ? new(false, string.Empty, 8, "未检测", null, null)
-            : JsonSerializer.Deserialize<CryptoProviderConfigurationDto>(value, new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? new(false, string.Empty, 8, "未检测", null, null);
+            : JsonSerializer.Deserialize<CryptoProviderConfigurationDto>(value, JsonOptions) ?? new(false, string.Empty, 8, "未检测", null, null);
     }
     private Task SaveCryptoProviderConfigurationAsync(CryptoProviderConfigurationDto configuration, CancellationToken cancellationToken)
-        => settingsStore.SetManyAsync(new Dictionary<string, string> { [CryptoProviderSettingKey] = JsonSerializer.Serialize(configuration, new JsonSerializerOptions(JsonSerializerDefaults.Web)) }, cancellationToken);
+        => settingsStore.SetManyAsync(new Dictionary<string, string> { [CryptoProviderSettingKey] = JsonSerializer.Serialize(configuration, JsonOptions) }, cancellationToken);
     private static CryptoProviderConfigurationDto ReadCryptoProviderConfiguration(JsonElement payload)
         => payload.TryGetProperty("configuration", out var element)
-            ? element.Deserialize<CryptoProviderConfigurationDto>(new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? throw new ArgumentException("行情服务配置无效。")
+            ? element.Deserialize<CryptoProviderConfigurationDto>(JsonOptions) ?? throw new ArgumentException("行情服务配置无效。")
             : throw new ArgumentException("缺少 configuration。");
     private async Task HandleCryptoProviderCheckAsync(ProtocolRequest request, CancellationToken cancellationToken)
     {
@@ -888,7 +892,7 @@ public sealed class CoreProtocolHost(
     private async Task HandleNotebookSaveAsync(ProtocolRequest request, CancellationToken cancellationToken)
     {
         if (!request.Payload.TryGetProperty("note", out var element)) throw new ArgumentException("缺少 note。");
-        var note = element.Deserialize<NotebookNoteDto>(new JsonSerializerOptions(JsonSerializerDefaults.Web))
+        var note = element.Deserialize<NotebookNoteDto>(JsonOptions)
             ?? throw new ArgumentException("笔记字段不完整。");
         await HandleResultAsync(request, await domains.HandleAsync(new SaveNotebookNoteCommand(note), cancellationToken), cancellationToken);
     }
@@ -896,7 +900,7 @@ public sealed class CoreProtocolHost(
     private async Task HandleVoiceConversationSaveAsync(ProtocolRequest request, CancellationToken cancellationToken)
     {
         if (!request.Payload.TryGetProperty("conversation", out var element)) throw new ArgumentException("缺少 conversation。");
-        var conversation = element.Deserialize<VoiceConversationDto>(new JsonSerializerOptions(JsonSerializerDefaults.Web))
+        var conversation = element.Deserialize<VoiceConversationDto>(JsonOptions)
             ?? throw new ArgumentException("会话字段不完整。");
         await HandleResultAsync(request, await domains.HandleAsync(new SaveVoiceConversationCommand(conversation), cancellationToken), cancellationToken);
     }
@@ -904,7 +908,7 @@ public sealed class CoreProtocolHost(
     private async Task HandleVaultSaveAsync(ProtocolRequest request, CancellationToken cancellationToken)
     {
         if (!request.Payload.TryGetProperty("item", out var element)) throw new ArgumentException("缺少 item。");
-        var item = element.Deserialize<VaultItemDto>(new JsonSerializerOptions(JsonSerializerDefaults.Web))
+        var item = element.Deserialize<VaultItemDto>(JsonOptions)
             ?? throw new ArgumentException("密码库字段不完整。");
         var plainSecret = request.Payload.TryGetProperty("plainSecret", out var secretElement) && secretElement.ValueKind == JsonValueKind.String
             ? secretElement.GetString()
@@ -914,7 +918,7 @@ public sealed class CoreProtocolHost(
 
     private async Task HandleReminderSaveAsync(ProtocolRequest request, CancellationToken cancellationToken)
     {
-        var payload = request.Payload.Deserialize<ReminderSavePayload>(new JsonSerializerOptions(JsonSerializerDefaults.Web))
+        var payload = request.Payload.Deserialize<ReminderSavePayload>(JsonOptions)
             ?? throw new ArgumentException("提醒保存字段不完整。");
         var result = await reminders.HandleAsync(new SaveReminderCommand(payload.ReminderId, payload.Title ?? string.Empty,
             payload.Message ?? string.Empty, payload.DueAt, payload.Repeat ?? "none", payload.Enabled, payload.AllowTts), cancellationToken);
@@ -928,7 +932,7 @@ public sealed class CoreProtocolHost(
         IReadOnlyList<string>? reminderIds = null;
         if (request.Payload.TryGetProperty("reminderIds", out var idsElement))
         {
-            reminderIds = idsElement.Deserialize<string[]>(new JsonSerializerOptions(JsonSerializerDefaults.Web))
+            reminderIds = idsElement.Deserialize<string[]>(JsonOptions)
                 ?? throw new ArgumentException("提醒 ID 列表格式无效。");
             if (reminderIds.Count is < 1 or > 5 || reminderIds.Any(string.IsNullOrWhiteSpace))
                 throw new ArgumentException("提醒 ID 列表必须包含 1 到 5 个有效 ID。");
@@ -984,7 +988,7 @@ public sealed class CoreProtocolHost(
     {
         try
         {
-            var request = JsonSerializer.Deserialize<ProtocolRequest>(line, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            var request = JsonSerializer.Deserialize<ProtocolRequest>(line, JsonOptions);
             if (request is null || request.Kind != "request" || string.IsNullOrWhiteSpace(request.Id) ||
                 request.Id.Length is < 8 or > 100 || string.IsNullOrWhiteSpace(request.Type) ||
                 request.Payload.ValueKind is JsonValueKind.Undefined)
@@ -1085,11 +1089,11 @@ public sealed class CoreProtocolHost(
     }
     private static IReadOnlyList<T> ReadArray<T>(JsonElement payload, string name)
         => payload.TryGetProperty(name, out var element) && element.ValueKind == JsonValueKind.Array
-            ? element.Deserialize<T[]>(new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? throw new ArgumentException($"{name} 无效。")
+            ? element.Deserialize<T[]>(JsonOptions) ?? throw new ArgumentException($"{name} 无效。")
             : throw new ArgumentException($"缺少 {name}。");
     private static T ReadObject<T>(JsonElement payload, string name)
         => payload.TryGetProperty(name, out var element) && element.ValueKind == JsonValueKind.Object
-            ? element.Deserialize<T>(new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? throw new ArgumentException($"{name} 无效。")
+            ? element.Deserialize<T>(JsonOptions) ?? throw new ArgumentException($"{name} 无效。")
             : throw new ArgumentException($"缺少 {name}。");
     private static bool ReadBoolean(JsonElement payload, string name)
         => payload.TryGetProperty(name, out var element) && element.ValueKind is JsonValueKind.True or JsonValueKind.False
