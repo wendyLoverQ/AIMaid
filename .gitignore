@@ -22,6 +22,7 @@
 /data/
 /config/vault.key
 /apps/desktop/artifacts/
+/artifacts/ui-review/
 /apps/desktop/resources/
 /*.zip
 /*.diff
