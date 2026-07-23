@@ -191,28 +191,23 @@ export function CharacterPage(): React.JSX.Element {
             <ActionGroup><Button variant="primary" loading={busy} disabled={selectedItem.roleId === current || !selectedItem.isEnabled} onClick={() => void choose()}>设为当前</Button><Button onClick={() => void openEditor(selectedItem)}>编辑角色</Button><Button onClick={() => void openCurrentCard()}>当前角色卡</Button></ActionGroup>
           </LayoutSlot>
           <Stack gap="md">
-            <LayoutSlot variant="character-status-grid">
-            <Surface variant="character-info">
-              <SurfaceHeader title="状态" />
+            <LayoutSlot variant="character-overview">
+            <LayoutSlot as="section" variant="character-overview-block">
+              <Strong>状态与音色</Strong>
               <DetailList>
               <DetailRow label="启用状态" value={selectedItem.isEnabled ? '已启用' : '已停用'} />
-              </DetailList>
-            </Surface>
-            <Surface variant="character-info">
-              <SurfaceHeader title="音色" />
-              <DetailList>
               <DetailRow label="默认音色" value={selectedItem.preferredVoiceId || selectedItem.voiceName || '-'} />
               <DetailRow label="可用音色" value={formatVoices(roleVoices)} wrap />
               </DetailList>
-            </Surface>
-            <Surface variant="character-card-status">
-              <LayoutSlot as="header" variant="character-section-header"><Strong>角色卡状态</Strong><Button onClick={() => void openEditor(selectedItem, '原角色卡')}>编辑原角色卡</Button></LayoutSlot>
+            </LayoutSlot>
+            <LayoutSlot as="section" variant="character-overview-block">
+              <LayoutSlot as="header" variant="character-section-header"><Strong>角色卡</Strong><Button onClick={() => void openEditor(selectedItem, '原角色卡')}>编辑原角色卡</Button></LayoutSlot>
               <DetailList>
               <DetailRow label="原角色卡" value={selectedItem.sourceCardJson ? '已配置' : '未配置'} />
               <DetailRow label="当前角色卡" value={formatTemplateStatus(selectedItem)} />
               <DetailRow label="生成时间" value={formatDate(selectedItem?.templateCardGeneratedAt)} />
               </DetailList>
-            </Surface>
+            </LayoutSlot>
             </LayoutSlot>
             <Surface variant="character-binding">
               <SurfaceHeader title="绑定对象" meta={`${roleBindings.length} 个`} />

@@ -1148,15 +1148,16 @@ body.prompt-surface .ui-keyboard-key { min-width: 2.25rem; text-align: center; }
 .character-navigation { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; }
 .character-navigation .ui-listbox { min-height: 0; align-content: start; grid-auto-rows: max-content; overflow: auto; }
 .character-detail { height: 100%; align-content: start; overflow: auto; }
-.character-summary { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr) auto; align-items: center; gap: var(--space-4); padding-bottom: var(--space-4); border-bottom: var(--border-default); }
-.character-summary .ui-visual-region { width: 5.5rem; }
+.character-summary { display: grid; grid-template-columns: 4rem minmax(0, 1fr) auto; align-items: center; gap: var(--space-4); padding-bottom: var(--space-3); border-bottom: var(--border-default); }
+.character-summary .ui-visual-region { width: 4rem; }
 .character-summary .ui-visual-region > .ui-avatar--preview { width: 100%; height: 100%; border: 0; border-radius: 0; }
 .character-summary .ui-visual-region > .ui-avatar--preview img { object-fit: cover; }
-.character-status-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
-.character-info, .character-card-status { padding: var(--space-4); background: var(--color-bg-elevated); }
-.character-info .ui-surface__header, .character-card-status .ui-surface__header { margin-bottom: 0; }
-.character-info .ui-detail-row:last-child, .character-card-status .ui-detail-row:last-child { border-bottom: 0; }
-.character-card-status { grid-column: 1 / -1; }
+.character-overview { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); overflow: hidden; border: var(--border-default); border-radius: var(--radius-lg); background: var(--color-bg-elevated); }
+.character-overview-block { display: grid; min-width: 0; align-content: start; padding: var(--space-3) var(--space-4); }
+.character-overview-block + .character-overview-block { border-left: var(--border-default); }
+.character-overview-block > .ui-strong { margin-bottom: var(--space-1); }
+.character-overview-block .ui-detail-row { grid-template-columns: 5.5rem minmax(0, 1fr); padding: var(--space-2) 0; }
+.character-overview-block .ui-detail-row:last-child { border-bottom: 0; }
 .character-section-header { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .character-binding { background: var(--color-bg-elevated); }
 .character-binding-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
@@ -1325,7 +1326,8 @@ body.prompt-surface .ui-keyboard-key { min-width: 2.25rem; text-align: center; }
   .character-summary { grid-template-columns: 4.5rem minmax(0, 1fr); }
   .character-summary .ui-visual-region { width: 4.5rem; }
   .character-summary .ui-action-group { grid-column: 1 / -1; }
-  .character-status-grid, .character-binding-list { grid-template-columns: minmax(0, 1fr); }
+  .character-overview, .character-binding-list { grid-template-columns: minmax(0, 1fr); }
+  .character-overview-block + .character-overview-block { border-top: var(--border-default); border-left: 0; }
   .character-binding-actions { align-items: stretch; flex-direction: column; }
   .character-binding-actions .ui-action-group { flex: 1 1 auto; }
   .character-editor-preview { position: static; }
