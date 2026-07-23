@@ -303,17 +303,27 @@ public sealed class PetVoiceMenuApplicationService(
 
     private async Task GenerateNextPeriodAsync(CharacterDto character, int intimacyLevel, string cacheKey, string backgroundKey)
     {
+        var generationId = Guid.NewGuid().ToString("N");
+        var contextHash = string.Empty;
         try
         {
             await generationGate.WaitAsync(lifetime.Token);
-            try { await GenerateMissingAsync(character, intimacyLevel, cacheKey,
-                await ComputeContextHashAsync(character, intimacyLevel, cacheKey, lifetime.Token),
-                Guid.NewGuid().ToString("N"), false, lifetime.Token); }
+            try
+            {
+                contextHash = await ComputeContextHashAsync(character, intimacyLevel, cacheKey, lifetime.Token);
+                await PublishStatusAsync(generationId, character, intimacyLevel, cacheKey, contextHash, "pending", 0, false, "下一周期缓存已排队。", "", "", lifetime.Token);
+                await PublishStatusAsync(generationId, character, intimacyLevel, cacheKey, contextHash, "generating_lines", 0, false, "正在生成下一周期缓存文案。", "", "", lifetime.Token);
+                await GenerateMissingAsync(character, intimacyLevel, cacheKey, contextHash, generationId, false, lifetime.Token);
+                await PublishStatusAsync(generationId, character, intimacyLevel, cacheKey, contextHash, "ready", Plans.Count, false, "下一周期缓存已准备好。", "", "", lifetime.Token);
+            }
             finally { generationGate.Release(); }
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (Exception exception)
         {
+            if (!lifetime.IsCancellationRequested)
+                await PublishStatusAsync(generationId, character, intimacyLevel, cacheKey, contextHash, "failed", 0, false,
+                    exception.Message, "pet_voice.cache_generation_failed", exception.Message, lifetime.Token);
             var now = DateTimeOffset.Now;
             var diagnostic = new VoiceCacheDedupeDocument(
                 cacheKey, character.RoleId, "background.next_period", "desktop_pet",
