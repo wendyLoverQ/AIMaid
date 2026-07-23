@@ -20,6 +20,7 @@ public sealed class CharacterAssetApplicationService(
     IQueryHandler<ListRoleVoicesQuery, IReadOnlyList<RoleVoiceDto>>,
     ICommandHandler<SetRoleVoicesCommand, OperationResult>,
     IQueryHandler<GetCharacterObjectBindingQuery, CharacterObjectBindingDto?>,
+    IQueryHandler<ListCharacterObjectBindingsQuery, IReadOnlyList<CharacterObjectBindingDto>>,
     ICommandHandler<BindCharacterObjectCommand, OperationResult<CharacterObjectBindingDto>>,
     ICommandHandler<UnbindCharacterObjectCommand, OperationResult>,
     ICommandHandler<ApplyCharacterObjectBindingCommand, OperationResult>
@@ -114,6 +115,13 @@ public sealed class CharacterAssetApplicationService(
         }
         return null;
     }
+
+    public async Task<IReadOnlyList<CharacterObjectBindingDto>> HandleAsync(ListCharacterObjectBindingsQuery query, CancellationToken cancellationToken = default)
+        => (await store.ListAsync(RoleBindingDomain, cancellationToken))
+            .Select(Parse<CharacterObjectBindingDto>)
+            .Where(item => item.RoleId.Equals(query.RoleId.Trim(), StringComparison.OrdinalIgnoreCase))
+            .OrderBy(item => item.TargetKey, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
 
     public async Task<OperationResult<CharacterObjectBindingDto>> HandleAsync(BindCharacterObjectCommand command, CancellationToken cancellationToken = default)
     {

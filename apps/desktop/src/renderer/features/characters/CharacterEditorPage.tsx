@@ -5,7 +5,7 @@ import { bridge } from '../../shared/bridge';
 type Tab = '基础' | '音色' | '原角色卡';
 export function CharacterEditorPage(): React.JSX.Element {
     const original = useMemo(readRole, []);
-    const [tab, setTab] = useState<Tab>('基础');
+    const [tab, setTab] = useState<Tab>(readInitialTab);
     const [roleId, setRoleId] = useState(original?.roleId ?? '');
     const [name, setName] = useState(original?.name ?? '');
     const [avatar, setAvatar] = useState(original?.avatarPath ?? '');
@@ -179,6 +179,11 @@ function readRole(): CharacterDto | null { try {
 catch {
     return null;
 } }
+function readInitialTab(): Tab {
+    const value = localStorage.getItem('aimaid.character-editor-tab');
+    localStorage.removeItem('aimaid.character-editor-tab');
+    return value === '原角色卡' ? '原角色卡' : '基础';
+}
 function formatJson(value: string): string { if (value === '')
     return ''; try {
     return JSON.stringify(JSON.parse(value), null, 2);

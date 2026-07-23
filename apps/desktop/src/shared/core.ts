@@ -125,6 +125,7 @@ export type CoreRequest =
   | { type: 'character.voices'; payload: { roleId: string } }
   | { type: 'character.voices.set'; payload: { roleId: string; voices: RoleVoiceDto[] } }
   | { type: 'character.binding.get'; payload: { targetKey: string } }
+  | { type: 'character.binding.list'; payload: { roleId: string } }
   | { type: 'character.binding.set'; payload: { targetKey: string; roleId: string } }
   | { type: 'character.binding.clear'; payload: { targetKey: string } }
   | { type: 'character.binding.apply'; payload: { targetKey: string } }
@@ -473,6 +474,8 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
       return isNonEmptyString(value.payload.roleId)
     case 'character.voices.set':
       return isNonEmptyString(value.payload.roleId) && Array.isArray(value.payload.voices) && value.payload.voices.every(isRoleVoice)
+    case 'character.binding.list':
+      return isNonEmptyString(value.payload.roleId)
     case 'character.binding.get':
     case 'character.binding.clear':
     case 'character.binding.apply':

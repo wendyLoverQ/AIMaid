@@ -1147,14 +1147,25 @@ body.prompt-surface .ui-keyboard-key { min-width: 2.25rem; text-align: center; }
 .character-workspace { display: grid; grid-template-columns: minmax(18.75rem, 21.25rem) minmax(0, 1fr); gap: var(--space-4); min-height: 0; height: 100%; overflow: hidden; }
 .character-navigation { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; }
 .character-navigation .ui-listbox { min-height: 0; align-content: start; grid-auto-rows: max-content; overflow: auto; }
-.character-detail { height: 100%; align-content: start; overflow: hidden; }
-.character-summary { display: grid; grid-template-columns: 7rem minmax(0, 1fr) auto; align-items: center; gap: var(--space-5); padding-bottom: var(--space-5); border-bottom: var(--border-default); }
-.character-summary .ui-visual-region { width: 7rem; }
+.character-detail { height: 100%; align-content: start; overflow: auto; }
+.character-summary { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr) auto; align-items: center; gap: var(--space-4); padding-bottom: var(--space-4); border-bottom: var(--border-default); }
+.character-summary .ui-visual-region { width: 5.5rem; }
 .character-summary .ui-visual-region > .ui-avatar--preview { width: 100%; height: 100%; border: 0; border-radius: 0; }
 .character-summary .ui-visual-region > .ui-avatar--preview img { object-fit: cover; }
-.character-detail-sections { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-5); }
-.character-binding { background: var(--color-bg-canvas); }
-.character-danger { padding-top: var(--space-5); border-top: var(--border-default); }
+.character-status-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.character-info-card { padding: var(--space-4); background: var(--color-bg-elevated); }
+.character-info-card .ui-surface__header { margin-bottom: 0; }
+.character-info-card .ui-detail-row:last-child { border-bottom: 0; }
+.character-card-status { grid-column: 1 / -1; }
+.character-section-header { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.character-binding { background: var(--color-bg-elevated); }
+.character-binding-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.character-binding-item { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) var(--space-3); border: var(--border-default); border-radius: var(--radius-md); background: var(--color-bg-surface); }
+.character-binding-item .ui-paragraph { min-width: 0; }
+.character-binding-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin-top: var(--space-4); padding-top: var(--space-3); border-top: var(--border-default); }
+.character-binding-actions > .ui-text { min-width: 0; }
+.character-binding-actions .ui-action-group { flex: 0 0 auto; }
+.character-danger { padding-top: var(--space-4); border-top: var(--border-default); }
 .character-danger .ui-button { justify-self: start; }
 
 .template-card-layout { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--space-4); width: min(100%, 62rem); min-height: 100%; margin-inline: auto; }
@@ -1284,7 +1295,6 @@ body.prompt-surface .ui-keyboard-key { min-width: 2.25rem; text-align: center; }
 [data-remote-video-thumbnail-empty] .ui-icon { width: 1.5rem; height: 1.5rem; }
 
 @media (max-width: 64.9375rem) {
-  .character-detail-sections { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .reminder-row { grid-template-columns: minmax(12rem, .7fr) minmax(0, 1fr); }
   .reminder-row > .ui-inline { justify-content: flex-start; }
 }
@@ -1315,7 +1325,9 @@ body.prompt-surface .ui-keyboard-key { min-width: 2.25rem; text-align: center; }
   .character-summary { grid-template-columns: 4.5rem minmax(0, 1fr); }
   .character-summary .ui-visual-region { width: 4.5rem; }
   .character-summary .ui-action-group { grid-column: 1 / -1; }
-  .character-detail-sections { grid-template-columns: minmax(0, 1fr); }
+  .character-status-grid, .character-binding-list { grid-template-columns: minmax(0, 1fr); }
+  .character-binding-actions { align-items: stretch; flex-direction: column; }
+  .character-binding-actions .ui-action-group { flex: 1 1 auto; }
   .character-editor-preview { position: static; }
   .reminder-row { grid-template-columns: minmax(0, 1fr); }
   .notebook-navigation, .conversation-navigation { max-height: 22rem; }

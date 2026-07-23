@@ -19,6 +19,7 @@ export function CharacterPage(): React.JSX.Element {
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({})
   const [roleVoices, setRoleVoices] = useState<RoleVoiceDto[]>([])
+  const [roleBindings, setRoleBindings] = useState<CharacterObjectBindingDto[]>([])
   const [currentObjectKey, setCurrentObjectKey] = useState('')
   const [boundRoleId, setBoundRoleId] = useState('')
 
@@ -62,12 +63,14 @@ export function CharacterPage(): React.JSX.Element {
     })).then((entries) => setAvatarUrls(Object.fromEntries(entries)))
   }, [items])
   useEffect(() => {
-    if (selected === '') { setRoleVoices([]); return }
+    if (selected === '') { setRoleVoices([]); setRoleBindings([]); return }
     setRoleVoices([])
+    setRoleBindings([])
     void bridge.core.invoke({ type: 'character.voices', payload: { roleId: selected } }).then((response) => {
       if (!response.success || !Array.isArray(response.payload)) throw new Error(response.error?.message ?? '角色语音列表读取失败。')
       setRoleVoices(response.payload as RoleVoiceDto[])
     }).catch((reason: unknown) => toast.show(reason instanceof Error ? reason.message : String(reason), 'error'))
+    void loadRoleBindings(selected)
   }, [selected, toast])
   useEffect(() => {
     const reload = (): void => { void load() }
@@ -112,6 +115,7 @@ export function CharacterPage(): React.JSX.Element {
     setBusy(false)
     if (!response.success) { toast.show(response.error?.message ?? '角色绑定失败。', 'error'); return }
     setBoundRoleId(selectedItem.roleId)
+    await loadRoleBindings(selectedItem.roleId)
     toast.show(`已绑定语音角色：${selectedItem.name}`, 'success')
   }
 
@@ -122,7 +126,18 @@ export function CharacterPage(): React.JSX.Element {
     setBusy(false)
     if (!response.success) { toast.show(response.error?.message ?? '角色解绑失败。', 'error'); return }
     setBoundRoleId('')
+    if (selectedItem !== null) await loadRoleBindings(selectedItem.roleId)
     toast.show('已解除当前对象的语音角色绑定。', 'success')
+  }
+
+  async function loadRoleBindings(roleId: string): Promise<void> {
+    try {
+      const response = await bridge.core.invoke({ type: 'character.binding.list', payload: { roleId } })
+      if (!response.success || !Array.isArray(response.payload)) throw new Error(response.error?.message ?? '角色绑定对象读取失败。')
+      setRoleBindings(response.payload as CharacterObjectBindingDto[])
+    } catch (reason) {
+      toast.show(reason instanceof Error ? reason.message : String(reason), 'error')
+    }
   }
 
   async function openCurrentCard(): Promise<void> {
@@ -132,9 +147,10 @@ export function CharacterPage(): React.JSX.Element {
     if (!response.success) toast.show(response.error?.message ?? '角色卡窗口打开失败。', 'error')
   }
 
-  async function openEditor(item: CharacterDto | null): Promise<void> {
+  async function openEditor(item: CharacterDto | null, initialTab: '基础' | '原角色卡' = '基础'): Promise<void> {
     if (item === null) localStorage.removeItem('aimaid.character-editor-role')
     else localStorage.setItem('aimaid.character-editor-role', JSON.stringify(item))
+    localStorage.setItem('aimaid.character-editor-tab', initialTab)
     const response = await bridge.window.open('character-editor')
     if (!response.success) toast.show(response.error?.message ?? '角色编辑窗口打开失败。', 'error')
   }
@@ -171,27 +187,40 @@ export function CharacterPage(): React.JSX.Element {
           {selectedItem === null ? <EmptyState title="请选择角色" /> : <>
           <LayoutSlot as="header" variant="character-summary">
             <VisualRegion ratio="square"><Avatar source={avatarUrls[selectedItem.roleId] ?? ''} fallback={selectedItem.name || '—'} size="preview" /></VisualRegion>
-            <Stack gap="xs"><Heading>{selectedItem.name || selectedItem.roleId}</Heading><Text tone="muted">角色 ID：{selectedItem.roleId}</Text><Inline><Badge tone={selectedItem.roleId === current ? 'accent' : 'neutral'}>{selectedItem.roleId === current ? '当前角色' : '可切换'}</Badge><Badge>{selectedItem.roleId === boundRoleId ? '已绑定当前对象' : '未绑定当前对象'}</Badge></Inline></Stack>
-            <ActionGroup><Button variant="primary" loading={busy} disabled={selectedItem.roleId === current || !selectedItem.isEnabled} onClick={() => void choose()}>设为当前</Button><Button onClick={() => void openEditor(selectedItem)}>编辑</Button><Button onClick={() => void openCurrentCard()}>角色卡</Button></ActionGroup>
+            <Stack gap="xs"><Heading>{selectedItem.name || selectedItem.roleId}</Heading>{selectedItem.roleId === current ? <Inline><Badge tone="accent">当前角色</Badge></Inline> : null}</Stack>
+            <ActionGroup><Button variant="primary" loading={busy} disabled={selectedItem.roleId === current || !selectedItem.isEnabled} onClick={() => void choose()}>设为当前</Button><Button onClick={() => void openEditor(selectedItem)}>编辑角色</Button><Button onClick={() => void openCurrentCard()}>当前角色卡</Button></ActionGroup>
           </LayoutSlot>
-          <Stack>
-            <LayoutSlot variant="character-detail-sections">
-            <DetailList title="角色资料">
-              <DetailRow label="角色名称" value={selectedItem?.name || '-'} />
-              <DetailRow label="头像文件" value={fileName(selectedItem?.avatarPath) || '未配置'} wrap />
+          <Stack gap="md">
+            <LayoutSlot variant="character-status-grid">
+            <Surface className="character-info-card">
+              <SurfaceHeader title="状态" />
+              <DetailList>
               <DetailRow label="启用状态" value={selectedItem.isEnabled ? '已启用' : '已停用'} />
-            </DetailList>
-            <DetailList title="音色">
+              </DetailList>
+            </Surface>
+            <Surface className="character-info-card">
+              <SurfaceHeader title="音色" />
+              <DetailList>
               <DetailRow label="默认音色" value={selectedItem.preferredVoiceId || selectedItem.voiceName || '-'} />
-              <DetailRow label="可用音色" value={`${roleVoices.length} 个`} />
-            </DetailList>
-            <DetailList title="角色卡状态">
+              <DetailRow label="可用音色" value={formatVoices(roleVoices)} wrap />
+              </DetailList>
+            </Surface>
+            <Surface className="character-info-card character-card-status">
+              <LayoutSlot as="header" variant="character-section-header"><Strong>角色卡状态</Strong><Button onClick={() => void openEditor(selectedItem, '原角色卡')}>编辑原角色卡</Button></LayoutSlot>
+              <DetailList>
               <DetailRow label="原角色卡" value={selectedItem.sourceCardJson ? '已配置' : '未配置'} />
               <DetailRow label="当前角色卡" value={formatTemplateStatus(selectedItem)} />
               <DetailRow label="生成时间" value={formatDate(selectedItem?.templateCardGeneratedAt)} />
-            </DetailList>
+              </DetailList>
+            </Surface>
             </LayoutSlot>
-            <Surface variant="character-binding"><SurfaceHeader title="当前对象绑定" meta={selectedItem.roleId === boundRoleId ? '已绑定' : '未绑定'} /><Text as="p" tone="secondary" wrap>{currentObjectKey === '' ? '当前没有可绑定对象。' : `当前对象：${fileName(currentObjectKey)}`}</Text><ActionGroup><Button disabled={currentObjectKey === '' || selectedItem.roleId === boundRoleId || busy} onClick={() => void bindSelected()}>绑定此角色</Button><Button disabled={currentObjectKey === '' || boundRoleId === '' || busy} onClick={() => void unbindCurrent()}>解绑</Button></ActionGroup></Surface>
+            <Surface variant="character-binding">
+              <SurfaceHeader title="绑定对象" meta={`${roleBindings.length} 个`} />
+              {roleBindings.length === 0
+                ? <Text as="p" tone="secondary">这个角色还没有绑定对象。</Text>
+                : <LayoutSlot variant="character-binding-list">{roleBindings.map((binding) => <LayoutSlot key={binding.targetKey} variant="character-binding-item"><Text wrap>{fileName(binding.targetKey) || binding.targetKey}</Text>{sameTarget(binding.targetKey, currentObjectKey) ? <Badge tone="accent">当前对象</Badge> : null}</LayoutSlot>)}</LayoutSlot>}
+              <LayoutSlot variant="character-binding-actions"><Text tone="secondary" wrap>{currentObjectKey === '' ? '当前没有可绑定对象。' : `当前对象：${fileName(currentObjectKey)}`}</Text><ActionGroup><Button disabled={currentObjectKey === '' || selectedItem.roleId === boundRoleId || busy} onClick={() => void bindSelected()}>绑定当前对象</Button><Button disabled={currentObjectKey === '' || boundRoleId === '' || busy} onClick={() => void unbindCurrent()}>解绑当前对象</Button></ActionGroup></LayoutSlot>
+            </Surface>
             <LayoutSlot as="section" variant="character-danger"><Stack gap="sm"><Strong>危险操作</Strong><Text tone="secondary">删除会同时清除该角色的音色、角色卡和绑定。</Text><Button variant="danger" onClick={() => setDeleteConfirm(true)}>删除角色</Button></Stack></LayoutSlot>
           </Stack>
           </>}
@@ -220,4 +249,13 @@ function formatDate(value: string | null | undefined): string {
   if (value === null || value === undefined || value === '') return '尚未生成'
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? '尚未生成' : date.toLocaleString('zh-CN')
+}
+
+function formatVoices(voices: readonly RoleVoiceDto[]): string {
+  if (voices.length === 0) return '未配置'
+  return voices.map((voice) => voice.voiceId).join('、')
+}
+
+function sameTarget(left: string, right: string): boolean {
+  return left.replaceAll('/', '\\').toLocaleLowerCase() === right.replaceAll('/', '\\').toLocaleLowerCase()
 }

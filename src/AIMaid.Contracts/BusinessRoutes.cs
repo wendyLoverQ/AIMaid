@@ -11,6 +11,7 @@ public static class BusinessRoutes
     public const string CharacterSelect = "character.select";
     public const string CharacterPresent = "character.present";
     public const string CharacterBindingGet = "character.binding.get";
+    public const string CharacterBindingList = "character.binding.list";
     public const string CharacterBindingSet = "character.binding.set";
     public const string CharacterBindingClear = "character.binding.clear";
     public const string CharacterBindingApply = "character.binding.apply";

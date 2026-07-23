@@ -586,6 +586,10 @@ public sealed class CoreProtocolHost(
                     await writer.SuccessAsync(request, await characterAssets.HandleAsync(new GetCharacterObjectBindingQuery(
                         ReadRequiredString(request.Payload, "targetKey")), source.Token), source.Token);
                     break;
+                case "character.binding.list":
+                    await writer.SuccessAsync(request, await characterAssets.HandleAsync(new ListCharacterObjectBindingsQuery(
+                        ReadRequiredString(request.Payload, "roleId")), source.Token), source.Token);
+                    break;
                 case "character.binding.set":
                     await HandleValueResultAsync(request, await characterAssets.HandleAsync(new BindCharacterObjectCommand(
                         ReadRequiredString(request.Payload, "targetKey"), ReadRequiredString(request.Payload, "roleId")), source.Token), source.Token);
