@@ -34,6 +34,22 @@ describe('phase 4 PetWindow integration', () => {
     expect(isSafePetAssetPath('models/changli/readme.txt')).toBe(false)
   })
 
+  it('registers external audio with its real extension', () => {
+    const root = mkdtempSync(resolve(tmpdir(), 'aimaid-audio-asset-'))
+    try {
+      const resources = resolve(root, 'live2d')
+      const ui = resolve(root, 'ui')
+      const notebook = resolve(root, 'notebook')
+      mkdirSync(resources, { recursive: true })
+      mkdirSync(resolve(ui, 'generated'), { recursive: true })
+      writeFileSync(resolve(ui, 'generated', 'voice.wav'), 'RIFF')
+      const assets = new PetAssetService(resources, ui, notebook, { info: () => undefined, warn: () => undefined } as never)
+      expect(assets.registerExternalFile(resolve(ui, 'generated', 'voice.wav'))).toMatch(/\.wav$/u)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('paginates long bubble text near the requested Chinese character range', () => {
     const pages = paginatePetBubble('桌'.repeat(180))
     expect(pages).toHaveLength(3)

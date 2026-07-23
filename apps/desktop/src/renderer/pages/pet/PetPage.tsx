@@ -47,6 +47,7 @@ export default function PetPage(): React.JSX.Element {
     const [petRendererReady, setPetRendererReady] = useState(false);
     const readySentRef = useRef(false);
     const startupPlayedRef = useRef(false);
+    const forcedVoiceRefreshPathsRef = useRef(new Set<string>());
     const stageRef = useRef<HTMLElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const itemRef = useRef<HTMLDivElement>(null);
@@ -403,14 +404,16 @@ export default function PetPage(): React.JSX.Element {
             showBubble(value.reason === 'cache_generating' ? '启动语音正在生成…' : '启动语音缓存未就绪。', 'feedback');
             return;
         }
-        const playback = await playCachedAudio(value.audioPath);
+        const playback = await playCachedAudio(value.audioPath, 'startup');
         await bridge.core.invoke({ type: 'pet.voice.playback.report', payload: {
             triggerId: value.triggerId ?? 'startup.welcome', bodyPart: value.bodyPart ?? 'default', text: value.text ?? '',
             audioPath: value.audioPath, played: playback.played, reason: playback.played ? 'cache_match' : playback.reason, source: 'pet.startup',
             generationId: value.generationId ?? '', contextHash: value.contextHash ?? '', category: value.category ?? 'startup'
         } });
         if (!playback.played) {
+            if (playback.reason === 'audio_loading') return;
             showBubble(playback.message, 'error');
+            refreshBadVoiceCache(value.audioPath, playback.reason);
             return;
         }
         startupPlayedRef.current = true;
@@ -444,7 +447,7 @@ export default function PetPage(): React.JSX.Element {
         let playback: Awaited<ReturnType<typeof playCachedAudio>>;
         let reason = 'play_failed';
         try {
-            playback = await playCachedAudio(value.audioPath);
+            playback = await playCachedAudio(value.audioPath, 'click');
             reason = playback.played ? 'cache_match' : playback.reason;
             if (playback.played && typeof value.text === 'string' && value.text.length > 0)
                 showBubble(value.text, 'speech');
@@ -457,6 +460,7 @@ export default function PetPage(): React.JSX.Element {
             playback = { played: false, reason: 'play_failed', message: reason };
         }
         const played = playback.played;
+        refreshBadVoiceCache(value.audioPath, playback.played ? null : playback.reason);
         await bridge.core.invoke({
             type: 'pet.voice.playback.report',
             payload: {
@@ -469,6 +473,12 @@ export default function PetPage(): React.JSX.Element {
             }
         });
     }, [ensureVoiceCache, showBubble]);
+    function refreshBadVoiceCache(audioPath: string, reason: string | null): void {
+        if (reason !== 'file_unreadable' && reason !== 'decode_failed' && reason !== 'unsupported_format' && reason !== 'zero_duration') return;
+        if (forcedVoiceRefreshPathsRef.current.has(audioPath)) return;
+        forcedVoiceRefreshPathsRef.current.add(audioPath);
+        void ensureVoiceCache(false, true);
+    }
     return <TransparentStage ref={stageRef} data-display-mode={presentation?.mode ?? 'loading'} onContextMenu={(event) => {
             event.preventDefault();
             if (!hitTestRef.current(event.clientX, event.clientY))

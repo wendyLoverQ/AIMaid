@@ -103,7 +103,7 @@ export class PetAssetService {
     if (!ALLOWED_EXTENSIONS.has(extname(real).toLowerCase())) throw new Error('Unsupported pet media file')
     const token = createHash('sha256').update(real.toLowerCase()).digest('hex')
     this.externalFiles.set(token, real)
-    return `${SCHEME}://media/${token}`
+    return `${SCHEME}://media/${token}${extname(real).toLowerCase()}`
   }
 
   registerNotebookAttachment(path: string): string {
@@ -121,11 +121,18 @@ export class PetAssetService {
         if (url.host === NOTEBOOK_ATTACHMENT_HOST) {
           return this.serveRootFile(this.notebookAttachmentRoot, decodeURIComponent(url.pathname).replace(/^\/+/, ''))
         }
-        const token = url.pathname.replace(/^\/+/, '')
+        const match = url.pathname.match(/^\/+([a-f0-9]{64})(\.[a-z0-9]+)$/iu)
+        if (match === null) return new Response('Not found', { status: 404 })
+        const token = match[1]!
+        const extension = match[2]!.toLowerCase()
         const path = this.externalFiles.get(token)
-        if (path === undefined || !existsSync(path)) return new Response('Not found', { status: 404 })
+        if (path === undefined || !existsSync(path) || extname(path).toLowerCase() !== extension) return new Response('Not found', { status: 404 })
         const range = request.headers.get('range')
-        return withCors(await net.fetch(pathToFileURL(path).toString(), range === null ? {} : { headers: { Range: range } }))
+        const upstream = await net.fetch(pathToFileURL(path).toString(), range === null ? {} : { headers: { Range: range } })
+        const headers = new Headers(upstream.headers)
+        headers.set('Content-Type', audioMimeType(extension))
+        headers.set('Accept-Ranges', upstream.headers.get('Accept-Ranges') ?? 'bytes')
+        return withCors(new Response(upstream.body, { status: upstream.status, statusText: upstream.statusText, headers }))
       }
       if (url.host === UI_HOST && request.method === 'GET') {
         return this.serveRootFile(this.uiRoot, decodeURIComponent(url.pathname).replace(/^\/+/, ''))
@@ -368,6 +375,13 @@ function withCors(response: Response): Response {
   const headers = new Headers(response.headers)
   headers.set('Access-Control-Allow-Origin', '*')
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers })
+}
+
+function audioMimeType(extension: string): string {
+  return {
+    '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.aac': 'audio/aac',
+    '.ogg': 'audio/ogg', '.opus': 'audio/opus', '.flac': 'audio/flac'
+  }[extension] ?? 'application/octet-stream'
 }
 
 export function isSafePetAssetPath(value: string): boolean {
