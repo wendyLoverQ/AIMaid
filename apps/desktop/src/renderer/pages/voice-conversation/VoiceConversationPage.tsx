@@ -27,6 +27,7 @@ export function VoiceConversationPage(): React.JSX.Element {
     const payload = response.payload as { messages?: ChatMessageDto[] } | null; setMessages(payload?.messages ?? [])
   }, [])
   useEffect(() => { void Promise.all([loadCharacters(), bridge.core.invoke({ type: 'settings.get', payload: { keys: ['voice_conversation_center_speech'] } })]).then(async ([characters, setting]) => {
+    if (!setting.success) throw new Error(setting.error?.message ?? '语音播报设置读取失败。')
     setRoles(characters.items); const selected = characters.currentRoleId || characters.items[0]?.roleId || ''; setRoleId(selected)
     const payload = setting.payload as { settings?: Array<{ key: string; value: string }> } | null; setSpeech(payload?.settings?.find((item) => item.key === 'voice_conversation_center_speech')?.value.toLowerCase() === 'true')
     if (selected !== '') await loadConversations(selected)
@@ -66,7 +67,8 @@ export function VoiceConversationPage(): React.JSX.Element {
       setMessages((current) => [...current, optimistic])
       const payload = await runAgentConversation(content, { conversationId: conversation.conversationId, characterId: roleId, source: 'voice_conversation_center' })
       const reply = payload.content.trim()
-      await bridge.core.invoke({ type: 'voice_conversation.save', payload: { conversation: { ...conversation, preview: reply, updatedAt: new Date().toISOString() } } })
+      const saved = await bridge.core.invoke({ type: 'voice_conversation.save', payload: { conversation: { ...conversation, preview: reply, updatedAt: new Date().toISOString() } } })
+      if (!saved.success) throw new Error(saved.error?.message ?? '会话预览保存失败。')
       await loadMessages(conversation.conversationId); await loadConversations(roleId, query)
       const role = roles.find((item) => item.roleId === roleId)
       if (speech && reply !== '' && role?.preferredVoiceId !== undefined) {
