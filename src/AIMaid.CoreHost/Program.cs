@@ -23,8 +23,20 @@ try
     if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("AIMaid CoreHost 需要 Windows DPAPI。");
     var vaultKey = WindowsSecretProtectionKeyStore.LoadOrCreate(paths);
     var secretProtector = new AesGcmSecretProtector(new SecretProtectionOptions(vaultKey));
-    var store = new SqliteCoreStore(CoreStorageOptions.From(paths), secretProtector);
+    var storage = CoreStorageOptions.From(paths);
+    await using var dataSync = new BusinessDataSyncService(
+        BusinessDataSyncOptions.LegacyDefault,
+        paths,
+        storage.DatabasePath,
+        (message, exception) => CoreLog.Write(
+            Console.Error,
+            exception is null ? "info" : "warning",
+            "business_data_sync",
+            message,
+            exception: exception));
+    var store = new SqliteCoreStore(storage, secretProtector, dataSync);
     await store.InitializeAsync();
+    await dataSync.StartAsync();
     CoreLog.Write(Console.Error, "info", "startup_store_ready", "Core data store initialized",
         durationMs: startup.Elapsed.TotalMilliseconds);
     var events = new InProcessEventPublisher();

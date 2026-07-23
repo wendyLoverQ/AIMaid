@@ -15,14 +15,19 @@ internal sealed class LegacyRelationalDocumentStore
 {
     private readonly string connectionString;
     private readonly ISecretProtector? secrets;
+    private readonly IBusinessDataChangeSink? dataSync;
 
     private static readonly IReadOnlyDictionary<string, DomainMap> Maps = BuildMaps();
     internal static IReadOnlyDictionary<string, string> DomainTables { get; } = Maps.ToDictionary(pair => pair.Key, pair => pair.Value.Table, StringComparer.OrdinalIgnoreCase);
 
-    public LegacyRelationalDocumentStore(string connectionString, ISecretProtector? secrets)
+    public LegacyRelationalDocumentStore(
+        string connectionString,
+        ISecretProtector? secrets,
+        IBusinessDataChangeSink? dataSync)
     {
         this.connectionString = connectionString;
         this.secrets = secrets;
+        this.dataSync = dataSync;
     }
 
     public async Task<string?> GetAsync(string domain, string id, CancellationToken cancellationToken)
@@ -135,6 +140,8 @@ internal sealed class LegacyRelationalDocumentStore
             }
             update.CommandText = $"UPDATE {Q(map.Table)} SET {string.Join(',', assignments)} WHERE {BuildKeyPredicate(map, existingKey, update)}";
             await update.ExecuteNonQueryAsync(cancellationToken);
+            if (dataSync is not null)
+                await dataSync.CaptureRowAsync(map.Table, map.KeyColumn, existingKey, "update", CancellationToken.None);
             return;
         }
 
@@ -153,6 +160,8 @@ internal sealed class LegacyRelationalDocumentStore
             insert.Parameters.AddWithValue(parameters[index], values[names[index]] ?? DBNull.Value);
         insert.CommandText = $"INSERT INTO {Q(map.Table)} ({string.Join(',', names.Select(Q))}) VALUES ({string.Join(',', parameters)})";
         await insert.ExecuteNonQueryAsync(cancellationToken);
+        if (dataSync is not null)
+            await dataSync.CaptureRowAsync(map.Table, map.KeyColumn, existingKey, "insert", CancellationToken.None);
     }
 
     public async Task DeleteAsync(string domain, string id, CancellationToken cancellationToken)
@@ -291,6 +300,83 @@ internal sealed class LegacyRelationalDocumentStore
                 insert.CommandText = $"INSERT INTO {Q(map.Table)} ({string.Join(',', names.Select(Q))}) VALUES ({string.Join(',', parameters)})";
                 await insert.ExecuteNonQueryAsync(cancellationToken);
             }
+        }
+    }
+
+    internal async Task CaptureAppliedMutationsAsync(
+        IReadOnlyList<AtomicMutation> mutations,
+        CancellationToken cancellationToken)
+    {
+        if (dataSync is null) return;
+        foreach (var mutation in mutations)
+        {
+            if (mutation.Kind is AtomicMutationKind.DeleteDomain or AtomicMutationKind.DeleteSetting) continue;
+            if (mutation.Name.Equals("appearance_configuration", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (var key in AppearanceKeys.Values)
+                    await dataSync.CaptureRowAsync("AppSettings", "Key", key, "update", cancellationToken);
+                continue;
+            }
+            if (mutation.Name.Equals("model_configuration", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (var field in ModelFields)
+                    await dataSync.CaptureRowAsync(
+                        "AppSettings",
+                        "Key",
+                        ModelSettingKey(mutation.Id, field),
+                        "update",
+                        cancellationToken);
+                continue;
+            }
+            if (mutation.Name.Equals("model_configuration_secret", StringComparison.OrdinalIgnoreCase) ||
+                mutation.Name.Equals("protected_setting", StringComparison.OrdinalIgnoreCase))
+            {
+                await dataSync.CaptureRowAsync("AppSettings", "Key", mutation.Id, "update", cancellationToken);
+                continue;
+            }
+            if (mutation.Name.Equals("remote_site_secret", StringComparison.OrdinalIgnoreCase))
+            {
+                await dataSync.CaptureRowAsync(
+                    "RemoteSiteConfigs",
+                    "Id",
+                    ParsePrefixedLong(mutation.Id, "legacy_site_"),
+                    "update",
+                    cancellationToken);
+                continue;
+            }
+            if (mutation.Name.Equals("vault_secret", StringComparison.OrdinalIgnoreCase))
+            {
+                await dataSync.CaptureRowAsync(
+                    "VaultItems",
+                    "Id",
+                    ParsePrefixedLong(mutation.Id, "legacy_vault_"),
+                    "update",
+                    cancellationToken);
+                continue;
+            }
+            if (mutation.Name.Equals("vault_history_secret", StringComparison.OrdinalIgnoreCase))
+            {
+                await dataSync.CaptureRowAsync(
+                    "VaultItemHistories",
+                    "Id",
+                    ParsePrefixedLong(mutation.Id, "legacy_vault_history_"),
+                    "update",
+                    cancellationToken);
+                continue;
+            }
+            if (mutation.Kind == AtomicMutationKind.UpsertSetting)
+            {
+                await dataSync.CaptureRowAsync("AppSettings", "Key", mutation.Id, "update", cancellationToken);
+                continue;
+            }
+
+            var map = GetMap(mutation.Name);
+            await dataSync.CaptureRowAsync(
+                map.Table,
+                map.KeyColumn,
+                ParseDocumentId(map, mutation.Id),
+                "update",
+                cancellationToken);
         }
     }
 
@@ -554,10 +640,19 @@ internal sealed class LegacyRelationalDocumentStore
     private async Task SaveSettingAsync(string key, string value, DateTimeOffset updatedAt, CancellationToken cancellationToken)
     {
         await using var connection = await OpenAsync(cancellationToken);
+        var exists = dataSync is not null &&
+                     await SettingExistsAsync(connection, key, cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = "INSERT INTO AppSettings(Key,Value,UpdatedAt) VALUES($key,$value,$updated) ON CONFLICT(Key) DO UPDATE SET Value=excluded.Value,UpdatedAt=excluded.UpdatedAt";
         command.Parameters.AddWithValue("$key", key); command.Parameters.AddWithValue("$value", value); command.Parameters.AddWithValue("$updated", Format(updatedAt));
         await command.ExecuteNonQueryAsync(cancellationToken);
+        if (dataSync is not null)
+            await dataSync.CaptureRowAsync(
+                "AppSettings",
+                "Key",
+                key,
+                exists ? "update" : "insert",
+                CancellationToken.None);
     }
 
     private async Task DeleteSettingAsync(string key, CancellationToken cancellationToken)
@@ -579,11 +674,25 @@ internal sealed class LegacyRelationalDocumentStore
 
     private async Task UpdateColumnByMappedIdAsync(string table, string keyColumn, string id, string prefix, string valueColumn, string value, CancellationToken cancellationToken)
     {
+        var key = ParsePrefixedLong(id, prefix);
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = $"UPDATE {Q(table)} SET {Q(valueColumn)}=$value WHERE {Q(keyColumn)}=$id";
-        command.Parameters.AddWithValue("$value", value); command.Parameters.AddWithValue("$id", ParsePrefixedLong(id, prefix));
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        command.Parameters.AddWithValue("$value", value); command.Parameters.AddWithValue("$id", key);
+        var affected = await command.ExecuteNonQueryAsync(cancellationToken);
+        if (affected > 0 && dataSync is not null)
+            await dataSync.CaptureRowAsync(table, keyColumn, key, "update", CancellationToken.None);
+    }
+
+    private static async Task<bool> SettingExistsAsync(
+        SqliteConnection connection,
+        string key,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT 1 FROM AppSettings WHERE Key=$key LIMIT 1";
+        command.Parameters.AddWithValue("$key", key);
+        return await command.ExecuteScalarAsync(cancellationToken) is not null;
     }
 
     private static bool TryGetSettingDomain(string domain, out SettingDomain kind)

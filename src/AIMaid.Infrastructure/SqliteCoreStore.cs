@@ -13,15 +13,20 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
     public static IReadOnlyDictionary<string, string> RelationalDomainTables => LegacyRelationalDocumentStore.DomainTables;
     private readonly string connectionString;
     private readonly LegacyRelationalDocumentStore documents;
+    private readonly IBusinessDataChangeSink? dataSync;
 
-    public SqliteCoreStore(CoreStorageOptions options, ISecretProtector? secretProtector = null)
+    public SqliteCoreStore(
+        CoreStorageOptions options,
+        ISecretProtector? secretProtector = null,
+        IBusinessDataChangeSink? dataSync = null)
     {
         if (string.IsNullOrWhiteSpace(options.DatabasePath)) throw new ArgumentException("数据库路径不能为空。", nameof(options));
         if (!Path.IsPathFullyQualified(options.DatabasePath)) throw new ArgumentException("数据库路径必须是绝对路径。", nameof(options));
         var fullPath = Path.GetFullPath(options.DatabasePath);
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
         connectionString = new SqliteConnectionStringBuilder { DataSource = fullPath, ForeignKeys = true }.ToString();
-        documents = new LegacyRelationalDocumentStore(connectionString, secretProtector);
+        this.dataSync = dataSync;
+        documents = new LegacyRelationalDocumentStore(connectionString, secretProtector, dataSync);
     }
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
@@ -48,6 +53,7 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
             await transaction.RollbackAsync(CancellationToken.None);
             throw;
         }
+        await documents.CaptureAppliedMutationsAsync(mutations, CancellationToken.None);
     }
 
     async Task<long> IChatStore.AppendAsync(ChatMessageDto message, CancellationToken cancellationToken)
@@ -67,7 +73,10 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
         command.Parameters.AddWithValue("$source", message.Source);
         command.Parameters.AddWithValue("$metadataJson", message.MetadataJson);
         command.Parameters.AddWithValue("$createdAt", Format(message.CreatedAt));
-        return (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
+        var id = (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
+        if (dataSync is not null)
+            await dataSync.CaptureRowAsync("ChatMessages", "Id", id, "insert", CancellationToken.None);
+        return id;
     }
 
     public async Task<bool> UpdateMetadataAsync(long messageId, string metadataJson, CancellationToken cancellationToken = default)
@@ -77,7 +86,10 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
         command.CommandText = "UPDATE ChatMessages SET MetadataJson=$metadata WHERE Id=$id";
         command.Parameters.AddWithValue("$metadata", metadataJson ?? string.Empty);
         command.Parameters.AddWithValue("$id", messageId);
-        return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+        var updated = await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+        if (updated && dataSync is not null)
+            await dataSync.CaptureRowAsync("ChatMessages", "Id", messageId, "update", CancellationToken.None);
+        return updated;
     }
 
     public async Task<IReadOnlyList<ChatMessageDto>> LoadRecentAsync(string conversationId, int limit, CancellationToken cancellationToken = default)
@@ -171,6 +183,13 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
     public async Task SetManyAsync(IReadOnlyDictionary<string, string> values, CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken);
+        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (dataSync is not null)
+        {
+            foreach (var key in values.Keys)
+                if (await RowExistsAsync(connection, "AppSettings", "Key", key, cancellationToken))
+                    existing.Add(key);
+        }
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         foreach (var (key, value) in values)
         {
@@ -186,6 +205,14 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
         await transaction.CommitAsync(cancellationToken);
+        if (dataSync is not null)
+            foreach (var key in values.Keys)
+                await dataSync.CaptureRowAsync(
+                    "AppSettings",
+                    "Key",
+                    key,
+                    existing.Contains(key) ? "update" : "insert",
+                    CancellationToken.None);
     }
 
     async Task<CharacterDto?> ICharacterStore.GetAsync(string roleId, CancellationToken cancellationToken)
@@ -213,6 +240,8 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
     public async Task UpsertAsync(CharacterDto character, CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken);
+        var exists = dataSync is not null &&
+                     await RowExistsAsync(connection, "VoiceRoleCards", "RoleId", character.RoleId, cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
             INSERT INTO VoiceRoleCards (RoleId, Name, VoiceName, RoleTitle, CardPath, SourceCardJson, TemplateCardJson,
@@ -260,6 +289,13 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
         command.Parameters.AddWithValue("$createdAt", Format(character.UpdatedAt));
         command.Parameters.AddWithValue("$updatedAt", Format(character.UpdatedAt));
         await command.ExecuteNonQueryAsync(cancellationToken);
+        if (dataSync is not null)
+            await dataSync.CaptureRowAsync(
+                "VoiceRoleCards",
+                "RoleId",
+                character.RoleId,
+                exists ? "update" : "insert",
+                CancellationToken.None);
     }
 
     public async Task DeleteAsync(string roleId, CancellationToken cancellationToken = default)
@@ -359,7 +395,10 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
         command.Parameters.AddWithValue("$requestJson", record.RequestJson);
         command.Parameters.AddWithValue("$updatedAt", Format(record.UpdatedAt));
         var result = await command.ExecuteScalarAsync(cancellationToken);
-        return (long)result!;
+        var id = (long)result!;
+        if (dataSync is not null)
+            await dataSync.CaptureRowAsync("LlmCallLogs", "Id", id, "insert", CancellationToken.None);
+        return id;
     }
 
     async Task ILlmCallAuditStore.UpdateAsync(long id, LlmCallAuditCompletion completion, CancellationToken cancellationToken)
@@ -387,6 +426,8 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
         command.Parameters.AddWithValue("$updatedAt", Format(DateTimeOffset.Now));
         command.Parameters.AddWithValue("$id", id);
         await command.ExecuteNonQueryAsync(cancellationToken);
+        if (dataSync is not null)
+            await dataSync.CaptureRowAsync("LlmCallLogs", "Id", id, "update", CancellationToken.None);
     }
 
     private async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken)
@@ -397,6 +438,19 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
         pragma.CommandText = "PRAGMA encoding = 'UTF-8';";
         await pragma.ExecuteNonQueryAsync(cancellationToken);
         return connection;
+    }
+
+    private static async Task<bool> RowExistsAsync(
+        SqliteConnection connection,
+        string table,
+        string keyColumn,
+        object key,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT 1 FROM \"{table}\" WHERE \"{keyColumn}\"=$key LIMIT 1";
+        command.Parameters.AddWithValue("$key", key);
+        return await command.ExecuteScalarAsync(cancellationToken) is not null;
     }
 
     private const string CharacterSelectSql = """
