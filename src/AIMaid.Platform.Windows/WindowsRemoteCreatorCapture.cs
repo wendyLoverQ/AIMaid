@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -206,9 +207,7 @@ internal static class WindowsRemoteCreatorCapture
 
     private static void ApplyCookies(CoreWebView2CookieManager manager, string cookieText)
     {
-        if (cookieText.Contains("\\n", StringComparison.Ordinal))
-            cookieText = cookieText.Replace("\\r\\n", "\n", StringComparison.Ordinal)
-                .Replace("\\n", "\n", StringComparison.Ordinal);
+        cookieText = Regex.Replace(cookieText, @"\\+(?:r\\+)?n", "\n", RegexOptions.CultureInvariant);
         foreach (var line in cookieText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
         {
             if (line.StartsWith('#')) continue;
