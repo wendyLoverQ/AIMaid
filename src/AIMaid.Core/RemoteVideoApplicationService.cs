@@ -715,7 +715,7 @@ public sealed partial class RemoteVideoApplicationService
     private static T? TryDeserialize<T>(string json) where T : class
     {
         try { return JsonSerializer.Deserialize<T>(json); }
-        catch (JsonException) { return null; }
+        catch { return null; }
     }
 
     [GeneratedRegex(@"(?i)(\d{1,3}(?:\.\d+)?)%.*?([\d.]+\s*[KMG]?i?B/s|Unknown]+).*?ETA\s+([\d:]+|Unknown)")]
