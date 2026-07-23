@@ -673,7 +673,7 @@ public sealed partial class RemoteVideoApplicationService
         if (settings.OverwriteExisting) args.Add("--force-overwrites"); else args.Add("--no-overwrites");
         if (settings.DownloadThumbnail && !cacheOnly) args.Add("--write-thumbnail");
         if (settings.DownloadInfoJson && !cacheOnly) args.Add("--write-info-json");
-        if (settings.DownloadSubtitles && !cacheOnly) args.AddRange(["--write-subs", "--write-auto-subs", "--sub-langs", "all,-live_chat"]);
+        if (settings.DownloadSubtitles && !cacheOnly) args.AddRange(["--write-subs", "--sub-langs", "all,-live_chat"]);
         args.Add(item.OriginalUrl);
         return args;
     }
