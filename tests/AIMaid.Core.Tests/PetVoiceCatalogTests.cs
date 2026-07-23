@@ -125,6 +125,21 @@ public sealed class PetVoiceCatalogTests
         Assert.IsFalse(Directory.Exists(staging) && Directory.EnumerateFileSystemEntries(staging).Any());
     }
 
+    [TestMethod]
+    public async Task Ensure_ForceRefresh_CancelsTheActiveGenerationForTheSameRoleAndLevel()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var fixture = new VoiceCacheFixture(CreateLinesJson(), new TestAi(CreateLinesJson(), started, blockFirstCall: true));
+        var first = fixture.Service.EnsureCurrentCacheAsync(includeNextPeriod: false);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var refreshed = await fixture.Service.EnsureCurrentCacheAsync(includeNextPeriod: false, forceRefresh: true);
+
+        Assert.IsTrue(refreshed.Succeeded, refreshed.ErrorMessage);
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await first);
+        Assert.AreEqual(9, (await fixture.Documents.ListAsync("voice_role_audio_cache", CancellationToken.None)).Count);
+    }
+
     private static string CreateLinesJson(int count = 9)
     {
         var lines = PetVoiceTriggerCatalog.Plans.Take(count).Select((plan, index) => new

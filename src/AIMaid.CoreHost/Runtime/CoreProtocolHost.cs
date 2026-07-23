@@ -632,6 +632,7 @@ public sealed class CoreProtocolHost(
                 case "pet.voice_cache.ensure":
                     await HandleValueResultAsync(request, await petVoiceMenu.EnsureCurrentCacheAsync(
                         request.Payload.TryGetProperty("includeNextPeriod", out _) ? ReadBoolean(request.Payload, "includeNextPeriod") : true,
+                        ReadOptionalBoolean(request.Payload, "forceRefresh"),
                         source.Token), source.Token);
                     break;
                 case "pet.voice.play":

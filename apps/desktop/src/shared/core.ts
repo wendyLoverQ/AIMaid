@@ -138,7 +138,7 @@ export type CoreRequest =
   | { type: 'pet.voice_menu.get'; payload: Record<string, never> }
   | { type: 'pet.voice_intimacy.cycle'; payload: Record<string, never> }
   | { type: 'pet.voice_cache.clear'; payload: Record<string, never> }
-  | { type: 'pet.voice_cache.ensure'; payload: { includeNextPeriod?: boolean } }
+  | { type: 'pet.voice_cache.ensure'; payload: { includeNextPeriod?: boolean; forceRefresh?: boolean } }
   | { type: 'pet.voice.play'; payload: { triggerId?: string; bodyPart?: string; source?: string; hitAreaName?: string; normalizedX?: number; normalizedY?: number } }
   | { type: 'pet.voice.playback.report'; payload: { triggerId: string; bodyPart?: string; text?: string; audioPath?: string; played: boolean; reason?: string; source?: string; generationId?: string; contextHash?: string; category?: string; hitAreaName?: string; normalizedX?: number; normalizedY?: number } }
   | { type: 'music.current'; payload: Record<string, never> }
@@ -439,7 +439,8 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
     case 'status.codex_quota':
       return Object.keys(value.payload).length === 0
     case 'pet.voice_cache.ensure':
-      return value.payload.includeNextPeriod === undefined || typeof value.payload.includeNextPeriod === 'boolean'
+      return (value.payload.includeNextPeriod === undefined || typeof value.payload.includeNextPeriod === 'boolean') &&
+        (value.payload.forceRefresh === undefined || typeof value.payload.forceRefresh === 'boolean')
     case 'pet.voice.play':
       return (value.payload.triggerId === undefined || typeof value.payload.triggerId === 'string') &&
         (value.payload.bodyPart === undefined || typeof value.payload.bodyPart === 'string') &&

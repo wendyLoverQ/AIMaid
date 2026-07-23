@@ -78,11 +78,13 @@ public sealed class PetVoiceMenuApplicationService(
 
     public async Task<OperationResult<PetVoiceCacheEnsureResultDto>> EnsureCurrentCacheAsync(
         bool includeNextPeriod = true,
+        bool forceRefresh = false,
         CancellationToken cancellationToken = default)
     {
         var state = await GetAsync(cancellationToken);
         if (state.RoleId.Length == 0)
             return OperationResult<PetVoiceCacheEnsureResultDto>.Failure("pet_voice.role_missing", "尚未选择当前语音角色。");
+        if (forceRefresh) CancelForegroundGeneration(state.RoleId, state.IntimacyLevel);
         return await EnsureAsync(state.RoleId, state.IntimacyLevel, includeNextPeriod, cancellationToken);
     }
 
@@ -91,6 +93,7 @@ public sealed class PetVoiceMenuApplicationService(
         var state = await GetAsync(cancellationToken);
         if (state.RoleId.Length == 0)
             return OperationResult<PetVoiceCacheClearResultDto>.Failure("pet_voice.role_missing", "当前没有可清理的语音角色。");
+        CancelForegroundGeneration(state.RoleId, state.IntimacyLevel);
         var cacheKey = await GetCurrentCacheKeyAsync(0, cancellationToken);
         var deleted = await DeleteCacheEntriesAsync(state.RoleId, state.IntimacyLevel, cacheKey, cancellationToken);
         var ensured = await EnsureAsync(state.RoleId, state.IntimacyLevel, includeNextPeriod: false, cancellationToken);
@@ -267,7 +270,8 @@ public sealed class PetVoiceMenuApplicationService(
         var owner = $"{roleId}:{intimacyLevel}";
         lock (foregroundSync)
         {
-            if (foregroundCancellation is not null && foregroundOwner.Equals(owner, StringComparison.OrdinalIgnoreCase))
+            if (foregroundCancellation is not null && !foregroundCancellation.IsCancellationRequested &&
+                foregroundOwner.Equals(owner, StringComparison.OrdinalIgnoreCase))
                 return foregroundCancellation;
             foregroundCancellation?.Cancel();
             foregroundCancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
@@ -285,6 +289,13 @@ public sealed class PetVoiceMenuApplicationService(
             foregroundOwner = "";
             cancellation.Dispose();
         }
+    }
+
+    private void CancelForegroundGeneration(string roleId, int intimacyLevel)
+    {
+        var owner = $"{roleId}:{intimacyLevel}";
+        lock (foregroundSync)
+            if (foregroundOwner.Equals(owner, StringComparison.OrdinalIgnoreCase)) foregroundCancellation?.Cancel();
     }
 
     private async Task GenerateNextPeriodAsync(CharacterDto character, int intimacyLevel, string cacheKey, string backgroundKey)
@@ -340,7 +351,7 @@ public sealed class PetVoiceMenuApplicationService(
     {
         var delay = period.EndAt - DateTimeOffset.Now;
         if (delay > TimeSpan.Zero) await Task.Delay(delay, cancellationToken);
-        await EnsureCurrentCacheAsync(includeNextPeriod: true, cancellationToken);
+        await EnsureCurrentCacheAsync(includeNextPeriod: true, forceRefresh: false, cancellationToken);
     }
 
     private ValueTask PublishStatusAsync(string generationId, CharacterDto character, int intimacyLevel, string cacheKey,

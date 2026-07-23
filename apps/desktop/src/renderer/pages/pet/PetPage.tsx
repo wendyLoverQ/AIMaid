@@ -97,10 +97,10 @@ export default function PetPage(): React.JSX.Element {
         void refreshPresentation();
     }, [refreshPresentation]);
     useEffect(() => { presentationRef.current = presentation; }, [presentation]);
-    const ensureVoiceCache = useCallback(async (announce: boolean): Promise<Record<string, unknown> | null> => {
+    const ensureVoiceCache = useCallback(async (announce: boolean, forceRefresh = false): Promise<Record<string, unknown> | null> => {
         if (announce)
             showBubble('正在准备当前角色的点击语音缓存…', 'feedback');
-        const response = await bridge.core.invoke({ type: 'pet.voice_cache.ensure', payload: { includeNextPeriod: true } }, 120_000);
+        const response = await bridge.core.invoke({ type: 'pet.voice_cache.ensure', payload: { includeNextPeriod: true, forceRefresh } }, 120_000);
         if (!response.success || response.payload === null) {
             showBubble(response.error?.message ?? '点击语音缓存生成失败。', 'error');
             return null;
@@ -125,7 +125,7 @@ export default function PetPage(): React.JSX.Element {
             if (event.type === 'character.changed') {
                 if (typeof data?.roleId === 'string') voiceRoleIdRef.current = data.roleId;
                 startupPlayedRef.current = false;
-                void ensureVoiceCache(true).then((value) => { if (value?.ready === true) void playPetStartupVoice(); });
+                void ensureVoiceCache(true, true).then((value) => { if (value?.ready === true) void playPetStartupVoice(); });
                 return;
             }
             if (event.type === 'pet.voice_cache.status') {
@@ -138,13 +138,13 @@ export default function PetPage(): React.JSX.Element {
                 return;
             }
             if (event.type === 'pet.voice_cache.configuration_changed') {
-                void ensureVoiceCache(true);
+                void ensureVoiceCache(true, true);
                 return;
             }
             const keys = data !== null && Array.isArray(data.keys) ? data.keys : [];
             if (keys.some((key) => key === 'voice_cache_period_hours' || key === 'user_config:App:VoiceCache:LazyCachePeriodHours' ||
                 key === 'user_config:App:Tts:Enabled' || key === 'user_config:App:Tts:Endpoint' || key === 'user_config:App:Tts:VoiceId'))
-                void ensureVoiceCache(true);
+                void ensureVoiceCache(true, true);
         });
     }, [ensureVoiceCache, petRendererReady]);
     useEffect(() => {
