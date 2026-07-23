@@ -115,7 +115,7 @@ internal sealed class LegacyRelationalDocumentStore
                              column.Equals("VideoItemId", StringComparison.OrdinalIgnoreCase) &&
                              property.Value is JsonValue itemValue && itemValue.TryGetValue<string>(out var itemId)
                 ? ParsePrefixedLong(itemId, "legacy_remote_video_")
-                : ToDbValue(property.Value, map.BooleanColumns.Contains(column));
+                : ToDbValue(property.Value, map.BooleanColumns.Contains(column), column);
         }
         if (columns.ContainsKey("UpdatedAt")) values["UpdatedAt"] = Format(updatedAt);
 
@@ -263,7 +263,7 @@ internal sealed class LegacyRelationalDocumentStore
                 {
                     var column = map.WriteAliases.GetValueOrDefault(property.Key, property.Key);
                     if (!columns.ContainsKey(column) || column.Equals(map.KeyColumn, StringComparison.OrdinalIgnoreCase)) continue;
-                    var parameter = "$v" + index++; assignments.Add($"{Q(column)}={parameter}"); update.Parameters.AddWithValue(parameter, ToDbValue(property.Value, map.BooleanColumns.Contains(column)) ?? DBNull.Value);
+                    var parameter = "$v" + index++; assignments.Add($"{Q(column)}={parameter}"); update.Parameters.AddWithValue(parameter, ToDbValue(property.Value, map.BooleanColumns.Contains(column), column) ?? DBNull.Value);
                 }
                 if (columns.ContainsKey("UpdatedAt")) { assignments.Add("UpdatedAt=$updated"); update.Parameters.AddWithValue("$updated", Format(mutation.UpdatedAt ?? DateTimeOffset.Now)); }
                 if (assignments.Count == 0) continue;
@@ -279,7 +279,7 @@ internal sealed class LegacyRelationalDocumentStore
                 {
                     var column = map.WriteAliases.GetValueOrDefault(property.Key, property.Key);
                     if (!columns.ContainsKey(column) || column.Equals(map.KeyColumn, StringComparison.OrdinalIgnoreCase)) continue;
-                    values[column] = ToDbValue(property.Value, map.BooleanColumns.Contains(column));
+                    values[column] = ToDbValue(property.Value, map.BooleanColumns.Contains(column), column);
                 }
                 if (map.IdMode == IdMode.Direct) values[map.KeyColumn] = key;
                 else if (map.IdMode == IdMode.Singleton) values[map.KeyColumn] = map.SingletonKey;
@@ -371,7 +371,7 @@ internal sealed class LegacyRelationalDocumentStore
                 ["SupportedActions"] = row["SupportedActions"]?.DeepClone(), ["DefaultPlayAction"] = row["DefaultPlayAction"]?.DeepClone(),
                 ["DownloadRootOverride"] = row["DownloadRootOverride"]?.DeepClone(), ["Remark"] = row["Remark"]?.DeepClone()
             };
-            row["SettingsJson"] = settings.ToJsonString();
+            row["SettingsJson"] = settings.ToJsonString(JsonConfig.Persistence);
             row["HasProtectedCookie"] = !string.IsNullOrWhiteSpace(row["CookieContent"]?.GetValue<string>());
         }
         else if (map.Domain == "vault")
@@ -382,12 +382,12 @@ internal sealed class LegacyRelationalDocumentStore
                 ["ServerAddress"] = row["ServerAddress"]?.DeepClone(), ["ServerPort"] = row["ServerPort"]?.DeepClone(),
                 ["Remark"] = row["Remark"]?.DeepClone()
             };
-            row["PublicMetadataJson"] = metadata.ToJsonString();
+            row["PublicMetadataJson"] = metadata.ToJsonString(JsonConfig.Persistence);
             row["HasProtectedSecret"] = VaultSecretColumns.Any(column => !string.IsNullOrWhiteSpace(row[column]?.GetValue<string>()));
         }
 
         foreach (var property in map.RemoveAfterTransform) row.Remove(property);
-        return row.ToJsonString();
+        return row.ToJsonString(JsonConfig.Persistence);
     }
 
     private async Task<string?> GetProtectedSettingAsync(SettingDomain kind, string id, CancellationToken cancellationToken)
@@ -440,7 +440,7 @@ internal sealed class LegacyRelationalDocumentStore
         var result = new JsonObject();
         for (var i = 0; i < VaultSecretColumns.Length; i++)
             if (!reader.IsDBNull(i) && !string.IsNullOrWhiteSpace(reader.GetString(i))) result[VaultSecretNames[i]] = reader.GetString(i);
-        return result.Count == 0 ? null : result.ToJsonString();
+        return result.Count == 0 ? null : result.ToJsonString(JsonConfig.Persistence);
     }
 
     private async Task<string?> ReadLegacyVaultHistorySecretAsync(string id, CancellationToken cancellationToken)
@@ -452,7 +452,7 @@ internal sealed class LegacyRelationalDocumentStore
         command.Parameters.AddWithValue("$id", key);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken)) return null;
-        return new JsonObject { ["OldValue"] = reader.GetString(0), ["NewValue"] = reader.GetString(1) }.ToJsonString();
+        return new JsonObject { ["OldValue"] = reader.GetString(0), ["NewValue"] = reader.GetString(1) }.ToJsonString(JsonConfig.Persistence);
     }
 
     private static readonly IReadOnlyDictionary<string, string> AppearanceKeys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -480,7 +480,7 @@ internal sealed class LegacyRelationalDocumentStore
             result[property] = property == "FontScale" ? double.Parse(value, CultureInfo.InvariantCulture) :
                 property == "AnimationsEnabled" ? bool.Parse(value) : value;
         }
-        return result.ToJsonString();
+        return result.ToJsonString(JsonConfig.Persistence);
     }
 
     private async Task SaveAppearanceAsync(string json, DateTimeOffset updatedAt, CancellationToken cancellationToken)
@@ -518,7 +518,7 @@ internal sealed class LegacyRelationalDocumentStore
             ["Endpoint"] = fields.GetValueOrDefault("Endpoint", ""), ["Model"] = fields.GetValueOrDefault("Model", id), ["ApiKey"] = fields.GetValueOrDefault("ApiKey", ""),
             ["EnableWebSearch"] = bool.TryParse(fields.GetValueOrDefault("EnableWebSearch"), out var web) && web,
             ["Think"] = bool.TryParse(fields.GetValueOrDefault("Think"), out var think) && think
-        }.ToJsonString();
+        }.ToJsonString(JsonConfig.Persistence);
     }
 
     private async Task SaveModelConfigurationAsync(string id, string json, DateTimeOffset updatedAt, CancellationToken cancellationToken)
@@ -689,18 +689,21 @@ internal sealed class LegacyRelationalDocumentStore
         };
     }
 
-    private static object? ToDbValue(JsonNode? node, bool boolean)
+    private static object? ToDbValue(JsonNode? node, bool boolean, string columnName)
     {
         if (node is null) return null;
         if (boolean && node is JsonValue boolValue && boolValue.TryGetValue<bool>(out var parsedBool)) return parsedBool ? 1 : 0;
         if (node is JsonValue value)
         {
-            if (value.TryGetValue<string>(out var text)) return text;
+            if (value.TryGetValue<string>(out var text))
+                return columnName.EndsWith("Json", StringComparison.OrdinalIgnoreCase)
+                    ? JsonTextCanonicalizer.NormalizeOptionalObjectOrArray(text, columnName, decodeLiteralUnicodeEscapes: true)
+                    : text;
             if (value.TryGetValue<long>(out var integer)) return integer;
             if (value.TryGetValue<double>(out var number)) return number;
             if (value.TryGetValue<bool>(out var flag)) return flag ? 1 : 0;
         }
-        return node.ToJsonString();
+        return node.ToJsonString(JsonConfig.Persistence);
     }
 
     private ISecretProtector RequireSecrets() => secrets ?? throw new InvalidOperationException("旧关系库秘密字段需要 Core 密钥服务。");
