@@ -158,9 +158,11 @@ public sealed partial class RemoteVideoApplicationService
         {
             Directory.CreateDirectory(settings.CacheRoot);
             var args = BuildDownloadArguments(item, settings, selector, settings.CacheRoot, cacheOnly: true);
+            var startedAtUtc = DateTime.UtcNow;
             var result = await RunYtDlpAsync(settings, site, args, cancellationToken);
             if (result.ExitCode != 0) throw new InvalidOperationException(SanitizeExternalMessage(result.StandardError, "缓存视频失败。"));
-            source = FindOutputPath(result.StandardOutput) ?? throw new InvalidDataException("yt-dlp 未返回缓存文件路径。");
+            source = ResolveDownloadedFilePath(result.StandardOutput, settings.CacheRoot, item.VideoId, startedAtUtc)
+                ?? throw new FileNotFoundException("缓存播放完成后没有找到最终合并文件。");
         }
         else
         {
@@ -302,10 +304,12 @@ public sealed partial class RemoteVideoApplicationService
     {
         var json = await store.GetAsync(SettingsDomain, "current", cancellationToken);
         var settings = json is null ? DefaultSettings() : Deserialize<RemoteVideoSettingsDto>(json);
+        var migrated = NormalizeLegacyDefaultPaths(settings);
+        settings = migrated.Settings;
         settings = await AttachRuntimeToolPathsAsync(settings, cancellationToken);
         Directory.CreateDirectory(settings.DownloadRoot);
         Directory.CreateDirectory(settings.CacheRoot);
-        if (json is null)
+        if (json is null || migrated.Changed)
             await store.UpsertAsync(SettingsDomain, "current", JsonSerializer.Serialize(settings), settings.UpdatedAt, cancellationToken);
         return settings;
     }
@@ -358,12 +362,12 @@ public sealed partial class RemoteVideoApplicationService
             Directory.CreateDirectory(settings.DownloadRoot);
             var site = await MatchSiteAsync(item.OriginalUrl, source.Token);
             var args = BuildDownloadArguments(item, settings, initial.Quality, settings.DownloadRoot, cacheOnly: false);
+            var startedAtUtc = DateTime.UtcNow;
             var result = await RunYtDlpAsync(settings, site, args, source.Token, line => UpdateProgress(initial.TaskId, line));
             if (result.ExitCode != 0) throw new InvalidOperationException(SanitizeExternalMessage(result.StandardError, "下载失败。"));
-            var outputPath = FindOutputPath(result.StandardOutput)
-                ?? throw new InvalidDataException("yt-dlp 未返回下载文件路径。");
-            if (!File.Exists(outputPath))
-                throw new FileNotFoundException("yt-dlp 返回的下载文件不存在。", outputPath);
+            var outputPath = ResolveDownloadedFilePath(
+                result.StandardOutput, settings.DownloadRoot, item.VideoId, startedAtUtc)
+                ?? throw new FileNotFoundException("yt-dlp 完成后未找到输出文件。");
             var completed = liveDownloads[initial.TaskId] with
             {
                 Status = "Completed", Progress = 100, OutputPath = outputPath,
@@ -508,7 +512,7 @@ public sealed partial class RemoteVideoApplicationService
             : Path.Combine(targetRoot, NormalizeOutputTemplate(settings.FileNameTemplate));
         var args = new List<string>
         {
-            "--no-playlist", "--newline", "--progress", "--no-warnings", "-f", selector,
+            "--no-config", "--no-playlist", "--newline", "--progress", "--no-warnings", "--color", "never", "-f", selector,
             "--merge-output-format", "mp4", "--print", "after_move:filepath", "-o", outputTemplate
         };
         if (settings.OverwriteExisting) args.Add("--force-overwrites"); else args.Add("--no-overwrites");
@@ -528,6 +532,20 @@ public sealed partial class RemoteVideoApplicationService
             ResolveTool("yt-dlp.exe", Path.Combine("Tools", "yt-dlp.exe")),
             ResolveTool("ffmpeg.exe", Path.Combine("Tools", "ffmpeg", "bin", "ffmpeg.exe"), Path.Combine("Tools", "ffmpeg.exe")),
             ResolveTool("PotPlayerMini64.exe", Path.Combine("Tools", "PotPlayerMini64.exe")), DateTimeOffset.Now);
+    }
+
+    private (RemoteVideoSettingsDto Settings, bool Changed) NormalizeLegacyDefaultPaths(RemoteVideoSettingsDto settings)
+    {
+        var downloadRoot = IsLegacyProjectDefault(settings.DownloadRoot, "RemoteVideos")
+            ? paths.Data("RemoteVideos")
+            : settings.DownloadRoot;
+        var cacheRoot = IsLegacyProjectDefault(settings.CacheRoot, "cache", "ytdlp")
+            ? paths.Cache("remote-video")
+            : settings.CacheRoot;
+        var changed = !PathEquals(downloadRoot, settings.DownloadRoot) || !PathEquals(cacheRoot, settings.CacheRoot);
+        return changed
+            ? (settings with { DownloadRoot = downloadRoot, CacheRoot = cacheRoot, UpdatedAt = DateTimeOffset.Now }, true)
+            : (settings, false);
     }
 
     private async Task<RemoteVideoSettingsDto> AttachRuntimeToolPathsAsync(RemoteVideoSettingsDto settings, CancellationToken cancellationToken)
@@ -728,9 +746,61 @@ public sealed partial class RemoteVideoApplicationService
             .Replace("{id}", "%(id)s", StringComparison.OrdinalIgnoreCase)
             .Replace("{ext}", "%(ext)s", StringComparison.OrdinalIgnoreCase);
 
-    private static string? FindOutputPath(string output)
-        => output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Reverse().FirstOrDefault(x => Path.IsPathFullyQualified(x));
+    private static string? ResolveDownloadedFilePath(
+        string output, string root, string videoId, DateTime startedAtUtc)
+    {
+        var printedPath = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Trim().Trim('"'))
+            .LastOrDefault(File.Exists);
+        if (!string.IsNullOrWhiteSpace(printedPath)) return Path.GetFullPath(printedPath);
+        if (!Directory.Exists(root)) return null;
+
+        var mediaFiles = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+            .Where(IsFinalMediaFile)
+            .Select(path => new FileInfo(path))
+            .ToList();
+        var candidates = mediaFiles
+            .Where(file => file.LastWriteTimeUtc >= startedAtUtc.AddSeconds(-2))
+            .ToList();
+        if (!string.IsNullOrWhiteSpace(videoId))
+        {
+            var idMatch = candidates
+                .Where(file => file.Name.Contains($"[{videoId}]", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(file => file.LastWriteTimeUtc)
+                .FirstOrDefault();
+            if (idMatch is not null) return idMatch.FullName;
+
+            var existingIdMatch = mediaFiles
+                .Where(file => file.Name.Contains($"[{videoId}]", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(file => file.LastWriteTimeUtc)
+                .FirstOrDefault();
+            if (existingIdMatch is not null) return existingIdMatch.FullName;
+        }
+        return candidates.Count == 1 ? candidates[0].FullName : null;
+    }
+
+    private static bool IsFinalMediaFile(string path)
+    {
+        var extension = Path.GetExtension(path);
+        return extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".mkv", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".webm", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".mov", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".flv", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsLegacyProjectDefault(string value, params string[] relativeSegments)
+    {
+        if (string.IsNullOrWhiteSpace(value) || !Path.IsPathFullyQualified(value)) return false;
+        var fullPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(value))
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var legacySuffix = Path.Combine(["AI_maid", .. relativeSegments]);
+        return fullPath.EndsWith(Path.DirectorySeparatorChar + legacySuffix, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool PathEquals(string left, string right)
+        => Path.GetFullPath(Environment.ExpandEnvironmentVariables(left))
+            .Equals(Path.GetFullPath(Environment.ExpandEnvironmentVariables(right)), StringComparison.OrdinalIgnoreCase);
 
     private static string ReadThumbnailUrl(JsonElement element)
     {
