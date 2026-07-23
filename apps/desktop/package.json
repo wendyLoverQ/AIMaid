@@ -18,7 +18,7 @@
     "pretest": "npm run core:build",
     "test": "vitest run",
     "build": "npm run typecheck && npm run core:publish && electron-vite build",
-    "pack": "npm run build && electron-builder --dir",
+    "pack": "node scripts/clean-local-package.mjs && npm run build && electron-builder --dir",
     "pack:local": "node scripts/kill-packaged-app.mjs && npm run build && node scripts/merge-local-package.mjs"
   },
   "dependencies": {

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { cp, mkdir, rename, rm, stat } from 'node:fs/promises'
+import { cp, mkdir, rename, rm, stat, symlink } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 const targetPackage = resolve('release', 'win-unpacked')
@@ -18,19 +18,22 @@ if (!(await exists(appDirectory))) {
 
 await cp(resolve('out'), resolve(appDirectory, 'out'), { recursive: true, force: true })
 await cp(resolve('package.json'), resolve(appDirectory, 'package.json'), { force: true })
-await cp(resolve('resources', 'core'), resolve(resources, 'core'), { recursive: true, force: true })
-await cp(resolve('resources', 'live2d'), resolve(resources, 'live2d'), { recursive: true, force: true })
-for (const legacyUi of ['notebook_web', 'video_library', 'voice_conversation', 'character_role_list', 'crypto_web', 'video_player', 'music_visualizer', 'webview_transparency_demo']) {
-  await rm(resolve(resources, 'ui', legacyUi), { recursive: true, force: true })
+
+for (const resourceName of ['core', 'live2d', 'ui']) {
+  const source = resolve('resources', resourceName)
+  const target = resolve(resources, resourceName)
+  if (!(await exists(source))) throw new Error(`Local resource source is unavailable: ${source}`)
+  await rm(target, { recursive: true, force: true })
+  await symlink(source, target, 'junction')
+  process.stdout.write(`Created Junction: ${target} -> ${source}\n`)
 }
-await rm(resolve(resources, 'ui', 'electron-webview-bridge.js'), { force: true })
 
 if (await exists(asarPath)) {
   await rm(asarBackup, { force: true })
   await rename(asarPath, asarBackup)
 }
 
-process.stdout.write('Local React app updated; retired HTML UI resources removed and bulk visual assets left unchanged.\n')
+process.stdout.write('Local React app updated; core, live2d, and ui use source-resource Junctions.\n')
 
 async function exists(path) {
   try {
