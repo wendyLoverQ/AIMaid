@@ -192,13 +192,29 @@ internal static class ReportGenerator
         var baselineTables = await ReadJsonNamesAsync(Path.Combine(baseline, "tables.json"));
         var currentColumns = await ReadJsonPairsAsync(Path.Combine(output, "columns.json"), "table", "name");
         var baselineColumns = await ReadJsonPairsAsync(Path.Combine(baseline, "columns.json"), "table", "name");
+        var currentDefinitions = await ReadJsonColumnDefinitionsAsync(Path.Combine(output, "columns.json"));
+        var baselineDefinitions = await ReadJsonColumnDefinitionsAsync(Path.Combine(baseline, "columns.json"));
         var currentIndexes = await ReadJsonNamesAsync(Path.Combine(output, "indexes.json"));
         var baselineIndexes = await ReadJsonNamesAsync(Path.Combine(baseline, "indexes.json"));
-        return new { baselineAvailable = true, missingTables = baselineTables.Except(tables, StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase), extraTables = tables.Except(baselineTables, StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase), missingColumns = baselineColumns.Except(currentColumns, StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase), extraColumns = currentColumns.Except(baselineColumns, StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase), missingIndexes = baselineIndexes.Except(currentIndexes, StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase), extraIndexes = currentIndexes.Except(baselineIndexes, StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase), typeOrConstraintDifferences = Array.Empty<object>() };
+        var typeOrConstraintDifferences = baselineDefinitions
+            .Where(x => currentDefinitions.TryGetValue(x.Key, out var current) && !StringComparer.Ordinal.Equals(x.Value, current))
+            .OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(x => new { column = x.Key.Replace("\u001f", ".", StringComparison.Ordinal), baseline = x.Value, current = currentDefinitions[x.Key] })
+            .ToArray();
+        return new { baselineAvailable = true, missingTables = baselineTables.Except(tables, StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase), extraTables = tables.Except(baselineTables, StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase), missingColumns = baselineColumns.Except(currentColumns, StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase), extraColumns = currentColumns.Except(baselineColumns, StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase), missingIndexes = baselineIndexes.Except(currentIndexes, StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase), extraIndexes = currentIndexes.Except(baselineIndexes, StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase), typeOrConstraintDifferences };
     }
 
     private static async Task<List<string>> ReadJsonNamesAsync(string path) { if (!File.Exists(path)) return []; using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(path)); return doc.RootElement.ValueKind == JsonValueKind.Array ? doc.RootElement.EnumerateArray().Select(x => x.TryGetProperty("name", out var value) ? value.GetString() ?? "" : "").Where(x => x.Length > 0).ToList() : []; }
     private static async Task<List<string>> ReadJsonPairsAsync(string path, string first, string second) { if (!File.Exists(path)) return []; using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(path)); return doc.RootElement.EnumerateArray().Select(x => $"{x.GetProperty(first).GetString()}\u001f{x.GetProperty(second).GetString()}").ToList(); }
+    private static async Task<Dictionary<string, string>> ReadJsonColumnDefinitionsAsync(string path)
+    {
+        if (!File.Exists(path)) return new(StringComparer.OrdinalIgnoreCase);
+        using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(path));
+        return doc.RootElement.EnumerateArray().ToDictionary(
+            x => $"{x.GetProperty("table").GetString()}\u001f{x.GetProperty("name").GetString()}",
+            x => string.Join("|", x.GetProperty("type").GetString(), x.GetProperty("notNull").GetBoolean(), x.GetProperty("defaultValue").ToString(), x.GetProperty("primaryKeyOrder").GetInt32()),
+            StringComparer.OrdinalIgnoreCase);
+    }
     private static async Task<List<TableColumn>> ReadTableColumnsAsync(SqliteConnection c, SqliteTransaction t, string table) { await using var cmd = c.CreateCommand(); cmd.Transaction = t; cmd.CommandText = $"PRAGMA table_info({Q(table)})"; await using var r = await cmd.ExecuteReaderAsync(); var result = new List<TableColumn>(); while (await r.ReadAsync()) result.Add(new(r.GetString(1), r.GetString(2))); return result; }
     private static async Task<IReadOnlyList<object>> ReadRowsAsync(SqliteConnection c, SqliteTransaction t, string sql) { await using var cmd = c.CreateCommand(); cmd.Transaction = t; cmd.CommandText = sql; await using var r = await cmd.ExecuteReaderAsync(); var result = new List<object>(); while (await r.ReadAsync()) { var row = new Dictionary<string, object?>(); for (var i = 0; i < r.FieldCount; i++) row[r.GetName(i)] = r.IsDBNull(i) ? null : r.GetValue(i); result.Add(row); } return result; }
     private static async Task<long> CountAsync(SqliteConnection c, SqliteTransaction t, string sql) => Convert.ToInt64(await ScalarAsync(c, t, sql), CultureInfo.InvariantCulture);
