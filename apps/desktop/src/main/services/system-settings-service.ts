@@ -70,12 +70,12 @@ export class SystemSettingsService {
       normalizeGesture(this.values.get(item.settingKey) ?? item.defaultGesture).toLocaleLowerCase() === gesture.toLocaleLowerCase() && gesture !== '')
     if (duplicate !== undefined) throw new Error(`按键组合“${gesture}”已被“${duplicate.label}”占用。`)
 
+    const previousGesture = this.values.get(definition.settingKey) ?? definition.defaultGesture
     const previous = this.registered.get(actionValue)
     if (previous !== undefined) globalShortcut.unregister(previous)
     this.registered.delete(actionValue)
     if (gesture !== '' && !this.tryRegister(actionValue, gesture)) {
-      if (previous !== undefined) this.tryRegister(actionValue, previous)
-      throw new Error(`无法注册全局快捷键“${gesture}”，它可能已被其他应用占用。`)
+      this.restoreHotkey(actionValue, previousGesture, new Error(`无法注册全局快捷键“${gesture}”，它可能已被其他应用占用。`))
     }
     try {
       await this.saveCore({ [definition.settingKey]: gesture })
@@ -84,8 +84,7 @@ export class SystemSettingsService {
       const current = this.registered.get(actionValue)
       if (current !== undefined) globalShortcut.unregister(current)
       this.registered.delete(actionValue)
-      if (previous !== undefined) this.tryRegister(actionValue, previous)
-      throw error
+      this.restoreHotkey(actionValue, previousGesture, error)
     }
     return this.getSnapshot()
   }
@@ -126,6 +125,15 @@ export class SystemSettingsService {
     return registered
   }
 
+  private restoreHotkey(action: HotkeyAction, gesture: string, originalError: unknown): never {
+    if (gesture === '') throw originalError instanceof Error ? originalError : new Error(String(originalError))
+    if (gesture !== '' && this.tryRegister(action, gesture)) {
+      throw originalError instanceof Error ? originalError : new Error(String(originalError))
+    }
+    const original = originalError instanceof Error ? originalError.message : String(originalError)
+    throw new Error(`快捷键操作失败：${original}；回滚失败：无法恢复旧快捷键“${gesture}”。`, { cause: originalError })
+  }
+
   private async execute(action: HotkeyAction): Promise<void> {
     const definition = HOTKEY_ACTIONS.find((item) => item.action === action)!
     if ('target' in definition && definition.target !== undefined) {
@@ -157,9 +165,7 @@ export class SystemSettingsService {
 
   private async invokeCore(request: Parameters<CoreClient['invoke']>[1]): Promise<unknown> {
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 10_000)
-    try { return await this.core.invoke(randomUUID(), request, controller.signal) }
-    finally { clearTimeout(timer) }
+    return this.core.invoke(randomUUID(), request, controller.signal)
   }
 }
 

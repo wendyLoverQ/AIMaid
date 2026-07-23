@@ -68,10 +68,7 @@ const lifecycle = new ApplicationLifecycle(
   windowManager, ipcRouter, eventRouter, coreClient, coreProcess, petAssets, petWindows, trayController, systemSettings, reminderScheduler, logger
 )
 
-process.on('uncaughtException', (error) => logger.error('process', 'Uncaught exception', error))
-process.on('unhandledRejection', (error) => logger.error('process', 'Unhandled rejection', error))
+process.on('uncaughtException', (error) => lifecycle.handleFatalError('uncaughtException', error))
+process.on('unhandledRejection', (error) => lifecycle.handleFatalError('unhandledRejection', error))
 
-void lifecycle.run().catch((error: unknown) => {
-  logger.error('startup', 'Application startup failed', error)
-  app.exit(1)
-})
+void lifecycle.run().catch((error: unknown) => lifecycle.handleFatalError('startup promise', error))
