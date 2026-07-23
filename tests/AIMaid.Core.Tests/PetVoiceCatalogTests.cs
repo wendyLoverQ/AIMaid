@@ -4,6 +4,7 @@ using AIMaid.Contracts.Characters;
 using AIMaid.Contracts.Chat;
 using AIMaid.Contracts.Domains;
 using AIMaid.Contracts.Settings;
+using AIMaid.Contracts.PetVoice;
 using AIMaid.Core;
 using AIMaid.Infrastructure;
 using Microsoft.Data.Sqlite;
@@ -159,6 +160,23 @@ public sealed class PetVoiceCatalogTests
         Assert.AreEqual(0, (await fixture.Documents.ListAsync("voice_role_audio_cache", CancellationToken.None)).Count);
         Assert.AreEqual(0, (await fixture.Documents.ListAsync("voice_cache_generation", CancellationToken.None)).Count);
         Assert.IsNull(await fixture.Characters.GetAsync("role-a"));
+    }
+
+    [TestMethod]
+    public async Task ResolvePlayback_MissingReadyAudioReportsAudioMissing()
+    {
+        using var fixture = new VoiceCacheFixture(CreateLinesJson());
+        var ensured = await fixture.Service.EnsureCurrentCacheAsync(includeNextPeriod: false);
+        Assert.IsTrue(ensured.Succeeded, ensured.ErrorMessage);
+        var cache = (await fixture.Documents.ListAsync("voice_role_audio_cache", CancellationToken.None))
+            .First(json => JsonDocument.Parse(json).RootElement.GetProperty("bodyPart").GetString() == "head");
+        using (var document = JsonDocument.Parse(cache)) File.Delete(document.RootElement.GetProperty("audioPath").GetString()!);
+
+        var playback = await fixture.Service.ResolvePlaybackAsync(new PlayPetVoiceCommand("click", "head"));
+
+        Assert.IsTrue(playback.Succeeded, playback.ErrorMessage);
+        Assert.IsFalse(playback.Value!.Matched);
+        Assert.AreEqual("audio_missing", playback.Value.Reason);
     }
 
     private static string CreateLinesJson(int count = 9)

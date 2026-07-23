@@ -141,9 +141,12 @@ public sealed class PetVoiceMenuApplicationService(
                            item.TriggerId.Equals(triggerId, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(item => item.BodyPart.Equals(bodyPart, StringComparison.OrdinalIgnoreCase))
             .ThenByDescending(item => item.UpdatedAt)
-            .FirstOrDefault(item => File.Exists(item.AudioPath));
+            .FirstOrDefault();
         if (selected is null)
             return OperationResult<PetVoicePlaybackDto>.Success(new(false, "", contextHash, triggerId, "", bodyPart, "", "", "", "cache_missing"));
+        if (!File.Exists(selected.AudioPath))
+            return OperationResult<PetVoicePlaybackDto>.Success(new(false, selected.GenerationId, contextHash, triggerId, selected.Category, bodyPart,
+                selected.Text, selected.AudioPath, selected.VoiceId, "audio_missing"));
         return OperationResult<PetVoicePlaybackDto>.Success(new(
             true, selected.GenerationId, selected.ContextHash, triggerId, selected.Category, bodyPart,
             selected.Text, selected.AudioPath, selected.VoiceId, "cache_match"));
@@ -791,7 +794,7 @@ public sealed class PetVoiceMenuApplicationService(
     private static string NormalizeTrigger(string triggerId, string bodyPart)
     {
         var trigger = triggerId.Trim().ToLowerInvariant();
-        if (trigger is "click" or "click.default" || trigger.Length == 0) return $"click.{bodyPart}";
+        if (trigger is "click" or "click.default" || trigger.Length == 0) return "click";
         return trigger;
     }
 
