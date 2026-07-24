@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron'
+import { randomUUID } from 'node:crypto'
 import type { IpcMainEvent, IpcMainInvokeEvent, OpenDialogOptions, WebContents } from 'electron'
 import { canRequest } from '../../shared/capabilities'
 import { isCoreRequest } from '../../shared/core'
@@ -307,12 +308,10 @@ export class IpcRouter {
       case 'media.registerLocalFile':
         return { url: this.petAssets.registerExternalFile(readString(request.payload, 'filePath', 32768)) }
       case 'notebook.attachment.importFile':
-        return this.notebookAttachments.importFile(readString(request.payload, 'filePath', 32768))
+        return this.importNotebookAttachment(event.sender, readString(request.payload, 'noteId', 4096), () => this.notebookAttachments.importFile(readString(request.payload, 'filePath', 32768)))
       case 'notebook.attachment.importData':
-        return this.notebookAttachments.importData(
-          readString(request.payload, 'name', 260),
-          readString(request.payload, 'dataUrl', 36_000_000)
-        )
+        return this.importNotebookAttachment(event.sender, readString(request.payload, 'noteId', 4096), () => this.notebookAttachments.importData(
+          readString(request.payload, 'name', 260), readString(request.payload, 'dataUrl', 36_000_000)))
       case 'notebook.attachment.action': {
         const action = readNotebookAttachmentAction(request.payload)
         await this.notebookAttachments.action(action, readString(request.payload, 'path', 32768), this.windows.get(sourceKind))
@@ -417,6 +416,21 @@ export class IpcRouter {
       this.activeRequests.delete(requestId)
       this.requestOwners.delete(requestId)
       this.removeSenderRequest(senderId, requestId)
+    }
+  }
+
+  private async importNotebookAttachment(sender: WebContents, noteId: string, importImage: () => Promise<Awaited<ReturnType<NotebookAttachmentService['importFile']>>>): Promise<unknown> {
+    if (noteId.length === 0) throw new TypeError('笔记 ID 不能为空')
+    const image = await importImage()
+    try {
+      await this.invokeCore(sender, randomUUID(), { type: 'notebook.attachment.add', payload: {
+        id: randomUUID(), noteId, originalName: image.name, storedPath: image.path, mimeType: image.mimeType,
+        sizeBytes: image.sizeBytes, width: image.width, height: image.height, sha256: image.sha256, createdAt: new Date().toISOString()
+      } })
+      return image
+    } catch (error) {
+      await this.notebookAttachments.remove(image.path)
+      throw error
     }
   }
 

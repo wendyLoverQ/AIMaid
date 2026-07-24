@@ -67,8 +67,8 @@ export interface AIMaidApi {
     registerLocalFile: (filePath: string) => Promise<IpcResponseEnvelope<{ url: string }>>
   }
   readonly notebook?: {
-    importFile: (filePath: string) => Promise<IpcResponseEnvelope<{ path: string; url: string; name: string }>>
-    importData: (name: string, dataUrl: string) => Promise<IpcResponseEnvelope<{ path: string; url: string; name: string }>>
+    importFile: (noteId: string, filePath: string) => Promise<IpcResponseEnvelope<{ path: string; url: string; name: string }>>
+    importData: (noteId: string, name: string, dataUrl: string) => Promise<IpcResponseEnvelope<{ path: string; url: string; name: string }>>
     imageAction: (action: 'copy' | 'openLocation' | 'saveAs', path: string) => Promise<IpcResponseEnvelope<{ action: string }>>
   }
   readonly speech?: {

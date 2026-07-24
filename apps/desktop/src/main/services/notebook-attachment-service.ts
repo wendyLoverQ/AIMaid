@@ -1,7 +1,7 @@
 import { clipboard, dialog, nativeImage, shell } from 'electron'
 import type { BrowserWindow } from 'electron'
-import { randomUUID } from 'node:crypto'
-import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { createHash, randomUUID } from 'node:crypto'
+import { copyFile, mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, extname, join, relative, resolve, sep } from 'node:path'
 import type { PetAssetService } from './pet-asset-service'
 
@@ -12,6 +12,11 @@ export interface NotebookImage {
   path: string
   url: string
   name: string
+  mimeType: string
+  sizeBytes: number
+  width: number | null
+  height: number | null
+  sha256: string
 }
 
 export class NotebookAttachmentService {
@@ -57,6 +62,13 @@ export class NotebookAttachmentService {
     if (!result.canceled && result.filePath !== undefined) await copyFile(fullPath, result.filePath)
   }
 
+  async remove(storedPath: string): Promise<void> {
+    const fullPath = this.resolveStoredPath(storedPath)
+    await unlink(fullPath).catch((error: unknown) => {
+      if (!(error instanceof Error) || !('code' in error) || (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    })
+  }
+
   private async store(extension: string, originalName: string, write: (destination: string) => Promise<unknown>): Promise<NotebookImage> {
     const now = new Date()
     const year = String(now.getFullYear())
@@ -67,7 +79,11 @@ export class NotebookAttachmentService {
     await mkdir(directory, { recursive: true })
     await write(destination)
     const storedPath = join('notebook', 'attachments', year, month, fileName)
-    return { path: storedPath, url: this.assets.registerNotebookAttachment(destination), name: originalName }
+    const image = nativeImage.createFromPath(destination)
+    const hash = createHash('sha256').update(await readFile(destination)).digest('hex')
+    return { path: storedPath, url: this.assets.registerNotebookAttachment(destination), name: originalName,
+      mimeType: mimeTypeForExtension(extension), sizeBytes: (await stat(destination)).size,
+      width: image.isEmpty() ? null : image.getSize().width, height: image.isEmpty() ? null : image.getSize().height, sha256: hash }
   }
 
   private resolveStoredPath(storedPath: string): string {
@@ -85,4 +101,8 @@ function validateExtension(path: string): string {
   const extension = extname(path).toLowerCase()
   if (!SUPPORTED_EXTENSIONS.has(extension)) throw new TypeError('图片格式不受支持。')
   return extension
+}
+
+function mimeTypeForExtension(extension: string): string {
+  return ({ '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.bmp': 'image/bmp', '.gif': 'image/gif', '.webp': 'image/webp' } as Record<string, string>)[extension] ?? 'application/octet-stream'
 }

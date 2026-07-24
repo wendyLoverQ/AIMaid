@@ -147,8 +147,8 @@ const mediaApi: AIMaidApi['media'] = canRequest(windowKind, 'media.registerLocal
   : undefined
 const notebookApi: AIMaidApi['notebook'] = canRequest(windowKind, 'notebook.attachment.importFile')
   ? Object.freeze({
-      importFile: (filePath: string) => invoke<{ path: string; url: string; name: string }>('notebook.attachment.importFile', { filePath }),
-      importData: (name: string, dataUrl: string) => invoke<{ path: string; url: string; name: string }>('notebook.attachment.importData', { name, dataUrl }, 30_000),
+      importFile: (noteId: string, filePath: string) => invoke<{ path: string; url: string; name: string }>('notebook.attachment.importFile', { noteId, filePath }),
+      importData: (noteId: string, name: string, dataUrl: string) => invoke<{ path: string; url: string; name: string }>('notebook.attachment.importData', { noteId, name, dataUrl }, 30_000),
       imageAction: (action: 'copy' | 'openLocation' | 'saveAs', path: string) => invoke<{ action: string }>('notebook.attachment.action', { action, path })
     })
   : undefined
