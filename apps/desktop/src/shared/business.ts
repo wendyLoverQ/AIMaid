@@ -127,6 +127,14 @@ export interface MarketCandleDto { openTime: string; open: number; high: number;
 export interface MarketChartSnapshotDto { symbol: string; interval: string; emaPeriods: number[]; candles: MarketCandleDto[]; updatedAt: string }
 export interface MarketEventDto { eventId: string; eventType: string; source: string; network: string; symbol: string; address: string; transactionHash: string; amount: number | null; price: number | null; dedupeKey: string; payloadJson: string; occurredAt: string }
 export interface DisturbanceSettingsDto { mode: 'normal' | 'quiet' | 'focus' | 'game' | 'sleep'; quietHoursEnabled: boolean; quietHoursStart: string; quietHoursEnd: string; suppressWhenFullscreen: boolean; maxProactivePerHour: number; updatedAt: string }
+export interface ProactiveSourceDto {
+  sourceKey: string; displayName: string; enabled: boolean; priority: number; frequencyMinutes: number
+  cooldownMinutes: number; maxItems: number; parameterJson: string; minScore: number
+  lastCollectedAt: string | null; lastSnapshot: string; lastSnapshotHash: string; lastScore: number
+  lastSelectReason: string; lastBroadcastAt: string | null; lastBroadcastMessage: string
+  lastBroadcastMessageHash: string; updatedAt: string; isConfigured: boolean
+  isImplemented: boolean; statusText: string
+}
 export interface AppearanceConfigurationDto { themeId: string; contentBrightness: string; fontFamily: string; fontScale: number; cornerRadiusStyle: string; density: string; headerStyle: string; animationsEnabled: boolean }
 
 export interface VideoItemDto {

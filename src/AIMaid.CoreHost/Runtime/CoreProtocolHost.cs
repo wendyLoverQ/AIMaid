@@ -31,6 +31,7 @@ public sealed class CoreProtocolHost(
     BinanceMarketApplicationService market,
     StatusApplicationService status,
     ProactiveApplicationService proactive,
+    ProactiveRuntimeService proactiveRuntime,
     StatusServerApplicationService statusServers,
     CodexQuotaApplicationService codexQuota,
     SubtitleApplicationService subtitles,
@@ -167,10 +168,25 @@ public sealed class CoreProtocolHost(
             AIMaid.Contracts.PetVoice.VoiceCacheConfigurationChangedEvent value => (Type: "pet.voice_cache.configuration_changed", CorrelationId: value.EventId, Payload: (object)value),
             AgentApprovalRequestedEvent value => (Type: "agent.approval_requested", CorrelationId: value.ApprovalToken, Payload: (object)value),
             AgentToolCallCompletedEvent value => (Type: "agent.tool_call_completed", CorrelationId: value.ToolCall.CallId, Payload: (object)value),
-            ReminderDueEvent value => (
-                Type: "reminder.due",
+            ReminderDeliveryRequestedEvent value => (
+                Type: "reminder.delivery.requested",
                 CorrelationId: value.Reminder.ReminderId,
-                Payload: (object)value.Reminder
+                Payload: (object)value
+            ),
+            ReminderDeliveryCompletedEvent value => (
+                Type: "reminder.delivery.completed",
+                CorrelationId: value.ReminderId,
+                Payload: (object)value
+            ),
+            ProactiveExecutionRequestedEvent value => (
+                Type: "proactive.execution.requested",
+                CorrelationId: value.ExecutionId,
+                Payload: (object)value
+            ),
+            ProactiveExecutionCompletedEvent value => (
+                Type: "proactive.execution.completed",
+                CorrelationId: value.ExecutionId,
+                Payload: (object)value
             ),
             MusicPlaybackRequestedEvent value => (Type: "music.playback.requested", CorrelationId: value.EventId, Payload: (object)value),
             MusicPlaybackStateChangedEvent value => (Type: "music.playback.state_changed", CorrelationId: value.EventId, Payload: (object)value),
@@ -508,7 +524,7 @@ public sealed class CoreProtocolHost(
                 }
                 case "disturbance_settings.get":
                     await writer.SuccessAsync(request, await proactive.HandleAsync(new GetDisturbanceSettingsQuery(), source.Token)
-                        ?? new DisturbanceSettingsDto("normal", false, "01:00", "09:00", true, 3, DateTimeOffset.Now), source.Token);
+                        ?? new DisturbanceSettingsDto("normal", true, "01:00", "09:00", true, 3, DateTimeOffset.Now), source.Token);
                     break;
                 case "disturbance_settings.save": {
                     if (!request.Payload.TryGetProperty("settings", out var disturbanceElement)) throw new ArgumentException("缺少 settings。");
@@ -517,6 +533,48 @@ public sealed class CoreProtocolHost(
                     await HandleResultAsync(request, await proactive.HandleAsync(new SaveDisturbanceSettingsCommand(disturbance), source.Token), source.Token);
                     break;
                 }
+                case "proactive.sources.list":
+                    await writer.SuccessAsync(request, await proactiveRuntime.ListSourcesAsync(source.Token), source.Token);
+                    break;
+                case "proactive.source.update": {
+                    var enabled = request.Payload.TryGetProperty("enabled", out var enabledElement) &&
+                                  enabledElement.ValueKind is JsonValueKind.True or JsonValueKind.False
+                        ? enabledElement.GetBoolean()
+                        : (bool?)null;
+                    var cooldown = request.Payload.TryGetProperty("cooldownMinutes", out var cooldownElement) &&
+                                   cooldownElement.TryGetInt32(out var parsedCooldown)
+                        ? parsedCooldown
+                        : (int?)null;
+                    await HandleValueResultAsync(request, await proactiveRuntime.UpdateSourceAsync(
+                        ReadRequiredString(request.Payload, "sourceKey"), enabled, cooldown, source.Token), source.Token);
+                    break;
+                }
+                case "proactive.source.test":
+                    await HandleResultAsync(request, await proactiveRuntime.TestSourceAsync(
+                        ReadRequiredString(request.Payload, "sourceKey"), source.Token), source.Token);
+                    break;
+                case "proactive.execution.completed": {
+                    var completed = request.Payload.Deserialize<ProactiveExecutionCompletedPayload>(JsonOptions)
+                        ?? throw new ArgumentException("主动行为执行完成字段不完整。");
+                    await HandleResultAsync(request, await proactiveRuntime.CompleteAsync(new CompleteProactiveExecutionCommand(
+                        completed.ExecutionId,
+                        completed.Responded,
+                        completed.Spoke,
+                        completed.Message ?? string.Empty,
+                        completed.VoiceTrigger ?? string.Empty,
+                        completed.AudioPath ?? string.Empty,
+                        completed.Result ?? string.Empty,
+                        completed.Error ?? string.Empty,
+                        completed.CompletedAt), source.Token), source.Token);
+                    break;
+                }
+                case "proactive.state.apply":
+                    await HandleResultAsync(request, await proactiveRuntime.ApplyStateAsync(
+                        ReadString(request.Payload, "mood"),
+                        request.Payload.TryGetProperty("favorabilityDelta", out var deltaElement) &&
+                        deltaElement.TryGetInt32(out var delta) ? delta : 0,
+                        source.Token), source.Token);
+                    break;
                 case "model.list":
                     await writer.SuccessAsync(request, await domains.HandleAsync(new ListModelConfigurationsQuery(), source.Token), source.Token);
                     break;
@@ -560,6 +618,21 @@ public sealed class CoreProtocolHost(
                 case "reminder.process_due":
                     await HandleDueRemindersAsync(request, source.Token);
                     break;
+                case "reminder.delivery.completed": {
+                    var payload = request.Payload.Deserialize<ReminderDeliveryCompletedPayload>(JsonOptions)
+                        ?? throw new ArgumentException("提醒交付完成字段不完整。");
+                    await HandleResultAsync(request, await reminders.HandleAsync(new CompleteReminderDeliveryCommand(
+                        payload.DeliveryId,
+                        payload.ReminderId,
+                        payload.NotificationShown,
+                        payload.BubbleShown,
+                        payload.TtsRequested,
+                        payload.TtsPlayed,
+                        payload.Result ?? string.Empty,
+                        payload.Error ?? string.Empty,
+                        payload.CompletedAt), source.Token), source.Token);
+                    break;
+                }
                 case "character.list":
                     await writer.SuccessAsync(request, await characters.HandleAsync(new ListCharactersQuery(true), source.Token), source.Token);
                     break;
@@ -633,7 +706,7 @@ public sealed class CoreProtocolHost(
                         ReadOptionalString(request.Payload, "conversationId"),
                         ReadOptionalString(request.Payload, "characterId"),
                         ReadBoolean(request.Payload, "saveUserMessage"),
-                        ReadOptionalString(request.Payload, "toolResultJson") ?? "（首次调用，无上一步工具结果）",
+                         ReadOptionalString(request.Payload, "toolResultJson") ?? "{}",
                         ReadInt(request.Payload, "toolStep", 1, 20, 1),
                         ReadInt(request.Payload, "maxSteps", 1, 20, 4),
                         ReadOptionalString(request.Payload, "source") ?? "normal_chat",
@@ -863,6 +936,7 @@ public sealed class CoreProtocolHost(
             return;
         }
         ready = true;
+        await proactiveRuntime.StartAsync(cancellationToken);
         var payload = new
         {
             coreVersion,
@@ -893,7 +967,7 @@ public sealed class CoreProtocolHost(
             : JsonSerializer.Deserialize<CryptoProviderConfigurationDto>(value, JsonOptions) ?? new(false, string.Empty, 8, "未检测", null, null);
     }
     private Task SaveCryptoProviderConfigurationAsync(CryptoProviderConfigurationDto configuration, CancellationToken cancellationToken)
-        => settingsStore.SetManyAsync(new Dictionary<string, string> { [CryptoProviderSettingKey] = JsonSerializer.Serialize(configuration, JsonOptions) }, cancellationToken);
+        => settingsStore.SetManyAsync(new Dictionary<string, string> { [CryptoProviderSettingKey] = JsonSerializer.Serialize(configuration, JsonConfig.Persistence) }, cancellationToken);
     private static CryptoProviderConfigurationDto ReadCryptoProviderConfiguration(JsonElement payload)
         => payload.TryGetProperty("configuration", out var element)
             ? element.Deserialize<CryptoProviderConfigurationDto>(JsonOptions) ?? throw new ArgumentException("行情服务配置无效。")
@@ -989,12 +1063,12 @@ public sealed class CoreProtocolHost(
             if (reminderIds.Count is < 1 or > 5 || reminderIds.Any(string.IsNullOrWhiteSpace))
                 throw new ArgumentException("提醒 ID 列表必须包含 1 到 5 个有效 ID。");
         }
-        var result = await reminders.HandleAsync(new ProcessDueRemindersCommand(now, reminderIds), cancellationToken);
+        var notificationShown = request.Payload.TryGetProperty("notificationShown", out var notificationElement) &&
+                                notificationElement.ValueKind is JsonValueKind.True or JsonValueKind.False &&
+                                notificationElement.GetBoolean();
+        var result = await reminders.HandleAsync(new ProcessDueRemindersCommand(now, reminderIds, notificationShown), cancellationToken);
         if (!result.Succeeded) { await writer.FailureAsync(request, result.ErrorCode ?? "reminder.failed", result.ErrorMessage ?? "提醒检查失败。", cancellationToken: cancellationToken); return; }
         await writer.SuccessAsync(request, result.Value ?? [], cancellationToken);
-        var sequence = 1L;
-        foreach (var reminder in result.Value ?? [])
-            await writer.EventAsync("reminder.due", request.Id, sequence++, reminder, cancellationToken);
     }
 
     private async Task HandleResultAsync(ProtocolRequest request, OperationResult result, CancellationToken cancellationToken)
@@ -1158,6 +1232,26 @@ public sealed class CoreProtocolHost(
         => payload.TryGetProperty(name, out var element) && element.ValueKind is JsonValueKind.True or JsonValueKind.False && element.GetBoolean();
 
     private sealed record ReminderSavePayload(string? ReminderId, string? Title, string? Message, DateTimeOffset DueAt, string? Repeat, bool Enabled, bool AllowTts);
+    private sealed record ReminderDeliveryCompletedPayload(
+        string DeliveryId,
+        string ReminderId,
+        bool NotificationShown,
+        bool BubbleShown,
+        bool TtsRequested,
+        bool TtsPlayed,
+        string? Result,
+        string? Error,
+        DateTimeOffset CompletedAt);
+    private sealed record ProactiveExecutionCompletedPayload(
+        string ExecutionId,
+        bool Responded,
+        bool Spoke,
+        string? Message,
+        string? VoiceTrigger,
+        string? AudioPath,
+        string? Result,
+        string? Error,
+        DateTimeOffset CompletedAt);
 
     private void Log(string level, string eventName, string? requestId, string? type, string status,
         double? durationMs = null, string? message = null, object? data = null, Exception? exception = null)

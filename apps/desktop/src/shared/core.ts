@@ -114,7 +114,8 @@ export type CoreRequest =
   | { type: 'reminder.delete'; payload: { reminderId: string } }
   | { type: 'reminder.set_enabled'; payload: { reminderId: string; enabled: boolean } }
   | { type: 'reminder.set_allow_tts'; payload: { reminderId: string; allowTts: boolean } }
-  | { type: 'reminder.process_due'; payload: { now: string; reminderIds?: string[] } }
+  | { type: 'reminder.process_due'; payload: { now: string; reminderIds?: string[]; notificationShown?: boolean } }
+  | { type: 'reminder.delivery.completed'; payload: { deliveryId: string; reminderId: string; notificationShown: boolean; bubbleShown: boolean; ttsRequested: boolean; ttsPlayed: boolean; result: string; error: string; completedAt: string } }
   | { type: 'character.list'; payload: Record<string, never> }
   | { type: 'character.set_current'; payload: { roleId: string } }
   | { type: 'character.save'; payload: { character: CharacterDto } }
@@ -157,6 +158,11 @@ export type CoreRequest =
   | { type: 'appearance.save'; payload: { configuration: AppearanceConfigurationDto } }
   | { type: 'disturbance_settings.get'; payload: Record<string, never> }
   | { type: 'disturbance_settings.save'; payload: { settings: DisturbanceSettingsDto } }
+  | { type: 'proactive.sources.list'; payload: Record<string, never> }
+  | { type: 'proactive.source.update'; payload: { sourceKey: string; enabled?: boolean; cooldownMinutes?: number } }
+  | { type: 'proactive.source.test'; payload: { sourceKey: string } }
+  | { type: 'proactive.execution.completed'; payload: { executionId: string; responded: boolean; spoke: boolean; message: string; voiceTrigger: string; audioPath: string; result: string; error: string; completedAt: string } }
+  | { type: 'proactive.state.apply'; payload: { mood?: string; favorabilityDelta: number } }
   | { type: 'model.list'; payload: Record<string, never> }
   | { type: 'model.save'; payload: { configurations: ModelConfigurationDto[] } }
   | { type: 'model.add'; payload: { modelKey: string; modelType: 'local' | 'api' } }
@@ -176,7 +182,10 @@ export const CORE_EVENT_TYPES = [
   'settings.changed',
   'chat.delta',
   'chat.completed',
-  'reminder.due',
+  'reminder.delivery.requested',
+  'reminder.delivery.completed',
+  'proactive.execution.requested',
+  'proactive.execution.completed',
   'character.changed',
   'pet.voice_cache.status',
   'pet.voice_cache.configuration_changed',
@@ -408,6 +417,7 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
     case 'character.list':
     case 'appearance.get':
     case 'disturbance_settings.get':
+    case 'proactive.sources.list':
       return Object.keys(value.payload).length === 0
     case 'reminder.save':
       return isReminderSave(value.payload)
@@ -419,9 +429,16 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
       return isNonEmptyString(value.payload.reminderId) && typeof value.payload.allowTts === 'boolean'
     case 'reminder.process_due':
       return typeof value.payload.now === 'string' && !Number.isNaN(Date.parse(value.payload.now)) &&
+        (value.payload.notificationShown === undefined || typeof value.payload.notificationShown === 'boolean') &&
         (value.payload.reminderIds === undefined || (Array.isArray(value.payload.reminderIds) &&
           value.payload.reminderIds.length > 0 && value.payload.reminderIds.length <= 5 &&
           value.payload.reminderIds.every(isNonEmptyString)))
+    case 'reminder.delivery.completed':
+      return isNonEmptyString(value.payload.deliveryId) && isNonEmptyString(value.payload.reminderId) &&
+        typeof value.payload.notificationShown === 'boolean' && typeof value.payload.bubbleShown === 'boolean' &&
+        typeof value.payload.ttsRequested === 'boolean' && typeof value.payload.ttsPlayed === 'boolean' &&
+        typeof value.payload.result === 'string' && typeof value.payload.error === 'string' &&
+        typeof value.payload.completedAt === 'string' && !Number.isNaN(Date.parse(value.payload.completedAt))
     case 'character.set_current':
     case 'character.delete':
       return isNonEmptyString(value.payload.roleId)
@@ -508,6 +525,21 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
       return isAppearanceConfiguration(value.payload.configuration)
     case 'disturbance_settings.save':
       return isDisturbanceSettings(value.payload.settings)
+    case 'proactive.source.update':
+      return isNonEmptyString(value.payload.sourceKey) &&
+        (value.payload.enabled === undefined || typeof value.payload.enabled === 'boolean') &&
+        (value.payload.cooldownMinutes === undefined || Number.isInteger(value.payload.cooldownMinutes))
+    case 'proactive.source.test':
+      return isNonEmptyString(value.payload.sourceKey)
+    case 'proactive.execution.completed':
+      return isNonEmptyString(value.payload.executionId) && typeof value.payload.responded === 'boolean' &&
+        typeof value.payload.spoke === 'boolean' && typeof value.payload.message === 'string' &&
+        typeof value.payload.voiceTrigger === 'string' && typeof value.payload.audioPath === 'string' &&
+        typeof value.payload.result === 'string' && typeof value.payload.error === 'string' &&
+        typeof value.payload.completedAt === 'string' && !Number.isNaN(Date.parse(value.payload.completedAt))
+    case 'proactive.state.apply':
+      return (value.payload.mood === undefined || typeof value.payload.mood === 'string') &&
+        Number.isInteger(value.payload.favorabilityDelta)
     case 'model.list':
     case 'business_model.list':
     case 'source_prompt.list':

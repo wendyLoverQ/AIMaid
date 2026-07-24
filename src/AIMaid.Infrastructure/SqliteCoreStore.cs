@@ -71,7 +71,8 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
         command.Parameters.AddWithValue("$characterId", message.CharacterId);
         command.Parameters.AddWithValue("$modelName", message.ModelName);
         command.Parameters.AddWithValue("$source", message.Source);
-        command.Parameters.AddWithValue("$metadataJson", message.MetadataJson);
+        command.Parameters.AddWithValue("$metadataJson", JsonTextCanonicalizer.NormalizeOptionalObjectOrArray(
+            message.MetadataJson, "ChatMessages.MetadataJson", decodeLiteralUnicodeEscapes: true));
         command.Parameters.AddWithValue("$createdAt", Format(message.CreatedAt));
         var id = (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
         if (dataSync is not null)
@@ -84,7 +85,8 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = "UPDATE ChatMessages SET MetadataJson=$metadata WHERE Id=$id";
-        command.Parameters.AddWithValue("$metadata", metadataJson ?? string.Empty);
+        command.Parameters.AddWithValue("$metadata", JsonTextCanonicalizer.NormalizeOptionalObjectOrArray(
+            metadataJson, "ChatMessages.MetadataJson", decodeLiteralUnicodeEscapes: true));
         command.Parameters.AddWithValue("$id", messageId);
         var updated = await command.ExecuteNonQueryAsync(cancellationToken) == 1;
         if (updated && dataSync is not null)
@@ -270,8 +272,12 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
         command.Parameters.AddWithValue("$voiceName", character.VoiceName);
         command.Parameters.AddWithValue("$roleTitle", character.RoleTitle);
         command.Parameters.AddWithValue("$cardPath", character.CardPath);
-        command.Parameters.AddWithValue("$sourceCardJson", character.SourceCardJson);
-        command.Parameters.AddWithValue("$templateCardJson", character.TemplateCardJson);
+        var sourceCardJson = string.IsNullOrWhiteSpace(character.SourceCardJson) ? string.Empty : JsonTextCanonicalizer.NormalizeObject(
+            character.SourceCardJson, "VoiceRoleCards.SourceCardJson", decodeLiteralUnicodeEscapes: true);
+        var templateCardJson = string.IsNullOrWhiteSpace(character.TemplateCardJson) ? string.Empty : JsonTextCanonicalizer.NormalizeObject(
+            character.TemplateCardJson, "VoiceRoleCards.TemplateCardJson", decodeLiteralUnicodeEscapes: true);
+        command.Parameters.AddWithValue("$sourceCardJson", sourceCardJson);
+        command.Parameters.AddWithValue("$templateCardJson", templateCardJson);
         command.Parameters.AddWithValue("$cardSummary", character.CardSummary);
         command.Parameters.AddWithValue("$cardSchemaVersion", character.CardSchemaVersion);
         command.Parameters.AddWithValue("$templateCardSourceHash", character.TemplateCardSourceHash);
@@ -392,7 +398,7 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
         command.Parameters.AddWithValue("$requestUrl", record.RequestUrl);
         command.Parameters.AddWithValue("$systemPrompt", record.SystemPrompt);
         command.Parameters.AddWithValue("$userPrompt", record.UserPrompt);
-        command.Parameters.AddWithValue("$requestJson", record.RequestJson);
+        command.Parameters.AddWithValue("$requestJson", JsonTextCanonicalizer.NormalizeObject(record.RequestJson, "LlmCallLogs.RequestJson"));
         command.Parameters.AddWithValue("$updatedAt", Format(record.UpdatedAt));
         var result = await command.ExecuteScalarAsync(cancellationToken);
         var id = (long)result!;
@@ -416,7 +422,8 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
         command.Parameters.AddWithValue("$statusCode", completion.ResponseStatusCode);
         command.Parameters.AddWithValue("$responseId", completion.ResponseId);
         command.Parameters.AddWithValue("$responseText", completion.ResponseText);
-        command.Parameters.AddWithValue("$rawResponse", completion.RawResponseJson);
+        command.Parameters.AddWithValue("$rawResponse", string.IsNullOrWhiteSpace(completion.RawResponseJson) ? string.Empty :
+            JsonTextCanonicalizer.NormalizeObjectOrArray(completion.RawResponseJson, "LlmCallLogs.RawResponseJson", decodeLiteralUnicodeEscapes: true));
         command.Parameters.AddWithValue("$error", completion.Error);
         command.Parameters.AddWithValue("$durationMs", completion.DurationMs);
         command.Parameters.AddWithValue("$promptTokens", completion.PromptTokens);

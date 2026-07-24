@@ -15,7 +15,7 @@ public static class ProtocolRequestRegistry
     public static readonly string[] PublicRequests =
     [
         "system.health", "system.window.fit_virtual_desktop", "system.window.center_on_client_rect", "system.stream", "settings.get", "settings.save", "chat.history", "chat.send", "chat.update_metadata", "tts.speak", "asr.transcribe",
-        "reminder.list", "reminder.save", "reminder.delete", "reminder.set_enabled", "reminder.set_allow_tts", "reminder.process_due",
+        "reminder.list", "reminder.save", "reminder.delete", "reminder.set_enabled", "reminder.set_allow_tts", "reminder.process_due", "reminder.delivery.completed",
         "character.list", "character.set_current", "character.save", "character.delete", "character.voice_assets", "character.voice_asset.add", "character.avatar.import", "character.voices", "character.voices.set", "character.binding.get", "character.binding.list", "character.binding.set", "character.binding.clear", "character.binding.apply", "character.template.generate",
         "agent.capabilities.list", "agent.capability.save", "agent.execute", "agent.decide",
         "pet.voice_menu.get", "pet.voice_intimacy.cycle", "pet.voice_cache.clear", "pet.voice_cache.ensure", "pet.voice.play", "pet.voice.playback.report", "music.current", "music.search_and_play", "music.toggle_pause", "music.stop", "market.symbols", "market.snapshot", "market.chart_snapshot", "market.list", "market.record", "status.resources", "status.network", "status.role", "status.tts", "status.llm_latencies", "status.server.health", "status.server.summary", "status.codex_quota", "tts.playback.set",
@@ -36,6 +36,7 @@ public static class ProtocolRequestRegistry
         "remote_video.settings.get", "remote_video.settings.save", "remote_video.diagnostics",
         "crypto_provider.get", "crypto_provider.save", "crypto_provider.check",
         "appearance.get", "appearance.save", "disturbance_settings.get", "disturbance_settings.save",
+        "proactive.sources.list", "proactive.source.update", "proactive.source.test", "proactive.execution.completed", "proactive.state.apply",
         "model.list", "model.save", "model.add", "business_model.list", "business_model.save", "source_prompt.list", "source_prompt.save"
     ];
 

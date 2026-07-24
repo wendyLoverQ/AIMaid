@@ -31,6 +31,8 @@ public sealed class AiProviderHttpClient : IAiProviderClient
 
     public async IAsyncEnumerable<string> StreamChatAsync(AiChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        if (request.RequireJsonResponse && request.StreamResponse)
+            throw new InvalidOperationException("结构化 JSON 响应禁止使用流式模式。");
         var stopwatch = Stopwatch.StartNew();
         var responseText = new StringBuilder();
         int statusCode = 0;
@@ -156,8 +158,25 @@ public sealed class AiProviderHttpClient : IAiProviderClient
             throw;
         }
 
+        var completedText = responseText.ToString();
+        if (request.RequireJsonResponse)
+        {
+            try
+            {
+                completedText = JsonTextCanonicalizer.NormalizeGeneratedObject(completedText, $"LLM structured response: {source}");
+            }
+            catch (Exception exception) when (exception is JsonException or InvalidDataException)
+            {
+                await UpdateAuditAsync(auditId, statusCode, responseId, string.Empty, $"结构化 JSON 响应规范化失败：{exception.Message}",
+                    stopwatch.ElapsedMilliseconds, promptTokens, completionTokens, totalTokens);
+                throw;
+            }
+            collected.Clear();
+            collected.Add(completedText);
+        }
+
         // 3. 正常完成时更新数据库
-        await UpdateAuditAsync(auditId, statusCode, responseId, responseText.ToString(), errorText ?? string.Empty,
+        await UpdateAuditAsync(auditId, statusCode, responseId, completedText, errorText ?? string.Empty,
             stopwatch.ElapsedMilliseconds, promptTokens, completionTokens, totalTokens);
 
         foreach (var delta in collected) yield return delta;

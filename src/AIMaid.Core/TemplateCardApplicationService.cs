@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Encodings.Web;
 using System.Text.Json;
 using AIMaid.Contracts;
 using AIMaid.Contracts.Characters;
@@ -78,6 +77,8 @@ public sealed class TemplateCardApplicationService(
             var modelName = await LoadModelNameAsync(cancellationToken);
             var hadTemplate = !string.IsNullOrWhiteSpace(role.TemplateCardJson);
             var input = continueIteration ? role.TemplateCardJson : role.SourceCardJson;
+            var normalizedInput = JsonTextCanonicalizer.NormalizeObject(input, "character template input", decodeLiteralUnicodeEscapes: true);
+            var outputSchemaJson = JsonTextCanonicalizer.NormalizeObjectOrArray(sourcePrompt.OutputSchemaJson, "character template output schema", decodeLiteralUnicodeEscapes: true);
             var inputKind = continueIteration ? "当前角色卡（在上一版基础上继续迭代）" : "原角色卡（从原始设定开始生成）";
             var sourceHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(role.SourceCardJson)));
             role = role with { TemplateCardGenerationStatus = "generating", TemplateCardGenerationMessage = "", TemplateCardLastAttemptAt = DateTimeOffset.Now, UpdatedAt = DateTimeOffset.Now };
@@ -90,13 +91,13 @@ public sealed class TemplateCardApplicationService(
                 {
                     try
                     {
-                        var systemPrompt = sourcePrompt.SystemPromptTemplate.Replace("{outputSchemaJson}", sourcePrompt.OutputSchemaJson, StringComparison.Ordinal).Trim();
+                        var systemPrompt = sourcePrompt.SystemPromptTemplate.Replace("{outputSchemaJson}", outputSchemaJson, StringComparison.Ordinal).Trim();
                         var userPrompt = sourcePrompt.UserPromptTemplate
                             .Replace("{roleId}", role.RoleId, StringComparison.Ordinal)
                             .Replace("{roleName}", role.Name, StringComparison.Ordinal)
                             .Replace("{inputCardKind}", inputKind, StringComparison.Ordinal)
-                            .Replace("{inputCardJson}", input, StringComparison.Ordinal)
-                            .Replace("{sourceCardJson}", input, StringComparison.Ordinal).Trim();
+                            .Replace("{inputCardJson}", normalizedInput, StringComparison.Ordinal)
+                            .Replace("{sourceCardJson}", normalizedInput, StringComparison.Ordinal).Trim();
                         var response = new StringBuilder();
                         var conversationId = $"character_card_template_{role.RoleId}_{Guid.NewGuid():N}";
                         var promptHistory = new ChatMessageDto[]
@@ -107,7 +108,7 @@ public sealed class TemplateCardApplicationService(
                         await foreach (var delta in aiProvider.StreamChatAsync(new AiChatRequest(
                                            conversationId, userPrompt, role.RoleId, modelName, promptHistory,
                                            SourceKey: "character_card_template_generation",
-                                           StreamResponse: false), cancellationToken)) response.Append(delta);
+                                           RequireJsonResponse: true, StreamResponse: false), cancellationToken)) response.Append(delta);
                         var templateJson = ValidateTemplateCardJson(response.ToString());
                         role = role with {
                             TemplateCardJson = templateJson,
@@ -194,9 +195,7 @@ public sealed class TemplateCardApplicationService(
 
     private static string ValidateTemplateCardJson(string rawText)
     {
-        var json = rawText?.Trim();
-        if (string.IsNullOrWhiteSpace(json))
-            throw new InvalidOperationException("模型没有返回 JSON 对象。");
+        var json = JsonTextCanonicalizer.NormalizeGeneratedObject(rawText, "generated character template");
 
         JsonDocument document;
         try
@@ -217,11 +216,7 @@ public sealed class TemplateCardApplicationService(
             if (string.IsNullOrWhiteSpace(systemPrompt))
                 throw new InvalidOperationException("角色模板缺少 systemPrompt。");
 
-            return JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions
-            {
-                WriteIndented = true,
-                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-            });
+            return json;
         }
     }
 

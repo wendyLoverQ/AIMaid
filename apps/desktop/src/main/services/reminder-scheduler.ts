@@ -15,7 +15,7 @@ export interface ReminderSchedulerOptions {
   cancelSchedule?: (timer: ReturnType<typeof setTimeout>) => void
 }
 
-const DEFAULT_INTERVAL_MS = 15_000
+const DEFAULT_INTERVAL_MS = 60_000
 
 export class NativeReminderNotifier implements ReminderNotifier {
   async show(reminder: ReminderDto): Promise<void> {
@@ -51,6 +51,8 @@ export class ReminderScheduler {
   private processing = false
   private stopping: Promise<void> | undefined
   private resolveStopping: (() => void) | undefined
+  private readonly pendingNotifications = new Map<string, boolean>()
+  private unsubscribeCore: (() => void) | undefined
 
   constructor(
     private readonly core: CoreClient,
@@ -67,6 +69,13 @@ export class ReminderScheduler {
   start(): void {
     if (this.running) return
     this.running = true
+    this.unsubscribeCore = this.core.subscribe((event) => {
+      if (event.type !== 'reminder.delivery.completed') return
+      const envelope = isRecord(event.payload) ? event.payload : undefined
+      const completed = envelope !== undefined && isRecord(envelope.data) ? envelope.data : undefined
+      if (completed !== undefined && typeof completed.reminderId === 'string')
+        this.pendingNotifications.delete(completed.reminderId)
+    })
     this.log.info('reminder-scheduler', 'Reminder scheduler started', { intervalMs: this.intervalMs })
     this.queueNext(0)
   }
@@ -82,6 +91,9 @@ export class ReminderScheduler {
       this.stopping ??= new Promise<void>((resolve) => { this.resolveStopping = resolve })
       await this.stopping
     }
+    this.unsubscribeCore?.()
+    this.unsubscribeCore = undefined
+    this.pendingNotifications.clear()
     this.log.info('reminder-scheduler', 'Reminder scheduler stopped')
   }
 
@@ -125,19 +137,30 @@ export class ReminderScheduler {
       allowTts: reminder.allowTts
     }
     try {
-      await this.notifier.show(reminder)
-      this.log.info('reminder-scheduler', 'Due reminder system notification shown', context)
+      let notificationShown = this.pendingNotifications.get(reminder.reminderId)
+      if (notificationShown === undefined) {
+        try {
+          await this.notifier.show(reminder)
+          notificationShown = true
+          this.log.info('reminder-scheduler', 'Due reminder system notification shown', context)
+        } catch (error) {
+          notificationShown = false
+          this.log.error('reminder-scheduler', 'Due reminder system notification failed; Pet delivery continues', error, context)
+        }
+        this.pendingNotifications.set(reminder.reminderId, notificationShown)
+      }
       await this.core.invoke(randomUUID(), {
         type: 'reminder.process_due',
-        payload: { now: now.toISOString(), reminderIds: [reminder.reminderId] }
+        payload: { now: now.toISOString(), reminderIds: [reminder.reminderId], notificationShown }
       }, new AbortController().signal)
-      this.log.info('reminder-scheduler', 'Due reminder completed by Core after notification', context)
+      this.log.info('reminder-scheduler', 'Due reminder delivery requested from Core', context)
       if (reminder.allowTts) {
-        this.log.info('reminder-scheduler', 'Reminder TTS delegated through reminder.due to the pet renderer', {
+        this.log.info('reminder-scheduler', 'Reminder TTS delegated through reminder.delivery.requested to the pet renderer', {
           reminderId: reminder.reminderId
         })
       }
     } catch (error) {
+      this.pendingNotifications.delete(reminder.reminderId)
       this.log.error('reminder-scheduler', 'Due reminder consumption failed; reminder remains eligible for retry', error, context)
     }
   }
@@ -168,4 +191,8 @@ function isReminderDto(value: unknown): value is ReminderDto {
 
 function elapsedMs(startedAt: number): number {
   return Math.round((performance.now() - startedAt) * 100) / 100
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }

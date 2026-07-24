@@ -23,7 +23,7 @@ public sealed record AgentDecisionDto(
 
 public sealed record DecideAgentInputCommand(
     string Content, string? ConversationId = null, string? CharacterId = null,
-    bool SaveUserMessage = true, string ToolResultJson = "（首次调用，无上一步工具结果）",
+    bool SaveUserMessage = true, string ToolResultJson = "{}",
     int ToolStep = 1, int MaxSteps = 4, string Source = "normal_chat", bool ContinueConversation = false)
     : ICommand<OperationResult<AgentDecisionDto>>;
 
@@ -53,6 +53,29 @@ public sealed record ListProactiveRulesQuery : IQuery<IReadOnlyList<ProactiveRul
 public sealed record SaveDisturbanceSettingsCommand(DisturbanceSettingsDto Settings) : ICommand<OperationResult>;
 public sealed record GetDisturbanceSettingsQuery : IQuery<DisturbanceSettingsDto?>;
 public sealed record ProactiveDecisionEvent(string EventId, DateTimeOffset OccurredAt, ProactiveDecisionDto Decision) : IBusinessEvent;
+public sealed record ProactiveSourceDto(
+    string SourceKey, string DisplayName, bool Enabled, int Priority, int FrequencyMinutes,
+    int CooldownMinutes, int MaxItems, string ParameterJson, int MinScore,
+    DateTimeOffset? LastCollectedAt, string LastSnapshot, string LastSnapshotHash,
+    int LastScore, string LastSelectReason, DateTimeOffset? LastBroadcastAt,
+    string LastBroadcastMessage, string LastBroadcastMessageHash, DateTimeOffset UpdatedAt,
+    bool IsConfigured = true, bool IsImplemented = true, string StatusText = "可用");
+public sealed record ListProactiveSourcesQuery : IQuery<IReadOnlyList<ProactiveSourceDto>>;
+public sealed record UpdateProactiveSourceCommand(
+    string SourceKey, bool? Enabled = null, int? CooldownMinutes = null)
+    : ICommand<OperationResult<ProactiveSourceDto>>;
+public sealed record TestProactiveSourceCommand(string SourceKey) : ICommand<OperationResult>;
+public sealed record ProactiveActionDto(string Type, IReadOnlyDictionary<string, string> Payload);
+public sealed record ProactiveExecutionRequestedEvent(
+    string EventId, DateTimeOffset OccurredAt, string ExecutionId, string TriggerLogId,
+    string RuleId, bool ManualTest, IReadOnlyList<ProactiveActionDto> Actions) : IBusinessEvent;
+public sealed record CompleteProactiveExecutionCommand(
+    string ExecutionId, bool Responded, bool Spoke, string Message, string VoiceTrigger,
+    string AudioPath, string Result, string Error, DateTimeOffset CompletedAt)
+    : ICommand<OperationResult>;
+public sealed record ProactiveExecutionCompletedEvent(
+    string EventId, DateTimeOffset OccurredAt, string ExecutionId, bool Responded,
+    bool Spoke, string Message, string Result, string Error) : IBusinessEvent;
 
 public sealed record ReminderDto(
     string ReminderId, string Title, string Message, DateTimeOffset DueAt, string Repeat,
@@ -65,8 +88,20 @@ public sealed record SetReminderEnabledCommand(string ReminderId, bool Enabled) 
 public sealed record SetReminderAllowTtsCommand(string ReminderId, bool AllowTts) : ICommand<OperationResult<ReminderDto>>;
 public sealed record DeleteReminderCommand(string ReminderId) : ICommand<OperationResult>;
 public sealed record ListRemindersQuery(bool EnabledOnly = false) : IQuery<IReadOnlyList<ReminderDto>>;
-public sealed record ProcessDueRemindersCommand(DateTimeOffset Now, IReadOnlyList<string>? ReminderIds = null) : ICommand<OperationResult<IReadOnlyList<ReminderDto>>>;
-public sealed record ReminderDueEvent(string EventId, DateTimeOffset OccurredAt, ReminderDto Reminder) : IBusinessEvent;
+public sealed record ProcessDueRemindersCommand(
+    DateTimeOffset Now, IReadOnlyList<string>? ReminderIds = null, bool NotificationShown = false)
+    : ICommand<OperationResult<IReadOnlyList<ReminderDto>>>;
+public sealed record CompleteReminderDeliveryCommand(
+    string DeliveryId, string ReminderId, bool NotificationShown, bool BubbleShown,
+    bool TtsRequested, bool TtsPlayed, string Result, string Error, DateTimeOffset CompletedAt)
+    : ICommand<OperationResult>;
+public sealed record ReminderDeliveryRequestedEvent(
+    string EventId, DateTimeOffset OccurredAt, string DeliveryId, ReminderDto Reminder,
+    bool NotificationShown, string CachedAudioPath) : IBusinessEvent;
+public sealed record ReminderDeliveryCompletedEvent(
+    string EventId, DateTimeOffset OccurredAt, string DeliveryId, string ReminderId,
+    bool NotificationShown, bool BubbleShown, bool TtsRequested, bool TtsPlayed,
+    string Result, string Error) : IBusinessEvent;
 
 public sealed record NotebookNoteDto(
     string NoteId, string Title, string ContentMarkdown, string ContentPlainText,

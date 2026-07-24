@@ -43,6 +43,8 @@ export default function PetPage(): React.JSX.Element {
     const [renderScale, setRenderScale] = useState(1);
     const [liveVisualTransform, setLiveVisualTransform] = useState<PetVisualTransform>({ centerX: 0, centerY: 0, scale: 1 });
     const [voiceMenu, setVoiceMenu] = useState({ roleId: '', roleName: '未选择', intimacy: '信赖 5 级' });
+    const reminderDeliveriesRef = useRef(new Set<string>());
+    const proactiveExecutionsRef = useRef(new Set<string>());
     const voiceRoleIdRef = useRef('');
     const [visualizerStyle, setVisualizerStyle] = useState<MusicVisualizerStyle>('surround-line');
     const [petRendererReady, setPetRendererReady] = useState(false);
@@ -220,23 +222,208 @@ export default function PetPage(): React.JSX.Element {
         if (error !== null)
             showBubble(error, 'error');
     }, [error, showBubble]);
-    useEffect(() => bridge.events.subscribe(['reminder.due'], (event) => {
+    useEffect(() => bridge.events.subscribe(['reminder.delivery.requested'], (event) => {
         const envelope = isRecord(event.payload) ? event.payload : null;
-        const reminder = envelope !== null && isRecord(envelope.data) ? envelope.data : null;
-        if (reminder === null || typeof reminder.message !== 'string' || typeof reminder.reminderId !== 'string')
+        const requested = envelope !== null && isRecord(envelope.data) ? envelope.data : null;
+        const reminder = requested !== null && isRecord(requested.reminder) ? requested.reminder : null;
+        if (requested === null || reminder === null ||
+            typeof requested.deliveryId !== 'string' ||
+            typeof reminder.message !== 'string' ||
+            typeof reminder.reminderId !== 'string')
             return;
-        if (reminder.allowTts !== true) {
-            showBubble(reminder.message, 'reminder');
+        const deliveryId = requested.deliveryId;
+        if (reminderDeliveriesRef.current.has(deliveryId))
             return;
-        }
+        reminderDeliveriesRef.current.add(deliveryId);
+        const reminderId = reminder.reminderId;
+        const reminderMessage = reminder.message;
+        const allowTts = reminder.allowTts === true;
+        const notificationShown = requested.notificationShown === true;
+        const cachedAudioPath = typeof requested.cachedAudioPath === 'string' ? requested.cachedAudioPath : '';
         const voiceStyle = typeof reminder.voiceStyle === 'string' ? reminder.voiceStyle : undefined;
-        void synthesizeAndPlayPages(reminder.message, voiceStyle,
-            (page) => showBubble(page, 'reminder')).catch((reason: unknown) => {
-            console.error('Reminder TTS playback failed', {
-                reminderId: reminder.reminderId,
+        const complete = async (ttsPlayed: boolean, result: string, error = ''): Promise<void> => {
+            const response = await bridge.core.invoke({
+                type: 'reminder.delivery.completed',
+                payload: {
+                    deliveryId,
+                    reminderId,
+                    notificationShown,
+                    bubbleShown: true,
+                    ttsRequested: allowTts,
+                    ttsPlayed,
+                    result,
+                    error,
+                    completedAt: new Date().toISOString()
+                }
+            });
+            if (!response.success)
+                throw new Error(response.error?.message ?? '提醒交付完成确认失败。');
+        };
+        void (async () => {
+            showBubble(reminderMessage, 'reminder');
+            if (!allowTts) {
+                await complete(false, notificationShown ? 'notification_and_bubble_shown' : 'bubble_shown');
+                return;
+            }
+            try {
+                if (cachedAudioPath !== '') {
+                    const played = await playLocalAudioPaths([cachedAudioPath]);
+                    await complete(played > 0, played > 0 ? 'cached_tts_played' : 'cached_tts_failed',
+                        played > 0 ? '' : '缓存语音未产生实际播放。');
+                    return;
+                }
+                const paths = await synthesizeAndPlayPages(reminderMessage, voiceStyle,
+                    (page) => showBubble(page, 'reminder'));
+                await complete(paths.length > 0, paths.length > 0 ? 'realtime_tts_played' : 'realtime_tts_failed',
+                    paths.length > 0 ? '' : '实时 TTS 未产生音频。');
+            } catch (reason) {
+                const error = reason instanceof Error ? reason.message : String(reason);
+                console.error('Reminder TTS playback failed', { reminderId, error });
+                await complete(false, 'tts_failed', error);
+            }
+        })().catch((reason: unknown) => {
+            console.error('Reminder delivery confirmation failed', {
+                reminderId,
                 error: reason instanceof Error ? reason.message : String(reason)
             });
-        });
+        }).finally(() => reminderDeliveriesRef.current.delete(deliveryId));
+    }), [showBubble]);
+    useEffect(() => bridge.events.subscribe(['proactive.execution.requested'], (event) => {
+        const envelope = isRecord(event.payload) ? event.payload : null;
+        const requested = envelope !== null && isRecord(envelope.data) ? envelope.data : null;
+        if (requested === null || typeof requested.executionId !== 'string' || !Array.isArray(requested.actions))
+            return;
+        const executionId = requested.executionId;
+        if (proactiveExecutionsRef.current.has(executionId))
+            return;
+        proactiveExecutionsRef.current.add(executionId);
+        const requestedActions = requested.actions;
+        void (async () => {
+            let responded = false;
+            let spoke = false;
+            let message = '';
+            let voiceTrigger = '';
+            let audioPath = '';
+            let result = requestedActions.length === 0 ? 'no_action' : 'action_built';
+            let error = '';
+            try {
+                for (const rawAction of requestedActions) {
+                    if (!isRecord(rawAction) || typeof rawAction.type !== 'string' || !isRecord(rawAction.payload))
+                        throw new Error('主动行为动作格式无效。');
+                    const payload = rawAction.payload;
+                    if (rawAction.type === 'show_message') {
+                        const text = typeof payload.text === 'string' ? payload.text : '';
+                        if (text !== '') {
+                            showBubble(text, 'speech');
+                            responded = true;
+                            message = text;
+                            result = 'show_message';
+                        }
+                        continue;
+                    }
+                    if (rawAction.type === 'change_state') {
+                        const mood = typeof payload.mood === 'string' ? payload.mood : undefined;
+                        const favorabilityDelta = typeof payload.favorabilityDelta === 'string'
+                            ? Number.parseInt(payload.favorabilityDelta, 10)
+                            : 0;
+                        const response = await bridge.core.invoke({
+                            type: 'proactive.state.apply',
+                            payload: { ...(mood === undefined ? {} : { mood }), favorabilityDelta: Number.isFinite(favorabilityDelta) ? favorabilityDelta : 0 }
+                        });
+                        if (!response.success)
+                            throw new Error(response.error?.message ?? '角色状态修改失败。');
+                        responded = true;
+                        result = 'change_state';
+                        continue;
+                    }
+                    if (rawAction.type !== 'speak')
+                        continue;
+                    const trigger = typeof payload.trigger === 'string' && payload.trigger !== ''
+                        ? payload.trigger
+                        : 'random.daily_idle';
+                    const text = typeof payload.text === 'string' ? payload.text : '';
+                    const voiceStyle = typeof payload.voiceStyle === 'string' ? payload.voiceStyle : undefined;
+                    const forceRealtime = payload.useRealtimeTts === 'true';
+                    voiceTrigger = trigger;
+                    responded = true;
+                    message = text || message;
+                    if (!forceRealtime) {
+                        const cached = await bridge.core.invoke({
+                            type: 'pet.voice.play',
+                            payload: { triggerId: trigger, bodyPart: 'default', source: 'maid_action.speak' }
+                        });
+                        if (cached.success && isRecord(cached.payload) &&
+                            cached.payload.matched === true &&
+                            typeof cached.payload.audioPath === 'string' &&
+                            cached.payload.audioPath !== '') {
+                            const cachedAudioPath = cached.payload.audioPath;
+                            const playback = await playCachedAudio(cachedAudioPath);
+                            await bridge.core.invoke({
+                                type: 'pet.voice.playback.report',
+                                payload: {
+                                    triggerId: typeof cached.payload.triggerId === 'string' ? cached.payload.triggerId : trigger,
+                                    bodyPart: 'default',
+                                    text: typeof cached.payload.text === 'string' ? cached.payload.text : text,
+                                    audioPath: cachedAudioPath,
+                                    played: playback.played,
+                                    reason: playback.played ? 'cache_match' : playback.reason,
+                                    source: 'maid_action.speak',
+                                    generationId: typeof cached.payload.generationId === 'string' ? cached.payload.generationId : '',
+                                    contextHash: typeof cached.payload.contextHash === 'string' ? cached.payload.contextHash : '',
+                                    category: typeof cached.payload.category === 'string' ? cached.payload.category : 'ai_decision'
+                                }
+                            });
+                            if (playback.played) {
+                                spoke = true;
+                                audioPath = cachedAudioPath;
+                                result = 'cache_match';
+                                if (typeof cached.payload.text === 'string' && cached.payload.text !== '') {
+                                    message = cached.payload.text;
+                                    showBubble(message, 'speech');
+                                }
+                                await playback.finished;
+                                continue;
+                            }
+                        }
+                    }
+                    if (text !== '' && await realtimeTtsEnabled()) {
+                        const paths = await synthesizeAndPlayPages(text, voiceStyle, (page) => showBubble(page, 'speech'));
+                        spoke = paths.length > 0;
+                        audioPath = paths[0] ?? '';
+                        result = spoke ? 'realtime_tts' : 'realtime_tts_failed';
+                    } else if (text !== '') {
+                        showBubble(text, 'speech');
+                        result = 'tts_disabled_show_text';
+                    }
+                }
+            }
+            catch (reason) {
+                error = reason instanceof Error ? reason.message : String(reason);
+                result = 'execution_failed';
+                console.error('Proactive action execution failed', { executionId, error });
+            }
+            const response = await bridge.core.invoke({
+                type: 'proactive.execution.completed',
+                payload: {
+                    executionId,
+                    responded,
+                    spoke,
+                    message,
+                    voiceTrigger,
+                    audioPath,
+                    result,
+                    error,
+                    completedAt: new Date().toISOString()
+                }
+            });
+            if (!response.success)
+                throw new Error(response.error?.message ?? '主动行为执行确认失败。');
+        })().catch((reason: unknown) => {
+            console.error('Proactive execution confirmation failed', {
+                executionId,
+                error: reason instanceof Error ? reason.message : String(reason)
+            });
+        }).finally(() => proactiveExecutionsRef.current.delete(executionId));
     }), [showBubble]);
     useEffect(() => {
         const cannotDraw = error !== null && presentation === null

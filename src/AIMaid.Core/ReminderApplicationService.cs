@@ -1,4 +1,4 @@
-using System.Text;
+using System.Collections.Concurrent;
 using System.Text.Json;
 using AIMaid.Contracts;
 using AIMaid.Contracts.Domains;
@@ -11,18 +11,25 @@ public sealed class ReminderApplicationService :
     ICommandHandler<SetReminderEnabledCommand, OperationResult<ReminderDto>>,
     ICommandHandler<SetReminderAllowTtsCommand, OperationResult<ReminderDto>>,
     ICommandHandler<DeleteReminderCommand, OperationResult>,
-    ICommandHandler<ProcessDueRemindersCommand, OperationResult<IReadOnlyList<ReminderDto>>>
+    ICommandHandler<ProcessDueRemindersCommand, OperationResult<IReadOnlyList<ReminderDto>>>,
+    ICommandHandler<CompleteReminderDeliveryCommand, OperationResult>
 {
     private const string Domain = "reminder";
+    private const string HistoryDomain = "reminder_history";
     private readonly IDomainDocumentStore store;
     private readonly IEventPublisher events;
-    private readonly IAiProviderClient aiProvider;
+    private readonly ReminderVoiceCacheService voiceCache;
+    private readonly ConcurrentDictionary<string, PendingDelivery> pending = new(StringComparer.Ordinal);
+    private readonly SemaphoreSlim historyGate = new(1, 1);
 
-    public ReminderApplicationService(IDomainDocumentStore store, IEventPublisher events, IAiProviderClient aiProvider)
+    public ReminderApplicationService(
+        IDomainDocumentStore store,
+        IEventPublisher events,
+        ReminderVoiceCacheService voiceCache)
     {
         this.store = store;
         this.events = events;
-        this.aiProvider = aiProvider;
+        this.voiceCache = voiceCache;
     }
 
     public async Task<IReadOnlyList<ReminderDto>> HandleAsync(ListRemindersQuery query, CancellationToken cancellationToken = default)
@@ -49,6 +56,7 @@ public sealed class ReminderApplicationService :
             enabled ? NormalizeNextDue(command.DueAt, repeat, now) : null,
             existing?.CreatedAt ?? now, now);
         await SaveAsync(reminder, cancellationToken);
+        _ = voiceCache.PrepareAsync(reminder, CancellationToken.None);
         return OperationResult<ReminderDto>.Success(reminder);
     }
 
@@ -93,57 +101,82 @@ public sealed class ReminderApplicationService :
         var emitted = new List<ReminderDto>(due.Length);
         foreach (var reminder in due)
         {
-            var generated = reminder.AllowTts
-                ? await GenerateReminderLineAsync(reminder, cancellationToken)
-                : (reminder.Message, reminder.VoiceStyle);
-            DateTimeOffset? next = reminder.Repeat == "daily"
-                ? NormalizeNextDue((reminder.NextDueAt ?? reminder.DueAt).AddDays(1), "daily", command.Now)
-                : null;
-            var updated = reminder with { Enabled = next.HasValue, LastTriggeredAt = command.Now, NextDueAt = next, UpdatedAt = command.Now };
-            await SaveAsync(updated, cancellationToken);
-            var eventReminder = updated with { Message = generated.Item1, VoiceStyle = generated.Item2 };
+            PendingDelivery delivery;
+            if (!pending.TryGetValue(reminder.ReminderId, out delivery!))
+            {
+                var generated = await voiceCache.EnsureAsync(reminder, cancellationToken);
+                var generatedReminder = reminder with
+                {
+                    Message = generated.Text,
+                    VoiceStyle = generated.VoiceStyle,
+                    AllowTts = reminder.AllowTts && generated.TtsAllowed
+                };
+                delivery = new PendingDelivery(
+                    EventIdentity.NewId(),
+                    generatedReminder,
+                    generated.AudioPath,
+                    command.Now);
+                if (!pending.TryAdd(reminder.ReminderId, delivery))
+                    delivery = pending[reminder.ReminderId];
+            }
+            var eventReminder = delivery.Reminder;
             emitted.Add(eventReminder);
-            await events.PublishAsync(new ReminderDueEvent(EventIdentity.NewId(), command.Now, eventReminder), cancellationToken);
+            await events.PublishAsync(new ReminderDeliveryRequestedEvent(
+                EventIdentity.NewId(),
+                command.Now,
+                delivery.DeliveryId,
+                eventReminder,
+                command.NotificationShown,
+                delivery.CachedAudioPath), cancellationToken);
         }
         return OperationResult<IReadOnlyList<ReminderDto>>.Success(emitted);
     }
 
-    private async Task<(string Message, string VoiceStyle)> GenerateReminderLineAsync(
-        ReminderDto reminder,
-        CancellationToken cancellationToken)
+    public async Task<OperationResult> HandleAsync(
+        CompleteReminderDeliveryCommand command,
+        CancellationToken cancellationToken = default)
     {
-        var values = new Dictionary<string, string>
+        if (!pending.TryGetValue(command.ReminderId, out var delivery) ||
+            !delivery.DeliveryId.Equals(command.DeliveryId, StringComparison.Ordinal))
+            return OperationResult.Failure("reminder.delivery_not_found", "提醒交付不存在或已经完成。");
+        var reminder = await GetAsync(command.ReminderId, cancellationToken);
+        if (reminder is null)
+            return OperationResult.Failure("reminder.not_found", "提醒不存在。");
+
+        var completedAt = command.CompletedAt == default ? DateTimeOffset.Now : command.CompletedAt;
+        DateTimeOffset? nextDueAt = reminder.Repeat.Equals("daily", StringComparison.OrdinalIgnoreCase)
+            ? NormalizeNextDue((reminder.NextDueAt ?? reminder.DueAt).AddDays(1), "daily", completedAt)
+            : null;
+        var updated = reminder with
         {
-            ["reminderId"] = reminder.ReminderId,
-            ["reminderTitle"] = reminder.Title,
-            ["reminderContent"] = reminder.Message,
-            ["dueTime"] = (reminder.NextDueAt ?? reminder.DueAt).ToString("yyyy-MM-dd HH:mm:ss"),
-            ["repeatRule"] = reminder.Repeat,
-            ["urgency"] = "normal",
-            ["userOriginalText"] = reminder.Message
+            LastTriggeredAt = completedAt,
+            NextDueAt = nextDueAt,
+            Enabled = nextDueAt.HasValue,
+            UpdatedAt = completedAt
         };
-        var raw = new StringBuilder();
-        await foreach (var delta in aiProvider.StreamChatAsync(new AiChatRequest(
-                           $"reminder_line_{reminder.ReminderId}_{Guid.NewGuid():N}",
-                           reminder.Message,
-                           string.Empty,
-                           string.Empty,
-                           [],
-                           SourceKey: "reminder_line_generation",
-                           TemplateValues: values,
-                           StreamResponse: false), cancellationToken))
-            raw.Append(delta);
-        using var document = JsonDocument.Parse(raw.ToString().Trim());
-        if (document.RootElement.ValueKind != JsonValueKind.Object ||
-            !document.RootElement.TryGetProperty("message", out var message) ||
-            message.ValueKind != JsonValueKind.String ||
-            string.IsNullOrWhiteSpace(message.GetString()))
-            throw new InvalidDataException("reminder_line_generation 返回内容缺少非空 message。");
-        var voiceStyle = document.RootElement.TryGetProperty("voiceStyle", out var style) &&
-                         style.ValueKind == JsonValueKind.String
-            ? style.GetString()?.Trim() ?? string.Empty
-            : string.Empty;
-        return (message.GetString()!.Trim(), voiceStyle);
+        await SaveAsync(updated, cancellationToken);
+        var result = string.IsNullOrWhiteSpace(command.Error)
+            ? command.Result
+            : $"{command.Result}: {command.Error}";
+        await AppendHistoryAsync(new ReminderHistoryDocument(
+            string.Empty,
+            reminder.ReminderId,
+            completedAt,
+            result,
+            command.TtsPlayed), cancellationToken);
+        pending.TryRemove(command.ReminderId, out _);
+        await events.PublishAsync(new ReminderDeliveryCompletedEvent(
+            EventIdentity.NewId(),
+            completedAt,
+            command.DeliveryId,
+            command.ReminderId,
+            command.NotificationShown,
+            command.BubbleShown,
+            command.TtsRequested,
+            command.TtsPlayed,
+            command.Result,
+            command.Error), cancellationToken);
+        return OperationResult.Success();
     }
 
     private async Task<IReadOnlyList<ReminderDto>> ListAsync(CancellationToken cancellationToken)
@@ -155,6 +188,29 @@ public sealed class ReminderApplicationService :
     }
     private Task SaveAsync(ReminderDto reminder, CancellationToken cancellationToken)
         => store.UpsertAsync(Domain, reminder.ReminderId, JsonSerializer.Serialize(reminder), reminder.UpdatedAt, cancellationToken);
+    private async Task AppendHistoryAsync(ReminderHistoryDocument history, CancellationToken cancellationToken)
+    {
+        await historyGate.WaitAsync(cancellationToken);
+        try
+        {
+            var ids = await store.ListIdsAsync(HistoryDomain, cancellationToken);
+            var next = ids.Select(id =>
+                    long.TryParse(id["legacy_reminder_log_".Length..], out var value) ? value : 0)
+                .DefaultIfEmpty()
+                .Max() + 1;
+            var historyId = $"legacy_reminder_log_{next}";
+            await store.UpsertAsync(
+                HistoryDomain,
+                historyId,
+                JsonSerializer.Serialize(history with { HistoryId = historyId }),
+                history.TriggeredAt,
+                cancellationToken);
+        }
+        finally
+        {
+            historyGate.Release();
+        }
+    }
     private static ReminderDto Deserialize(string json)
         => JsonSerializer.Deserialize<ReminderDto>(json) ?? throw new InvalidDataException("ReminderDto JSON 无效。");
     private static string NormalizeRepeat(string? value)
@@ -167,4 +223,16 @@ public sealed class ReminderApplicationService :
     }
     private static string CreateId(DateTimeOffset now)
         => $"rem_{now:yyyyMMddHHmmss}_{Guid.NewGuid():N}"[..28];
+
+    private sealed record PendingDelivery(
+        string DeliveryId,
+        ReminderDto Reminder,
+        string CachedAudioPath,
+        DateTimeOffset RequestedAt);
+    private sealed record ReminderHistoryDocument(
+        string HistoryId,
+        string ReminderId,
+        DateTimeOffset TriggeredAt,
+        string Result,
+        bool PlayedTts);
 }

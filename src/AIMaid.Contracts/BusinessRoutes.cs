@@ -34,6 +34,10 @@ public static class BusinessRoutes
     public const string ProactiveEvaluate = "proactive.evaluate";
     public const string ProactiveRulesList = "proactive.rules.list";
     public const string ProactiveRuleSave = "proactive.rule.save";
+    public const string ProactiveSourcesList = "proactive.sources.list";
+    public const string ProactiveSourceUpdate = "proactive.source.update";
+    public const string ProactiveSourceTest = "proactive.source.test";
+    public const string ProactiveExecutionCompleted = "proactive.execution.completed";
     public const string DisturbanceSettingsGet = "disturbance_settings.get";
     public const string DisturbanceSettingsSave = "disturbance_settings.save";
     public const string ReminderSave = "reminder.save";
@@ -105,7 +109,8 @@ public static class BusinessRoutes
     public const string AgentApprovalRequested = "agent.approval_requested";
     public const string AgentToolCallCompleted = "agent.tool_call_completed";
     public const string ProactiveDecision = "proactive.decision";
-    public const string ReminderDue = "reminder.due";
+    public const string ReminderDeliveryRequested = "reminder.delivery.requested";
+    public const string ReminderDeliveryCompleted = "reminder.delivery.completed";
     public const string TtsAudioReady = "tts.audio_ready";
     public const string CharacterPresentation = "character.presentation";
     public const string SettingsChanged = "settings.changed";

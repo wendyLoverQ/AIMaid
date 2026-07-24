@@ -58,8 +58,33 @@ try
         new UnconfiguredRemoteMediaResolver(),
         events);
     using var aiProvider = new SettingsBackedAiProviderClient(domains, store, store, store);
-    var reminders = new ReminderApplicationService(store, events, aiProvider);
+    var reminderVoiceCache = new ReminderVoiceCacheService(
+        aiProvider,
+        speechClient,
+        store,
+        store,
+        paths,
+        (message, exception) => CoreLog.Write(Console.Error, "warning", "reminder_voice_cache", message, exception: exception));
+    var reminders = new ReminderApplicationService(store, events, reminderVoiceCache);
     var proactive = new ProactiveApplicationService(store, store, events, aiProvider);
+    using var proactiveContext = new AIMaid.Infrastructure.ProactiveBroadcastContextService(
+        store,
+        store,
+        (message, exception) => CoreLog.Write(Console.Error, "warning", "proactive_context", message, exception: exception));
+    var proactiveTriggers = new ProactiveTriggerService(store);
+    var maidActions = new MaidActionService(
+        aiProvider,
+        (message, exception) => CoreLog.Write(Console.Error, "warning", "proactive_action", message, exception: exception));
+    await using var proactiveRuntime = new ProactiveRuntimeService(
+        proactiveContext,
+        proactiveTriggers,
+        maidActions,
+        new WindowsActivityProbe(),
+        store,
+        store,
+        store,
+        events,
+        (message, exception) => CoreLog.Write(Console.Error, "warning", "proactive_runtime", message, exception: exception));
     var chat = new ChatApplicationService(store, store, aiProvider, events);
     var templateCards = new TemplateCardApplicationService(store, store, store, aiProvider, events);
     await using var templateCardRefresh = new CharacterCardTemplateRefreshService(
@@ -91,7 +116,7 @@ try
     var writer = new ProtocolWriter(Console.Out);
     CoreLog.Write(Console.Error, "info", "startup_services_ready", "Core services initialized",
         durationMs: startup.Elapsed.TotalMilliseconds, data: new { coreVersion = version, protocolVersion = ProtocolConstants.Version });
-    var host = new CoreProtocolHost(Console.In, writer, settings, reminders, characters, characterAssets, templateCards, agent, petVoiceMenu, music, market, status, proactive, statusServers, codexQuota, subtitles, videos, chat, speech, speechClient, scripts, store, store, domains, remoteVideos, vaultExport, events, version, Console.Error);
+    var host = new CoreProtocolHost(Console.In, writer, settings, reminders, characters, characterAssets, templateCards, agent, petVoiceMenu, music, market, status, proactive, proactiveRuntime, statusServers, codexQuota, subtitles, videos, chat, speech, speechClient, scripts, store, store, domains, remoteVideos, vaultExport, events, version, Console.Error);
     using var shutdown = new CancellationTokenSource();
     Console.CancelKeyPress += (_, eventArgs) => { eventArgs.Cancel = true; shutdown.Cancel(); };
     return await host.RunAsync(shutdown.Token);

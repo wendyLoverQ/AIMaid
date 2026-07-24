@@ -162,7 +162,7 @@ public sealed class PetVoiceMenuApplicationService(
             command.Played, command.Reason, command.Text, command.AudioPath, command.GenerationId, command.ContextHash,
             command.HitAreaName, command.NormalizedX, command.NormalizedY);
         await documents.UpsertAsync(VoiceTriggerLogDomain, NextId("legacy_voice_trigger_"),
-            JsonSerializer.Serialize(log, JsonOptions), now, cancellationToken);
+            JsonTextCanonicalizer.Serialize(log), now, cancellationToken);
         if (command.Played && command.Source.Equals("pet.startup", StringComparison.OrdinalIgnoreCase))
             startupPlayedRoles.TryAdd(state.RoleId, 0);
     }
@@ -442,7 +442,7 @@ public sealed class PetVoiceMenuApplicationService(
                 FormatIntimacy(intimacyLevel), "", "", "failed", exception.Message, 1,
                 "pet.voice_cache.ensure", now);
             await documents.UpsertAsync(VoiceCacheDedupeDomain, NextId("legacy_voice_cache_dedupe_"),
-                JsonSerializer.Serialize(diagnostic, JsonOptions), now, lifetime.Token);
+                JsonTextCanonicalizer.Serialize(diagnostic), now, lifetime.Token);
         }
         finally { backgroundGenerations.TryRemove(backgroundKey, out _); }
     }
@@ -544,11 +544,11 @@ public sealed class PetVoiceMenuApplicationService(
             mutations.AddRange(prior.Select(x => new AtomicMutation(AtomicMutationKind.DeleteDomain, VoiceCacheDomain, x.Id, IdempotentDelete: true)));
             mutations.AddRange(priorGenerationIds.Select(id => new AtomicMutation(AtomicMutationKind.DeleteDomain, "voice_cache_generation", id, IdempotentDelete: true)));
             mutations.AddRange(entries.Select(x => new AtomicMutation(AtomicMutationKind.UpsertDomain, VoiceCacheDomain,
-                NextId("legacy_voice_cache_"), JsonSerializer.Serialize(x, JsonOptions), now)));
+                NextId("legacy_voice_cache_"), JsonTextCanonicalizer.Serialize(x), now)));
             mutations.Add(new AtomicMutation(AtomicMutationKind.UpsertDomain, "voice_cache_generation", generationId,
-                JsonSerializer.Serialize(new VoiceCacheGenerationDocument(generationId, character.RoleId, intimacyLevel,
+                JsonTextCanonicalizer.Serialize(new VoiceCacheGenerationDocument(generationId, character.RoleId, intimacyLevel,
                     cacheKey, contextHash, PetVoiceTriggerCatalog.Version, "ready", Plans.Count, Plans.Count,
-                    period.StartAt, period.EndAt, "", "", now, now), JsonOptions), now));
+                      period.StartAt, period.EndAt, "", "", now, now)), now));
             await atomic.ApplyAsync(mutations, cancellationToken);
             foreach (var old in prior)
             {
@@ -595,7 +595,7 @@ public sealed class PetVoiceMenuApplicationService(
                 ["tier"] = $"level_{intimacyLevel}",
                 ["count"] = remaining.Length.ToString(CultureInfo.InvariantCulture),
                 ["style"] = style,
-                ["itemsJson"] = JsonSerializer.Serialize(remaining.Select(plan => new
+                ["itemsJson"] = JsonTextCanonicalizer.Serialize(remaining.Select(plan => new
                 {
                     key = plan.Key,
                     triggerId = plan.TriggerId,
@@ -604,10 +604,10 @@ public sealed class PetVoiceMenuApplicationService(
                     style = plan.SuggestedStyle,
                     seed = BuildPlanSeed(character.RoleId, cacheKey, plan)
                 })),
-                ["existingLinesJson"] = JsonSerializer.Serialize(forbidden),
-                ["acceptedLinesJson"] = JsonSerializer.Serialize(result.Values.Select(line => line.Text)),
+                ["existingLinesJson"] = JsonTextCanonicalizer.Serialize(forbidden),
+                ["acceptedLinesJson"] = JsonTextCanonicalizer.Serialize(result.Values.Select(line => line.Text)),
                 ["duplicateLinesJson"] = "[]",
-                ["forbiddenSimilarLinesJson"] = JsonSerializer.Serialize(forbidden.Concat(result.Values.Select(line => line.Text))),
+                ["forbiddenSimilarLinesJson"] = JsonTextCanonicalizer.Serialize(forbidden.Concat(result.Values.Select(line => line.Text))),
                 ["attemptIndex"] = attempt.ToString(CultureInfo.InvariantCulture),
                 ["maxAttempts"] = "3",
                 ["retryReason"] = attempt == 1 ? "首次生成" : lastFailure?.Message ?? "补齐缺失或重复台词",
@@ -766,7 +766,7 @@ public sealed class PetVoiceMenuApplicationService(
             PetVoiceTriggerCatalog.Version, "failed", Plans.Count, 0, period.StartAt, period.EndAt,
             "pet_voice.cache_generation_failed", errorMessage, now, now);
         await atomic.ApplyAsync([new AtomicMutation(AtomicMutationKind.UpsertDomain, "voice_cache_generation", generationId,
-            JsonSerializer.Serialize(failed, JsonOptions), now)], cancellationToken);
+            JsonTextCanonicalizer.Serialize(failed), now)], cancellationToken);
     }
 
     private async Task<(int Entries, int Files, int Generations)> DeleteCacheEntriesAsync(
@@ -904,7 +904,7 @@ public sealed class PetVoiceMenuApplicationService(
 
     private static IReadOnlyList<GeneratedLine> ParseLines(string raw)
     {
-        var json = raw.Trim();
+        var json = JsonTextCanonicalizer.NormalizeGeneratedObject(raw, "generated pet voice lines");
         if (!json.StartsWith('{') || !json.EndsWith('}')) throw new InvalidDataException("缓存文案模型必须只返回 JSON 对象。");
         using var document = JsonDocument.Parse(json);
         if (!document.RootElement.TryGetProperty("lines", out var lines) || lines.ValueKind != JsonValueKind.Array)

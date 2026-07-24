@@ -25,6 +25,7 @@ public static class JsonConfig
     /// <summary>数据库持久化使用的选项。与 Web 相同，但可以独立调优。</summary>
     public static readonly JsonSerializerOptions Persistence = new(JsonSerializerDefaults.Web)
     {
+        Encoder = JavaScriptEncoder.Create(UnicodeRanges.All),
         WriteIndented = false
     };
 

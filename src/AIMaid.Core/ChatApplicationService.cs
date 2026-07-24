@@ -51,14 +51,14 @@ public sealed class ChatApplicationService :
             ["userMessage"] = command.Content,
             ["conversationSummary"] = string.Empty,
             ["recentMessagesJson"] = JsonSerializer.Serialize(
-                promptHistory.Select(message => new { role = message.Role, content = message.Content })),
+                promptHistory.Select(message => new { role = message.Role, content = message.Content }), JsonConfig.Audit),
             ["currentImagePath"] = string.Empty,
             ["currentFolderName"] = string.Empty
         };
         var response = new StringBuilder();
         await foreach (var delta in aiProvider.StreamChatAsync(
                            new AiChatRequest(conversationId, command.Content, characterId, modelName, promptHistory,
-                               SourceKey: "online_chat", TemplateValues: values, StreamResponse: false), cancellationToken))
+                               SourceKey: "online_chat", TemplateValues: values, RequireJsonResponse: true, StreamResponse: false), cancellationToken))
         {
             response.Append(delta);
         }

@@ -77,13 +77,18 @@ public sealed class SettingsBackedAiProviderClient(
             : !string.IsNullOrWhiteSpace(character.TemplateCardJson) ? character.TemplateCardJson : character.SourceCardJson;
         if (string.IsNullOrWhiteSpace(cardJson))
             throw new InvalidOperationException($"角色“{characterId}”没有可用的角色卡。");
-        var values = new Dictionary<string, string>(request.TemplateValues ?? new Dictionary<string, string>(), StringComparer.Ordinal)
+        cardJson = JsonTextCanonicalizer.NormalizeObject(cardJson, $"character card prompt: {characterId}", decodeLiteralUnicodeEscapes: true);
+        var values = new Dictionary<string, string>(request.TemplateValues ?? new Dictionary<string, string>(), StringComparer.Ordinal);
+        foreach (var key in new[] { "recentMessagesJson", "capabilitiesJson", "toolResultJson", "itemsJson", "existingLinesJson", "acceptedLinesJson", "duplicateLinesJson", "forbiddenSimilarLinesJson", "eventPayloadJson", "maidStateJson", "activeWindowJson", "broadcastCandidatesJson", "recentBroadcastMessagesJson" })
+            if (values.TryGetValue(key, out var value)) values[key] = JsonTextCanonicalizer.NormalizeObjectOrArray(value, $"source prompt value: {key}", decodeLiteralUnicodeEscapes: true);
+        values = new Dictionary<string, string>(values, StringComparer.Ordinal)
         {
             ["characterId"] = characterId,
             ["roleId"] = characterId,
             ["roleName"] = character?.Name ?? characterId,
             ["templateCardJson"] = cardJson,
-            ["outputSchemaJson"] = prompt.OutputSchemaJson,
+            ["outputSchemaJson"] = string.IsNullOrWhiteSpace(prompt.OutputSchemaJson) ? string.Empty : JsonTextCanonicalizer.NormalizeObjectOrArray(
+                prompt.OutputSchemaJson, $"source prompt schema: {prompt.SourceKey}", decodeLiteralUnicodeEscapes: true),
             ["message"] = request.Content,
             ["input"] = request.Content,
             ["userMessage"] = request.Content

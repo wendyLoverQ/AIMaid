@@ -1,6 +1,11 @@
 namespace AIMaid.Core;
 
-public sealed record ActivitySnapshot(string ProcessName, string WindowTitle, TimeSpan UserIdleTime, bool IsFullscreen);
+public sealed record ActivitySnapshot(
+    string ProcessName,
+    string WindowTitle,
+    string Scene,
+    TimeSpan UserIdleTime,
+    bool IsFullscreen);
 
 public interface IActivityProbe
 {

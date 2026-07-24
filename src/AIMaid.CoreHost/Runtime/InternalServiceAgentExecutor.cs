@@ -38,11 +38,17 @@ public sealed class InternalServiceAgentExecutor(
 
     private async Task<AgentExecutionResult> CreateReminderAsync(JsonElement args, CancellationToken cancellationToken)
     {
-        var timeText = args.TryGetProperty("timeText", out var time) ? time.GetString() ?? string.Empty : string.Empty;
-        var content = args.TryGetProperty("content", out var text) ? text.GetString() ?? string.Empty : string.Empty;
+        if (!args.TryGetProperty("timeText", out var time) || time.ValueKind != JsonValueKind.String)
+            return new AgentExecutionResult(null, "缺少 timeText 参数", "缺少 timeText 参数");
+        if (!args.TryGetProperty("content", out var text) || text.ValueKind != JsonValueKind.String)
+            return new AgentExecutionResult(null, "缺少 content 参数", "缺少 content 参数");
+        var timeText = time.GetString() ?? string.Empty;
+        var content = text.GetString() ?? string.Empty;
         var repeat = args.TryGetProperty("repeat", out var repeatValue) ? repeatValue.GetString() ?? "none" : "none";
-        if (!TryParseNaturalTime(timeText, out var dueAt) || string.IsNullOrWhiteSpace(content))
-            return new AgentExecutionResult(null, string.Empty, "提醒时间或内容无效；时间请使用“30分钟后”等格式。");
+        if (string.IsNullOrWhiteSpace(timeText) || string.IsNullOrWhiteSpace(content))
+            return new AgentExecutionResult(null, "提醒时间或内容不能为空", "timeText 或 content 为空");
+        if (!TryParseNaturalTime(timeText, out var dueAt))
+            return new AgentExecutionResult(null, $"无法解析时间：{timeText}（请使用\"30分钟后\"等格式）", $"natural time parse failed: {timeText}");
         var result = await reminders.HandleAsync(new SaveReminderCommand(null, content, $"提醒：{content}", dueAt, repeat, true, true), cancellationToken);
         return result.Succeeded && result.Value is not null
             ? new AgentExecutionResult(0, $"已创建提醒：{content}，时间：{dueAt:yyyy-MM-dd HH:mm}", string.Empty)
@@ -71,7 +77,7 @@ public sealed class InternalServiceAgentExecutor(
             ("天后", amount => DateTimeOffset.Now.AddDays(amount))
         })
         {
-            if (!text.EndsWith(suffix, StringComparison.Ordinal) || !int.TryParse(text[..^suffix.Length], out var amount) || amount <= 0) continue;
+            if (!text.EndsWith(suffix, StringComparison.Ordinal) || !int.TryParse(text[..^suffix.Length], out var amount)) continue;
             dueAt = add(amount);
             return true;
         }

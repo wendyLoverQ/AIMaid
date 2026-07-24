@@ -12,6 +12,7 @@ import { bridge } from '../../shared/bridge';
 import { USER_CONFIGURATION_GROUPS } from './user-configuration-fields';
 import { AgentDecisionSettings } from './AgentDecisionSettings';
 import type { CharacterDto, LlmBusinessModelConfigDto, LlmSourcePromptDto, ModelConfigurationDto } from '../../../shared/business';
+import type { ProactiveSourceDto } from '../../../shared/business';
 import type { PetDisplayMode, PetPresentationSnapshot } from '../../../shared/presentation';
 import { HOTKEY_ACTIONS } from '../../../shared/system-settings';
 import type { HotkeyAction, PlatformSettingsSnapshot } from '../../../shared/system-settings';
@@ -36,6 +37,15 @@ const IMAGE_INTERVAL_OPTIONS = [
     { seconds: 5, label: '5 秒' }, { seconds: 10, label: '10 秒' }, { seconds: 20, label: '20 秒' }, { seconds: 40, label: '40 秒' },
     { seconds: 60, label: '1 分钟' }, { seconds: 180, label: '3 分钟' }, { seconds: 300, label: '5 分钟' }, { seconds: 600, label: '10 分钟' }
 ] as const;
+const AI_PROACTIVE_SOURCE_COOLDOWNS = [
+    { minutes: 1, label: '1 分钟' },
+    { minutes: 5, label: '5 分钟' },
+    { minutes: 10, label: '10 分钟' },
+    { minutes: 15, label: '15 分钟' },
+    { minutes: 30, label: '30 分钟' },
+    { minutes: 60, label: '1 小时' },
+    { minutes: 180, label: '3 小时' }
+] as const;
 export function SettingsPage(): React.JSX.Element {
     const [category, setCategory] = useState<Category>('显示与窗口');
     const [search, setSearch] = useState('');
@@ -59,7 +69,7 @@ function SettingsCategory({ category, search }: {
         switch (category) {
             case '显示与窗口': return <DisplaySettings />;
             case 'AI 模型': return <ModelSettings />;
-            case 'AI 主动': return <DecisionSettings />;
+            case 'AI 主动': return <ProactiveDecisionSettings />;
             case 'Agent 决策': return <AgentDecisionSettings />;
             case '语音 / TTS': return <VoiceSettings />;
             case '缓存与性能': return <CacheSettings />;
@@ -289,7 +299,78 @@ function ModelSettings(): React.JSX.Element {
     <SettingCard title="新增模型配置"><Container><Input aria-label="模型标识" value={newKey} onChange={(event) => setNewKey(event.target.value)}/><Select value={newType} onChange={(event) => setNewType(event.target.value as 'local' | 'api')} options={[{ value: 'local', label: '本地模型' }, { value: 'api', label: 'API 模型' }]}/><Button variant="primary" loading={busy} onClick={() => void addModel()}>新增模型</Button></Container></SettingCard>
   </>;
 }
-function DecisionSettings(): React.JSX.Element { return <BooleanRuntimeSetting settingKey="ai_proactive_enabled" defaultValue title="AI 决策语音" label="启用 AI 决策语音" success={(value) => value ? 'AI 决策语音已开启。' : 'AI 决策语音已关闭。'}/>; }
+function ProactiveDecisionSettings(): React.JSX.Element {
+    const toast = useToast();
+    const [sources, setSources] = useState<ProactiveSourceDto[] | null>(null);
+    const [testSource, setTestSource] = useState('');
+    const [busy, setBusy] = useState('');
+    async function load(): Promise<void> {
+        const response = await bridge.core.invoke({ type: 'proactive.sources.list', payload: {} });
+        if (!response.success || !Array.isArray(response.payload))
+            throw new Error(response.error?.message ?? '主动数据源读取失败。');
+        const rows = response.payload as ProactiveSourceDto[];
+        setSources(rows);
+        setTestSource((current) => current || rows[0]?.sourceKey || '');
+    }
+    useEffect(() => { void load().catch((reason: unknown) => toast.show(messageOf(reason), 'error')); }, []);
+    async function update(item: ProactiveSourceDto): Promise<void> {
+        setBusy(item.sourceKey);
+        try {
+            const response = await bridge.core.invoke({
+                type: 'proactive.source.update',
+                payload: { sourceKey: item.sourceKey, enabled: item.enabled, cooldownMinutes: item.cooldownMinutes }
+            });
+            if (!response.success)
+                throw new Error(response.error?.message ?? '主动数据源保存失败。');
+            await load();
+            toast.show(`数据源已更新：${item.displayName}。`, 'success');
+        }
+        catch (reason) {
+            toast.show(messageOf(reason), 'error');
+        }
+        finally {
+            setBusy('');
+        }
+    }
+    async function test(): Promise<void> {
+        if (testSource === '')
+            return;
+        setBusy('test');
+        try {
+            const response = await bridge.core.invoke({ type: 'proactive.source.test', payload: { sourceKey: testSource } }, 120000);
+            if (!response.success)
+                throw new Error(response.error?.message ?? '单个数据源测试失败。');
+            toast.show('单个数据源已进入主动决策与真实执行链。', 'success');
+        }
+        catch (reason) {
+            toast.show(messageOf(reason), 'error');
+        }
+        finally {
+            setBusy('');
+        }
+    }
+    return <>
+      <BooleanRuntimeSetting settingKey="ai_proactive_enabled" defaultValue title="AI 决策语音" label="启用 AI 决策语音" success={(value) => value ? 'AI 决策语音已开启。' : 'AI 决策语音已关闭。'}/>
+      <DisturbanceSetting/>
+      <SettingCard title="单个数据源测试" description="手动测试忽略自动冷却与评分阈值，不写入正式播报去重状态。">
+        <Container><Select value={testSource} onChange={(event) => setTestSource(event.target.value)} options={(sources ?? []).map((source) => ({ value: source.sourceKey, label: `${source.displayName} · ${source.statusText}` }))}/><Button loading={busy === 'test'} disabled={sources === null || testSource === ''} onClick={() => void test()}>测试</Button></Container>
+      </SettingCard>
+      <SettingCard title="主动数据源">
+        {sources === null ? <Paragraph>正在读取主动数据源…</Paragraph> : sources.map((source) => <Section key={source.sourceKey}>
+          <Title4>{source.displayName} · {source.statusText}</Title4>
+          <SmallText>{source.sourceKey} · 优先级 {source.priority} · 采集 {source.frequencyMinutes} 分钟 · 最近评分 {source.lastScore}</SmallText>
+          <Switch label="启用数据源" checked={source.enabled} onChange={(event) => setSources((rows) => rows?.map((row) => row.sourceKey === source.sourceKey ? { ...row, enabled: event.target.checked } : row) ?? null)}/>
+          <Select label="数据源冷却" value={String(source.cooldownMinutes)} options={[
+              ...AI_PROACTIVE_SOURCE_COOLDOWNS.map((item) => ({ value: String(item.minutes), label: item.label })),
+              ...(AI_PROACTIVE_SOURCE_COOLDOWNS.some((item) => item.minutes === source.cooldownMinutes)
+                  ? []
+                  : [{ value: String(source.cooldownMinutes), label: `${Math.max(1, source.cooldownMinutes)} 分钟` }])
+          ]} onChange={(event) => setSources((rows) => rows?.map((row) => row.sourceKey === source.sourceKey ? { ...row, cooldownMinutes: Number(event.target.value) } : row) ?? null)}/>
+          <Button loading={busy === source.sourceKey} onClick={() => void update(source)}>保存数据源</Button>
+        </Section>)}
+      </SettingCard>
+    </>;
+}
 function VoiceSettings(): React.JSX.Element { return <BooleanRuntimeSetting settingKey="realtime_tts_enabled" defaultValue title="实时 TTS" label="实时生成并播放角色语音" success={(value) => value ? '实时 TTS 已开启。' : '实时 TTS 已关闭。'}/>; }
 function CacheSettings(): React.JSX.Element {
     const toast = useToast();
@@ -585,20 +666,37 @@ function BooleanRuntimeSetting({ settingKey, defaultValue, title, label, success
 function DisturbanceSetting(): React.JSX.Element {
     const toast = useToast();
     const [settings, setSettings] = useState<DisturbanceSettingsDto | null>(null);
+    const [saving, setSaving] = useState(false);
     useEffect(() => { void bridge.core.invoke({ type: 'disturbance_settings.get', payload: {} }).then((response) => { if (!response.success || response.payload === null)
         throw new Error(response.error?.message ?? '勿扰设置读取失败。'); setSettings(response.payload as DisturbanceSettingsDto); }).catch((reason: unknown) => toast.show(messageOf(reason), 'error')); }, []);
-    async function select(value: string): Promise<void> { if (settings === null)
-        return; const next = { ...settings, mode: value as DisturbanceSettingsDto['mode'], updatedAt: new Date().toISOString() }; try {
+    async function save(next: DisturbanceSettingsDto, message: string): Promise<void> {
+        setSaving(true);
+        try {
         const response = await bridge.core.invoke({ type: 'disturbance_settings.save', payload: { settings: next } });
         if (!response.success)
             throw new Error(response.error?.message ?? '勿扰设置保存失败。');
         setSettings(next);
-        toast.show(`勿扰模式：${disturbanceLabel(value)}。主动决策消费者已立即切换。`, 'success');
+        toast.show(message, 'success');
     }
     catch (reason) {
         toast.show(messageOf(reason), 'error');
+    }
+    finally {
+        setSaving(false);
     } }
-    return <SettingCard title={`勿扰模式：${disturbanceLabel(settings?.mode ?? 'normal')}`}><ValueChoice values={[['normal', '正常'], ['quiet', '安静'], ['focus', '专注'], ['game', '游戏'], ['sleep', '睡眠']]} selected={settings?.mode ?? 'normal'} onSelect={(value) => void select(value)}/></SettingCard>;
+    function patch(value: Partial<DisturbanceSettingsDto>): void {
+        setSettings((current) => current === null ? null : { ...current, ...value, updatedAt: new Date().toISOString() });
+    }
+    return <SettingCard title={`勿扰模式：${disturbanceLabel(settings?.mode ?? 'normal')}`}>
+      {settings === null ? <Paragraph>正在读取勿扰设置…</Paragraph> : <>
+        <ValueChoice values={[['normal', '正常'], ['quiet', '安静'], ['focus', '专注'], ['game', '游戏'], ['sleep', '睡眠']]} selected={settings.mode} onSelect={(value) => { const next = { ...settings, mode: value as DisturbanceSettingsDto['mode'], updatedAt: new Date().toISOString() }; void save(next, `勿扰模式：${disturbanceLabel(value)}。主动决策消费者已立即切换。`); }}/>
+        <Switch label="启用静默时段" checked={settings.quietHoursEnabled} onChange={(event) => patch({ quietHoursEnabled: event.target.checked })}/>
+        <Container><Input label="静默开始" type="time" value={settings.quietHoursStart} onChange={(event) => patch({ quietHoursStart: event.target.value })}/><Input label="静默结束" type="time" value={settings.quietHoursEnd} onChange={(event) => patch({ quietHoursEnd: event.target.value })}/></Container>
+        <Switch label="全屏时抑制低优先级主动行为" checked={settings.suppressWhenFullscreen} onChange={(event) => patch({ suppressWhenFullscreen: event.target.checked })}/>
+        <Input label="每小时最多主动次数" type="number" min={0} max={100} value={String(settings.maxProactivePerHour)} onChange={(event) => patch({ maxProactivePerHour: Number(event.target.value) })}/>
+        <Button variant="primary" loading={saving} onClick={() => void save(settings, '勿扰、静默时段和每小时次数已保存。')}>保存勿扰设置</Button>
+      </>}
+    </SettingCard>;
 }
 function SettingCard({ title, description, children }: {
     title: string;

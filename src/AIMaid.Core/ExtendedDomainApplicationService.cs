@@ -239,7 +239,11 @@ public sealed class ExtendedDomainApplicationService :
             try { using var _ = JsonDocument.Parse(command.Prompt.OutputSchemaJson); }
             catch (JsonException) { return OperationResult.Failure("source_prompt.invalid_schema", "输出结构 JSON 无效。"); }
         }
-        var value = command.Prompt with { UpdatedAt = DateTimeOffset.Now };
+        var value = command.Prompt with
+        {
+            OutputSchemaJson = JsonTextCanonicalizer.NormalizeOptionalObjectOrArray(command.Prompt.OutputSchemaJson, "LlmSourcePrompts.OutputSchemaJson", decodeLiteralUnicodeEscapes: true),
+            UpdatedAt = DateTimeOffset.Now
+        };
         var result = await SaveAsync(SourcePromptDomain, value.SourceKey, value, value.UpdatedAt, cancellationToken);
         if (result.Succeeded && value.SourceKey.Equals("lazy_voice_lines", StringComparison.OrdinalIgnoreCase))
             await events.PublishAsync(new AIMaid.Contracts.PetVoice.VoiceCacheConfigurationChangedEvent(EventIdentity.NewId(), DateTimeOffset.Now,
@@ -463,13 +467,13 @@ public sealed class ExtendedDomainApplicationService :
     private async Task<OperationResult> SaveAsync<T>(string domain, string id, T value, DateTimeOffset updatedAt, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(id)) return OperationResult.Failure($"{domain}.invalid_id", "业务 ID 不能为空。");
-        await atomic.ApplyAsync([new AtomicMutation(AtomicMutationKind.UpsertDomain, domain, id, JsonSerializer.Serialize(value), updatedAt)], cancellationToken);
+        await atomic.ApplyAsync([new AtomicMutation(AtomicMutationKind.UpsertDomain, domain, id, JsonTextCanonicalizer.Serialize(value), updatedAt)], cancellationToken);
         return OperationResult.Success();
     }
     private async Task<OperationResult> SaveAtomicAsync<T>(string domain, string id, T value, DateTimeOffset updatedAt, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(id)) return OperationResult.Failure($"{domain}.invalid_id", "业务 ID 不能为空。");
-        await atomic.ApplyAsync([new AtomicMutation(AtomicMutationKind.UpsertDomain, domain, id, JsonSerializer.Serialize(value), updatedAt)], cancellationToken);
+        await atomic.ApplyAsync([new AtomicMutation(AtomicMutationKind.UpsertDomain, domain, id, JsonTextCanonicalizer.Serialize(value), updatedAt)], cancellationToken);
         return OperationResult.Success();
     }
     private async Task<OperationResult> DeleteAsync(string domain, string id, CancellationToken cancellationToken)
@@ -514,8 +518,13 @@ public sealed class AgentApplicationService :
 
     public async Task<OperationResult> HandleAsync(SaveAgentCapabilityCommand command, CancellationToken cancellationToken = default)
     {
-        var item = command.Capability with { UpdatedAt = DateTimeOffset.Now };
-        await store.UpsertAsync(CapabilityDomain, item.CapabilityName, JsonSerializer.Serialize(item), item.UpdatedAt, cancellationToken);
+        var item = command.Capability with
+        {
+            ConfigJson = JsonTextCanonicalizer.NormalizeOptionalObjectOrArray(command.Capability.ConfigJson, "AgentCapabilities.ConfigJson", decodeLiteralUnicodeEscapes: true),
+            ArgsSchemaJson = JsonTextCanonicalizer.NormalizeOptionalObjectOrArray(command.Capability.ArgsSchemaJson, "AgentCapabilities.ArgsSchemaJson", decodeLiteralUnicodeEscapes: true),
+            UpdatedAt = DateTimeOffset.Now
+        };
+        await store.UpsertAsync(CapabilityDomain, item.CapabilityName, JsonTextCanonicalizer.Serialize(item), item.UpdatedAt, cancellationToken);
         return OperationResult.Success();
     }
 
@@ -525,6 +534,8 @@ public sealed class AgentApplicationService :
 
     public async Task<OperationResult<AgentToolCallDto>> HandleAsync(ExecuteAgentCapabilityCommand command, CancellationToken cancellationToken = default)
     {
+        var argsJson = JsonTextCanonicalizer.NormalizeObject(command.ArgsJson, "AgentToolCalls.ArgsJson", decodeLiteralUnicodeEscapes: true);
+        command = command with { ArgsJson = argsJson };
         var json = await store.GetAsync(CapabilityDomain, command.CapabilityName, cancellationToken);
         if (json is null) return OperationResult<AgentToolCallDto>.Failure("agent.capability_not_found", "Agent 能力不存在。");
         var capability = Deserialize<AgentCapabilityDto>(json);
@@ -675,7 +686,7 @@ public sealed class AgentApplicationService :
         var raw = new StringBuilder();
         await foreach (var delta in aiProvider.StreamChatAsync(new AiChatRequest(
             conversationId, command.Content, character.RoleId, string.Empty, [],
-            SourceKey: "agent_decision", TemplateValues: values, StreamResponse: false), cancellationToken))
+            SourceKey: "agent_decision", TemplateValues: values, RequireJsonResponse: true, StreamResponse: false), cancellationToken))
             raw.Append(delta);
 
         AgentDecisionDto decision;
@@ -701,7 +712,9 @@ public sealed class AgentApplicationService :
         using var document = JsonDocument.Parse(trimmed[start..(end + 1)]);
         var root = document.RootElement;
         string Read(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : string.Empty;
-        var args = root.TryGetProperty("args", out var argsElement) && argsElement.ValueKind == JsonValueKind.Object ? argsElement.GetRawText() : "{}";
+        var args = root.TryGetProperty("args", out var argsElement) && argsElement.ValueKind == JsonValueKind.Object
+            ? JsonSerializer.Serialize(argsElement, JsonConfig.Persistence) : "{}";
+        args = JsonTextCanonicalizer.NormalizeObject(args, "AgentDecision.ArgsJson", decodeLiteralUnicodeEscapes: true);
         return new AgentDecisionDto(conversationId, Read("type"), Read("message"), Read("voiceStyle"),
             Read("capability"), args, Read("reason"), Read("timeText"), Read("content"), Read("repeat"));
     }
@@ -742,8 +755,13 @@ public sealed class ProactiveApplicationService :
 
     public async Task<OperationResult> HandleAsync(SaveProactiveRuleCommand command, CancellationToken cancellationToken = default)
     {
-        var rule = command.Rule with { UpdatedAt = DateTimeOffset.Now };
-        await store.UpsertAsync(RuleDomain, rule.RuleId, JsonSerializer.Serialize(rule), rule.UpdatedAt, cancellationToken);
+        var rule = command.Rule with
+        {
+            ConditionJson = JsonTextCanonicalizer.NormalizeOptionalObjectOrArray(command.Rule.ConditionJson, "ProactiveRules.ConditionJson", decodeLiteralUnicodeEscapes: true),
+            TextTemplatesJson = JsonTextCanonicalizer.NormalizeOptionalObjectOrArray(command.Rule.TextTemplatesJson, "ProactiveRules.TextTemplatesJson", decodeLiteralUnicodeEscapes: true),
+            UpdatedAt = DateTimeOffset.Now
+        };
+        await store.UpsertAsync(RuleDomain, rule.RuleId, JsonTextCanonicalizer.Serialize(rule), rule.UpdatedAt, cancellationToken);
         return OperationResult.Success();
     }
     public async Task<OperationResult> HandleAsync(SaveDisturbanceSettingsCommand command, CancellationToken cancellationToken = default)
@@ -805,6 +823,7 @@ public sealed class ProactiveApplicationService :
                                [],
                                SourceKey: "maid_ai_decision",
                                TemplateValues: values,
+                               RequireJsonResponse: true,
                                StreamResponse: false), cancellationToken))
                 raw.Append(delta);
             var generated = ParseProactiveDecision(raw.ToString());
