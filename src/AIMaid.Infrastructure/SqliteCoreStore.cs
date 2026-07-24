@@ -88,6 +88,7 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
         command.CommandText = """
             INSERT INTO ChatMessages (ConversationId, Role, Content, CharacterId, ModelName, Source, MetadataJson, CreatedAt)
             VALUES ($conversationId, $role, $content, $characterId, $modelName, $source, $metadataJson, $createdAt);
+            UPDATE VoiceConversations SET UpdatedAt=$createdAt WHERE ConversationId=$conversationId;
             SELECT last_insert_rowid();
             """;
         command.Parameters.AddWithValue("$conversationId", message.ConversationId);

@@ -104,10 +104,10 @@ export const bridge = Object.freeze({
       requireCapability(window.aimaid.media?.registerLocalFile, 'media.registerLocalFile')(filePath)
   }),
   notebook: Object.freeze({
-    importFile: (filePath: string): Promise<IpcResponseEnvelope<{ path: string; url: string; name: string }>> =>
-      requireCapability(window.aimaid.notebook?.importFile, 'notebook.importFile')(filePath),
-    importData: (name: string, dataUrl: string): Promise<IpcResponseEnvelope<{ path: string; url: string; name: string }>> =>
-      requireCapability(window.aimaid.notebook?.importData, 'notebook.importData')(name, dataUrl),
+    importFile: (noteId: string, filePath: string): Promise<IpcResponseEnvelope<{ path: string; url: string; name: string }>> =>
+      requireCapability(window.aimaid.notebook?.importFile, 'notebook.importFile')(noteId, filePath),
+    importData: (noteId: string, name: string, dataUrl: string): Promise<IpcResponseEnvelope<{ path: string; url: string; name: string }>> =>
+      requireCapability(window.aimaid.notebook?.importData, 'notebook.importData')(noteId, name, dataUrl),
     imageAction: (action: 'copy' | 'openLocation' | 'saveAs', path: string): Promise<IpcResponseEnvelope<{ action: string }>> =>
       requireCapability(window.aimaid.notebook?.imageAction, 'notebook.imageAction')(action, path)
   }),

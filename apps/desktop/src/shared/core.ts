@@ -76,6 +76,7 @@ export type CoreRequest =
   | { type: 'market.record'; payload: { marketEvent: MarketEventDto } }
   | { type: 'notebook.list'; payload: Record<string, never> }
   | { type: 'notebook.save'; payload: { note: NotebookNoteDto } }
+  | { type: 'notebook.attachment.add'; payload: { id: string; noteId: string; originalName: string; storedPath: string; mimeType: string; sizeBytes: number; width: number | null; height: number | null; sha256: string; createdAt: string } }
   | { type: 'notebook.delete'; payload: { noteId: string } }
   | { type: 'video.list'; payload: { favoritesOnly?: boolean } }
   | { type: 'video.import_file'; payload: { filePath: string; albumId?: string | null } }
@@ -350,6 +351,12 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
       return Object.keys(value.payload).length === 0
     case 'notebook.save':
       return isNotebookNote(value.payload.note)
+    case 'notebook.attachment.add':
+      return isNonEmptyString(value.payload.id) && isNonEmptyString(value.payload.noteId) && typeof value.payload.originalName === 'string' &&
+        isNonEmptyString(value.payload.storedPath) && typeof value.payload.mimeType === 'string' && typeof value.payload.sizeBytes === 'number' &&
+        Number.isInteger(value.payload.sizeBytes) && value.payload.sizeBytes >= 0 &&
+        (value.payload.width === null || Number.isInteger(value.payload.width)) && (value.payload.height === null || Number.isInteger(value.payload.height)) &&
+        typeof value.payload.sha256 === 'string' && typeof value.payload.createdAt === 'string'
     case 'notebook.delete':
       return isNonEmptyString(value.payload.noteId)
     case 'video.list':

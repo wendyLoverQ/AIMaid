@@ -201,7 +201,7 @@ internal sealed class LegacyRelationalDocumentStore
         var secrets = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var (field, ordinal) in VaultSecretOrdinals)
             if (!reader.IsDBNull(ordinal) && !string.IsNullOrWhiteSpace(reader.GetString(ordinal)))
-                secrets[field] = RequireSecrets().Unprotect(reader.GetString(ordinal));
+                secrets[field] = UnprotectVaultValue(reader.GetString(ordinal));
         var metadata = new JsonObject
         {
             ["ChainType"] = reader.IsDBNull(7) ? string.Empty : reader.GetString(7),
@@ -228,8 +228,8 @@ internal sealed class LegacyRelationalDocumentStore
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            var oldValue = reader.IsDBNull(3) ? string.Empty : RequireSecrets().Unprotect(reader.GetString(3));
-            var newValue = reader.IsDBNull(4) ? string.Empty : RequireSecrets().Unprotect(reader.GetString(4));
+            var oldValue = reader.IsDBNull(3) ? string.Empty : UnprotectVaultValue(reader.GetString(3));
+            var newValue = reader.IsDBNull(4) ? string.Empty : UnprotectVaultValue(reader.GetString(4));
             result.Add(new LegacyVaultHistoryReadModel($"legacy_vault_history_{reader.GetInt64(0)}", $"legacy_vault_{reader.GetInt64(1)}",
                 reader.GetString(2), oldValue, newValue, reader.IsDBNull(5) ? string.Empty : reader.GetString(5), ParseDate(reader.GetString(6))));
         }
@@ -258,7 +258,7 @@ internal sealed class LegacyRelationalDocumentStore
                 await using var reader = await existing.ExecuteReaderAsync(cancellationToken);
                 if (!await reader.ReadAsync(cancellationToken)) throw new InvalidOperationException($"密码库条目不存在：{item.ItemId}。");
                 foreach (var (field, ordinal) in VaultSecretFieldOrdinals)
-                    if (!reader.IsDBNull(ordinal) && !string.IsNullOrWhiteSpace(reader.GetString(ordinal))) oldSecrets[field] = RequireSecrets().Unprotect(reader.GetString(ordinal));
+                    if (!reader.IsDBNull(ordinal) && !string.IsNullOrWhiteSpace(reader.GetString(ordinal))) oldSecrets[field] = UnprotectVaultValue(reader.GetString(ordinal));
             }
             else
             {
@@ -322,7 +322,7 @@ internal sealed class LegacyRelationalDocumentStore
         command.CommandText = "SELECT ItemId,FieldName,OldValueEncrypted FROM VaultItemHistories WHERE Id=$id"; command.Parameters.AddWithValue("$id", historyKey);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken)) throw new InvalidOperationException($"密码库历史不存在：{historyId}。");
-        var itemId = $"legacy_vault_{reader.GetInt64(0)}"; var field = reader.GetString(1); var oldValue = RequireSecrets().Unprotect(reader.GetString(2));
+        var itemId = $"legacy_vault_{reader.GetInt64(0)}"; var field = reader.GetString(1); var oldValue = UnprotectVaultValue(reader.GetString(2));
         var item = await GetVaultAsync(itemId, cancellationToken) ?? throw new InvalidOperationException($"密码库条目不存在：{itemId}。");
         var next = item.Secrets.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal); next[field] = oldValue;
         await SaveVaultAsync(item.Item, next, "Restore from history", cancellationToken);

@@ -47,7 +47,8 @@ export function NotebookPage(): React.JSX.Element {
   const patchDraft = (patch: Partial<NotebookNoteDto>): void => { const current = draftRef.current; if (current === undefined) return; const next = { ...current, ...patch }; revisionRef.current += 1; draftRef.current = next; setDraft(next); dirtyRef.current = true; setDirty(true) }
   const importImages = async (files: readonly File[]): Promise<void> => {
     for (const file of files) {
-      const dataUrl = await readDataUrl(file); const response = await bridge.notebook.importData(file.name, dataUrl)
+      if (draft === undefined) continue
+      const dataUrl = await readDataUrl(file); const response = await bridge.notebook.importData(draft.noteId, file.name, dataUrl)
       const imported = response.payload
       if (!response.success || imported === undefined || imported === null) { toast.show(response.error?.message ?? '图片导入失败。', 'error'); continue }
       editor.current?.insertHtml(`<img src="${escapeAttribute(imported.url)}" data-path="${escapeAttribute(imported.path)}" alt="${escapeAttribute(file.name)}">`)
@@ -58,7 +59,8 @@ export function NotebookPage(): React.JSX.Element {
     const response = await bridge.dialog.openFile([{ name: '图片文件', extensions: ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'] }])
     const paths = response.success ? readFilePaths(response.payload) : []
     for (const path of paths) {
-      const imported = await bridge.notebook.importFile(path)
+      if (draft === undefined) continue
+      const imported = await bridge.notebook.importFile(draft.noteId, path)
       if (!imported.success || imported.payload === null) { toast.show(imported.error?.message ?? '图片导入失败。', 'error'); continue }
       editor.current?.insertHtml(`<img src="${escapeAttribute(imported.payload.url)}" data-path="${escapeAttribute(imported.payload.path)}" alt="${escapeAttribute(imported.payload.name)}">`)
       patchDraft({ attachmentIds: [...(draft?.attachmentIds ?? []), imported.payload.path] })

@@ -235,6 +235,11 @@ public interface ISecretProtector
     string Unprotect(string protectedValue);
 }
 
+public interface ILegacyVaultSecretProtector
+{
+    bool TryUnprotect(string protectedValue, out string plaintext);
+}
+
 public interface IRemoteMediaResolver
 {
     Task<string> ResolveAsync(string url, RemoteSiteDto? site, CancellationToken cancellationToken = default);
