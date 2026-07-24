@@ -12,6 +12,8 @@ const MASK_WIDTH = 160
 const MASK_REFRESH_MS = 120
 const CONTOUR_FOLLOW_TIME_MS = 150
 const SURROUND_PADDING = 72
+const DEFAULT_BOTTOM_WAVE_GAP = 8
+const LIVE2D_BOTTOM_WAVE_GAP = 17
 const BOTTOM_EXTENSION = 88
 const RADIAL_EXTENSION = 72
 
@@ -244,7 +246,8 @@ function positionBottomOverlay(
   const centerX = anchor === undefined
     ? source.left - stage.left + layout.normalizedCenterX * source.width
     : anchor.clientX - stage.left
-  const baseline = source.top - stage.top + contourBottom * source.height + 8
+  const bottomWaveGap = anchor === undefined ? DEFAULT_BOTTOM_WAVE_GAP : LIVE2D_BOTTOM_WAVE_GAP
+  const baseline = source.top - stage.top + contourBottom * source.height + bottomWaveGap
   const left = Math.max(0, Math.floor(centerX - visibleWidth / 2 - 12))
   const top = Math.max(0, Math.floor(baseline - 12))
   const right = Math.min(stage.width, Math.ceil(centerX + visibleWidth / 2 + 12))
@@ -375,7 +378,8 @@ function drawBottomBars(
   const contourBottom = Math.max(...contour.points.map((point) => point.y))
   const center = centerXOverride ?? offsetX + layout.normalizedCenterX * width
   const slots = bottomBarSlots(contour, width, layout.spacing)
-  const baseline = snapToDevicePixel(context, offsetY + contourBottom * height + 8)
+  const bottomWaveGap = centerXOverride === undefined ? DEFAULT_BOTTOM_WAVE_GAP : LIVE2D_BOTTOM_WAVE_GAP
+  const baseline = snapToDevicePixel(context, offsetY + contourBottom * height + bottomWaveGap)
   const peak = 255
   const path = new Path2D()
   for (const slot of slots) {
