@@ -16,7 +16,7 @@ public sealed class WindowsProcessController : IExternalProgramController
         {
             FileName = fullPath,
             WorkingDirectory = ResolveWorkingDirectory(fullPath, workingDirectory),
-            UseShellExecute = false
+            UseShellExecute = true
         };
         foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
         var process = Process.Start(startInfo) ?? throw new InvalidOperationException("外部程序启动失败。");

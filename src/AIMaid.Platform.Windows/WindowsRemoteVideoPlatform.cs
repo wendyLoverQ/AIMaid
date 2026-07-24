@@ -64,7 +64,7 @@ public sealed class WindowsRemoteVideoPlatform : IRemoteVideoPlatform
         {
             FileName = executable,
             WorkingDirectory = Path.GetDirectoryName(executable)!,
-            UseShellExecute = false
+            UseShellExecute = true
         };
         startInfo.ArgumentList.Add("/current");
         startInfo.ArgumentList.Add(request.Source);
