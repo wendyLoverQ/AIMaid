@@ -158,7 +158,7 @@ export function useImageModeIdleAnimation(
         weightShift = {
           startedAt: now,
           durationMs: randomBetween(2_600, 4_200),
-          distance: randomBetween(1, 3) * (Math.random() < 0.5 ? -1 : 1)
+          distance: randomBetween(1.5, 3) * (Math.random() < 0.5 ? -1 : 1)
         }
       }
       if (weightShift !== null && now >= weightShift.startedAt + weightShift.durationMs) {
@@ -193,7 +193,7 @@ export function useImageModeIdleAnimation(
       const weightX = weightShift === null ? 0 : weightShift.distance * weightProgress
       const attentionProgress = attention === null ? 0 : motionPulse((now - attention.startedAt) / attention.durationMs)
       const attentionX = attention === null ? 0 : attention.direction * 1.2 * attentionProgress
-      const speakingRise = smoothedTtsLevel * 0.55
+      const speakingRise = smoothedTtsLevel * 0.75
       const stripHeight = canvas.height / STRIP_COUNT
 
       context.clearRect(0, 0, canvas.width, canvas.height)
@@ -206,12 +206,12 @@ export function useImageModeIdleAnimation(
         const upper = upperBodyWeight(normalizedY)
         const sourceY = index * stripHeight
         const overlap = index === STRIP_COUNT - 1 ? 0 : Math.max(1, pixelScale)
-        const breathY = -(head * 1.4 + chest * 3.2) * breathAmount
-        const relaxY = chest * 2.2 * longExhaleProgress
-        const attentionY = -(head * 1.8 + chest * 2.8) * attentionProgress
+        const breathY = -(head * 1.8 + chest * 4) * breathAmount
+        const relaxY = chest * 3 * longExhaleProgress
+        const attentionY = -(head * 2.2 + chest * 3.6) * attentionProgress
         const yOffset = (breathY + relaxY + attentionY - upper * speakingRise) * pixelScale
         const xOffset = upper * (weightX + attentionX) * pixelScale
-        const xExpand = chest * (0.75 * breathAmount + 0.25 * attentionProgress) * pixelScale
+        const xExpand = chest * (0.95 * breathAmount + 0.4 * attentionProgress) * pixelScale
         context.drawImage(
           source,
           0,
