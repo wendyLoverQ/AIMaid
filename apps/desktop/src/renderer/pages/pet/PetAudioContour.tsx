@@ -2,8 +2,8 @@ import { useEffect, useRef } from 'react'
 import { PetAudioContourCanvas } from '../../components/ui'
 import { ALPHA_CONTOUR_ANGLE_COUNT, buildOuterAlphaContour } from '../../../shared/alpha-contour'
 import type { AlphaContour } from '../../../shared/alpha-contour'
-import { advanceBarDynamics, barSpectrumTarget, spectrumPeak } from '../../../shared/audio-bar-dynamics'
-import { bottomBarIdentity, bottomBarSlots, createBottomBarLayout, createRadialVisualizerLayout, isBackgroundMusicVisualizer } from '../../../shared/music-visualizer'
+import { advanceBarDynamics, barSpectrumTarget } from '../../../shared/audio-bar-dynamics'
+import { bottomBarIdentity, bottomBarSlots, createBottomBarLayout, createRadialVisualizerLayout, isBackgroundMusicVisualizer, RADIAL_BAR_COUNT } from '../../../shared/music-visualizer'
 import type { BottomBarLayout, RadialVisualizerLayout } from '../../../shared/music-visualizer'
 import type { MusicVisualizerStyle } from '../../../shared/music-visualizer'
 import { readPetMusicSpectrum, readPetMusicWaveform } from './pet-music-playback'
@@ -36,7 +36,7 @@ export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visua
     const maskCanvas = document.createElement('canvas')
     const context = overlay.getContext('2d')
     if (context === null) return
-    const spectrum = new Uint8Array(ALPHA_CONTOUR_ANGLE_COUNT / 2)
+    const spectrum = new Uint8Array(visualizerStyle === 'radial-bars' ? RADIAL_BAR_COUNT : ALPHA_CONTOUR_ANGLE_COUNT / 2)
     const waveform = new Uint8Array(ALPHA_CONTOUR_ANGLE_COUNT)
     const dynamics = new Map<number, number>()
     let contour: AlphaContour | null = null
@@ -305,7 +305,7 @@ function drawSurroundWave(
   })
   const perimeter = segments.reduce((sum, segment) => sum + segment.length, 0)
   const spacing = 7
-  const peak = spectrumPeak(spectrum)
+  const peak = 255
   const path = new Path2D()
   let segmentIndex = 0
   let segmentStart = 0
@@ -356,7 +356,7 @@ function drawBottomBars(
   const center = centerXOverride ?? offsetX + layout.normalizedCenterX * width
   const slots = bottomBarSlots(contour, width, layout.spacing)
   const baseline = snapToDevicePixel(context, offsetY + contourBottom * height + 8)
-  const peak = spectrumPeak(spectrum)
+  const peak = 255
   const path = new Path2D()
   for (const slot of slots) {
     const identity = bottomBarIdentity(slot)
@@ -401,8 +401,8 @@ function drawRadialBars(
   centerX: number,
   centerY: number
 ): void {
-  const count = 72
-  const peak = spectrumPeak(spectrum)
+  const count = RADIAL_BAR_COUNT
+  const peak = 255
   const path = new Path2D()
   for (let index = 0; index < count; index += 1) {
     const angle = -Math.PI / 2 + index / count * Math.PI * 2

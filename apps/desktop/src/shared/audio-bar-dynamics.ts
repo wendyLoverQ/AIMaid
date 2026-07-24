@@ -7,9 +7,9 @@ export function spectrumPeak(spectrum: Uint8Array): number {
 export function barSpectrumTarget(spectrum: Uint8Array, peak: number, barIndex: number): number {
   if (spectrum.length === 0) return 0
   const center = positiveModulo(barIndex, spectrum.length)
-  const previous = spectrum[positiveModulo(center - 1, spectrum.length)]!
+  const previous = spectrum[Math.max(0, center - 1)]!
   const current = spectrum[center]!
-  const next = spectrum[(center + 1) % spectrum.length]!
+  const next = spectrum[Math.min(spectrum.length - 1, center + 1)]!
   const mixed = (previous * 0.18 + current * 0.64 + next * 0.18) / Math.max(1, peak)
   const gated = Math.max(0, (mixed - 0.06) / 0.94)
   return Math.pow(gated, 1.7)
@@ -26,20 +26,17 @@ export function resampleLogFrequencyBands(
     return
   }
   const binHz = sampleRate / fftSize
-  const minimumHz = Math.max(binHz, 55)
-  const maximumHz = Math.min(16_000, sampleRate / 2, source.length * binHz)
+  const minimumHz = Math.max(binHz, 20)
+  const maximumHz = Math.min(20_000, sampleRate / 2, source.length * binHz)
   const ratio = maximumHz / minimumHz
   for (let band = 0; band < target.length; band += 1) {
     const startHz = minimumHz * Math.pow(ratio, band / target.length)
     const endHz = minimumHz * Math.pow(ratio, (band + 1) / target.length)
     const startBin = Math.max(1, Math.min(source.length - 1, Math.floor(startHz / binHz)))
     const endBin = Math.max(startBin + 1, Math.min(source.length, Math.ceil(endHz / binHz)))
-    let squared = 0
-    for (let bin = startBin; bin < endBin; bin += 1) {
-      const normalized = source[bin]! / 255
-      squared += normalized * normalized
-    }
-    target[band] = Math.round(Math.sqrt(squared / (endBin - startBin)) * 255)
+    let sum = 0
+    for (let bin = startBin; bin < endBin; bin += 1) sum += source[bin]!
+    target[band] = Math.round(sum / (endBin - startBin))
   }
 }
 

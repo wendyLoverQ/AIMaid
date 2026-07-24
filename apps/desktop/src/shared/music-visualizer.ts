@@ -1,6 +1,7 @@
 import type { AlphaContour } from './alpha-contour'
 
 export const MUSIC_VISUALIZER_STYLE_KEY = 'music_visualizer_style'
+export const RADIAL_BAR_COUNT = 72
 
 export type MusicVisualizerStyle =
   | 'surround-line'
