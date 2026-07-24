@@ -56,6 +56,7 @@ export function startPetMusicPlayback(): () => void {
   let playbackUrl = ''
   let lyricLines: TimedLyricLine[] = []
   let activeLyricIndex = -1
+  let refreshLyrics: (() => void) | null = null
   let disposed = false
   let masterAudio = { muted: false, volume: 100 }
 
@@ -67,6 +68,7 @@ export function startPetMusicPlayback(): () => void {
     playbackUrl = ''
     lyricLines = []
     activeLyricIndex = -1
+    refreshLyrics = null
     publishLyrics(null)
     activeAnalyser = null
     activeFrequencyData = null
@@ -114,6 +116,7 @@ export function startPetMusicPlayback(): () => void {
         next: lyricLines[nextIndex + 1]?.text ?? ''
       })
     }
+    refreshLyrics = updateLyrics
     element.addEventListener('timeupdate', updateLyrics)
     element.addEventListener('seeked', updateLyrics)
     element.addEventListener('ended', () => { void stop() }, { once: true })
@@ -171,7 +174,7 @@ export function startPetMusicPlayback(): () => void {
         activeFrequencyData = analyser === null ? null : new Uint8Array(analyser.frequencyBinCount)
         void audioContext?.resume().then(() => audio?.play()).then(() => {
           activeLyricIndex = -1
-          updateLyrics()
+          refreshLyrics?.()
           if (analyser !== null && stopLipSync === null) stopLipSync = publishAudioLipSync('music', analyser)
         }).catch((reason: unknown) => {
           console.error('[MusicPlayback] resume failed', reason)
