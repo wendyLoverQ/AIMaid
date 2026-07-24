@@ -130,6 +130,7 @@ export class WindowManager {
       const rememberSize = (): void => {
         if (window.isDestroyed() || window.isMaximized() || window.isFullScreen()) return
         const [width, height] = window.getSize()
+        if (width === undefined || height === undefined) return
         this.rememberedSizes.set(kind, { width, height })
       }
       rememberSize()
