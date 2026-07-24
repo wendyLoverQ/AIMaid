@@ -171,7 +171,7 @@ public sealed class BusinessDataSyncService : IBusinessDataChangeSink, IAsyncDis
                             table = item.Table,
                             operation = item.Operation,
                             updatedAt = item.QueuedAt,
-                            payload = item.Payload
+                            payload = NormalizeForeignKeys(item.Table, item.Payload)
                         })
                     };
                     using var response = await http.PostAsync(
@@ -318,6 +318,37 @@ public sealed class BusinessDataSyncService : IBusinessDataChangeSink, IAsyncDis
     private static object? Normalize(object? value) => value is byte[] bytes
         ? Convert.ToBase64String(bytes)
         : value;
+
+    private static Dictionary<string, object?> NormalizeForeignKeys(
+        string table,
+        Dictionary<string, object?> payload)
+    {
+        if (!string.Equals(table, "VideoItems", StringComparison.OrdinalIgnoreCase) ||
+            !payload.TryGetValue("AlbumId", out var value) ||
+            value is null)
+            return payload;
+
+        var text = value switch
+        {
+            string stringValue => stringValue,
+            JsonElement { ValueKind: JsonValueKind.String } element => element.GetString(),
+            _ => null
+        };
+        if (text is null) return payload;
+
+        const string prefix = "legacy_album_";
+        var numeric = text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            ? text[prefix.Length..]
+            : text;
+        if (!long.TryParse(numeric, NumberStyles.Integer, CultureInfo.InvariantCulture, out var albumId))
+            throw new InvalidDataException($"VideoItems.AlbumId 同步值无效：{text}");
+
+        var normalized = new Dictionary<string, object?>(payload, StringComparer.OrdinalIgnoreCase)
+        {
+            ["AlbumId"] = albumId
+        };
+        return normalized;
+    }
 
     private static bool HasTemporaryKey(QueueItem item) => item.Payload.Any(pair =>
         (string.Equals(pair.Key, "Id", StringComparison.OrdinalIgnoreCase) ||
