@@ -5,7 +5,7 @@ import type { Logger } from '../logging/logger'
 import type { WindowManager } from '../windows/window-manager'
 import type { PetWindowManager } from '../windows/pet-window-manager'
 import type { PetPresentationService } from './pet-presentation-service'
-import { WINDOW_SIZE_SETTING_PREFIX } from '../windows/window-manager'
+import { WINDOW_POSITION_SETTING_PREFIX, WINDOW_SIZE_SETTING_PREFIX } from '../windows/window-manager'
 import { WINDOW_REGISTRY } from '../windows/window-registry'
 import { HOTKEY_ACTIONS, isHotkeyAction } from '../../shared/system-settings'
 import type { HotkeyAction, HotkeyBindingSnapshot, PlatformSettingsSnapshot } from '../../shared/system-settings'
@@ -30,6 +30,7 @@ export class SystemSettingsService {
   async initialize(): Promise<void> {
     await this.reload()
     this.windows.restoreSizes(this.values)
+    this.windows.restorePositions(this.values)
     for (const definition of HOTKEY_ACTIONS) {
       const gesture = this.values.get(definition.settingKey) ?? definition.defaultGesture
       if (gesture !== '') this.tryRegister(definition.action, gesture)
@@ -105,9 +106,9 @@ export class SystemSettingsService {
   }
 
   async dispose(): Promise<void> {
-    const windowSizes = this.windows.sizeSettings()
+    const windowPlacements = { ...this.windows.sizeSettings(), ...this.windows.positionSettings() }
     try {
-      if (Object.keys(windowSizes).length > 0) await this.saveCore(windowSizes)
+      if (Object.keys(windowPlacements).length > 0) await this.saveCore(windowPlacements)
     } finally {
       for (const accelerator of this.registered.values()) globalShortcut.unregister(accelerator)
       this.registered.clear()
@@ -147,7 +148,10 @@ export class SystemSettingsService {
     if ('target' in definition && definition.target !== undefined) {
       const shown = this.windows.toggle(definition.target, 'pet', { trigger: 'global-hotkey' })
       const targetWindow = shown ? this.windows.get(definition.target) : undefined
-      if (targetWindow !== undefined) await this.petWindows.positionWindowAtItem(targetWindow)
+      if (targetWindow !== undefined && this.windows.shouldPositionAtPet(definition.target)) {
+        await this.petWindows.positionWindowAtItem(targetWindow)
+        this.windows.rememberPosition(definition.target)
+      }
       return
     }
     const parent = this.windows.get('pet')
@@ -165,7 +169,9 @@ export class SystemSettingsService {
     const windowSizeKeys = Object.values(WINDOW_REGISTRY)
       .filter((definition) => definition.options.resizable === true)
       .map((definition) => `${WINDOW_SIZE_SETTING_PREFIX}${definition.id}`)
-    const keys = ['start_with_windows', 'comic_bubble_style', ...HOTKEY_ACTIONS.map((item) => item.settingKey), ...windowSizeKeys]
+    const windowPositionKeys = Object.values(WINDOW_REGISTRY)
+      .map((definition) => `${WINDOW_POSITION_SETTING_PREFIX}${definition.id}`)
+    const keys = ['start_with_windows', 'comic_bubble_style', ...HOTKEY_ACTIONS.map((item) => item.settingKey), ...windowSizeKeys, ...windowPositionKeys]
     const payload = await this.invokeCore({ type: 'settings.get', payload: { keys } }) as CoreSettingsPayload
     this.values = new Map((payload.settings ?? []).map((item) => [item.key, item.value]))
   }

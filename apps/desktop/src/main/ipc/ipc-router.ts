@@ -238,7 +238,10 @@ export class IpcRouter {
           sourceWindow: sourceKind,
           trigger: request.type
         })
-        if (sourceKind === 'pet') await this.petWindows.positionWindowAtItem(targetWindow)
+        if (sourceKind === 'pet' && this.windows.shouldPositionAtPet(target)) {
+          await this.petWindows.positionWindowAtItem(targetWindow)
+          this.windows.rememberPosition(target)
+        }
         return { target }
       }
       case 'window.show':

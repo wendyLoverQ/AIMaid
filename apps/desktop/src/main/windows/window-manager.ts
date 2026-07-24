@@ -6,10 +6,16 @@ import type { WindowFactory } from './window-factory'
 import { WINDOW_REGISTRY } from './window-registry'
 
 export const WINDOW_SIZE_SETTING_PREFIX = 'window_size:'
+export const WINDOW_POSITION_SETTING_PREFIX = 'window_position:'
 
 export interface PersistedWindowSize {
   width: number
   height: number
+}
+
+export interface PersistedWindowPosition {
+  x: number
+  y: number
 }
 
 export interface WindowActionContext {
@@ -29,6 +35,7 @@ export class WindowManager {
   private foreignWindowMoveHandlers: ForeignWindowMoveHandlers | undefined
   private trayIconPointerDown = false
   private readonly rememberedSizes = new Map<WindowKind, PersistedWindowSize>()
+  private readonly rememberedPositions = new Map<WindowKind, PersistedWindowPosition>()
 
   constructor(
     private readonly factory: WindowFactory,
@@ -55,12 +62,44 @@ export class WindowManager {
     }
   }
 
+  restorePositions(values: ReadonlyMap<string, string>): void {
+    for (const kind of Object.keys(WINDOW_REGISTRY) as WindowKind[]) {
+      if (!canRememberPosition(kind)) continue
+      const raw = values.get(`${WINDOW_POSITION_SETTING_PREFIX}${kind}`)
+      if (raw === undefined) continue
+      const position = parsePersistedPosition(raw)
+      if (position !== undefined) this.rememberedPositions.set(kind, position)
+      else this.log.warn('window', 'Ignored invalid persisted window position', { kind })
+    }
+  }
+
   sizeSettings(): Record<string, string> {
     const values: Record<string, string> = {}
     for (const [kind, size] of this.rememberedSizes) {
       values[`${WINDOW_SIZE_SETTING_PREFIX}${kind}`] = JSON.stringify(size)
     }
     return values
+  }
+
+  positionSettings(): Record<string, string> {
+    const values: Record<string, string> = {}
+    for (const kind of Object.keys(WINDOW_REGISTRY) as WindowKind[]) this.rememberPosition(kind)
+    for (const [kind, position] of this.rememberedPositions) {
+      values[`${WINDOW_POSITION_SETTING_PREFIX}${kind}`] = JSON.stringify(position)
+    }
+    return values
+  }
+
+  shouldPositionAtPet(kind: WindowKind): boolean {
+    return canRememberPosition(kind) && !this.rememberedPositions.has(kind)
+  }
+
+  rememberPosition(kind: WindowKind): void {
+    if (!canRememberPosition(kind)) return
+    const window = this.get(kind)
+    if (window === undefined || window.isDestroyed() || window.isMinimized() || window.isMaximized() || window.isFullScreen()) return
+    const { x, y } = window.getBounds()
+    this.rememberedPositions.set(kind, { x, y })
   }
 
   open(kind: WindowKind, ownerKind?: WindowKind, context: WindowActionContext = {}): BrowserWindow {
@@ -86,6 +125,7 @@ export class WindowManager {
     const window = this.factory.create(definition)
     const rememberedSize = this.rememberedSizes.get(kind)
     if (rememberedSize !== undefined) window.setSize(rememberedSize.width, rememberedSize.height, false)
+    this.restorePosition(kind, window)
 
     if (kind === 'chat') window.setAlwaysOnTop(true, 'screen-saver')
 
@@ -111,6 +151,7 @@ export class WindowManager {
       if (!this.trayIconPointerDown) window.hide()
     })
     window.on('close', (event) => {
+      this.rememberPosition(kind)
       if (!this.destroyingAll && definition.closeBehavior === 'hide') {
         event.preventDefault()
         window.hide()
@@ -121,7 +162,10 @@ export class WindowManager {
       this.log.info('window', 'Window destroyed', { kind, windowId: window.id })
     })
     window.on('show', () => this.log.info('window', 'Window shown', { kind, windowId: window.id }))
-    window.on('hide', () => this.log.info('window', 'Window hidden', { kind, windowId: window.id }))
+    window.on('hide', () => {
+      this.rememberPosition(kind)
+      this.log.info('window', 'Window hidden', { kind, windowId: window.id })
+    })
     window.on('focus', () => this.log.debug('window', 'Window focused', { kind, windowId: window.id }))
     window.on('blur', () => this.log.debug('window', 'Window blurred', { kind, windowId: window.id }))
     window.on('minimize', () => this.log.info('window', 'Window minimized', { kind, windowId: window.id }))
@@ -136,6 +180,7 @@ export class WindowManager {
       rememberSize()
       window.on('resize', rememberSize)
     }
+    if (canRememberPosition(kind)) window.on('moved', () => this.rememberPosition(kind))
     this.log.info('window', 'Window created', { kind, windowId: window.id, webContentsId: window.webContents.id, ...context })
     return window
   }
@@ -278,6 +323,7 @@ export class WindowManager {
 
   private positionWindow(kind: WindowKind, window: BrowserWindow, ownerKind?: WindowKind): void {
     if (kind === 'pet' || kind === 'tray-menu') return
+    if (this.rememberedPositions.has(kind)) return
     const owner = ownerKind === undefined ? undefined : this.get(ownerKind)
     if (ownerKind === 'pet' && owner !== undefined) return
     const ownerCentered = owner !== undefined && OWNER_CENTERED_WINDOWS.has(kind)
@@ -293,6 +339,19 @@ export class WindowManager {
       width,
       height
     }, false)
+  }
+
+  private restorePosition(kind: WindowKind, window: BrowserWindow): void {
+    const position = this.rememberedPositions.get(kind)
+    if (position === undefined) return
+    const current = window.getBounds()
+    const display = screen.getDisplayMatching({ ...current, x: position.x, y: position.y })
+    const workArea = display.workArea
+    window.setPosition(
+      Math.max(workArea.x, Math.min(position.x, workArea.x + workArea.width - current.width)),
+      Math.max(workArea.y, Math.min(position.y, workArea.y + workArea.height - current.height)),
+      false
+    )
   }
 
 }
@@ -319,4 +378,18 @@ function parsePersistedSize(value: string, minWidth?: number, minHeight?: number
   } catch {
     return undefined
   }
+}
+
+function parsePersistedPosition(value: string): PersistedWindowPosition | undefined {
+  try {
+    const parsed = JSON.parse(value) as Partial<PersistedWindowPosition>
+    if (!Number.isInteger(parsed.x) || !Number.isInteger(parsed.y)) return undefined
+    return { x: parsed.x!, y: parsed.y! }
+  } catch {
+    return undefined
+  }
+}
+
+function canRememberPosition(kind: WindowKind): boolean {
+  return kind !== 'pet' && kind !== 'tray-menu' && kind !== 'agent-confirm'
 }
