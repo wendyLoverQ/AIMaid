@@ -16,7 +16,7 @@ import {
     PET_CANVAS_WIDTH
 } from '../../../shared/pet-geometry';
 import { PetBubble } from './PetBubble';
-import { captureAlphaContour, PetAudioContour } from './PetAudioContour';
+import { captureAlphaContour, PetAudioContour, type PetAudioAlphaTop } from './PetAudioContour';
 import { startPetMusicPlayback } from './pet-music-playback';
 import { PetMusicLyrics } from './PetMusicLyrics';
 import { playLocalAudioPaths, synthesizeAndPlayPages } from '../chat/tts-playback';
@@ -28,6 +28,7 @@ type PetPointerClick = (event: MouseEvent) => void;
 type PetVoiceClickContext = { bodyPart: string; hitAreaName?: string; normalizedX?: number; normalizedY?: number };
 const BUBBLE_ALPHA_GAP = 5;
 const BUBBLE_TAIL_HEIGHT = 21;
+const LYRICS_ALPHA_GAP = 12;
 const BUBBLE_ANCHOR_REFRESH_MS = 120;
 const BUBBLE_FOLLOW_TIME_MS = 150;
 const BUBBLE_TAIL_LEFT = 64;
@@ -42,6 +43,7 @@ export default function PetPage(): React.JSX.Element {
     const { current: bubble, speechHeld, show: showBubble, expire: expireBubble } = usePetBubbleQueue();
     const [renderScale, setRenderScale] = useState(1);
     const [liveVisualTransform, setLiveVisualTransform] = useState<PetVisualTransform>({ centerX: 0, centerY: 0, scale: 1 });
+    const [lyricsAlphaTop, setLyricsAlphaTop] = useState<PetAudioAlphaTop | null>(null);
     const [voiceMenu, setVoiceMenu] = useState({ roleId: '', roleName: '未选择', intimacy: '信赖 5 级' });
     const reminderDeliveriesRef = useRef(new Set<string>());
     const proactiveExecutionsRef = useRef(new Set<string>());
@@ -85,6 +87,15 @@ export default function PetPage(): React.JSX.Element {
     }, []);
     const registerPointerClick = useCallback((click: PetPointerClick | null): void => {
         pointerClickRef.current = click ?? (() => undefined);
+    }, []);
+    const updateLyricsAlphaTop = useCallback((anchor: PetAudioAlphaTop | null): void => {
+        setLyricsAlphaTop((current) => {
+            if (anchor === null)
+                return current === null ? current : null;
+            if (current !== null && Math.abs(current.clientX - anchor.clientX) < 0.5 && Math.abs(current.clientY - anchor.clientY) < 0.5)
+                return current;
+            return anchor;
+        });
     }, []);
     const refreshPresentation = useCallback(async (): Promise<void> => {
         const response = await bridge.pet.presentation.get();
@@ -764,9 +775,12 @@ export default function PetPage(): React.JSX.Element {
       sourceKey={presentation.mode === 'image' ? `image:${presentation.currentImage?.url ?? ''}` :
         presentation.mode === 'png-sequence' ? `png:${presentation.pngRole}` : `live2d:${presentation.live2dRole}`}
       visualAnchor={presentation.mode === 'live2d' ? { clientX: liveVisualTransform.centerX, clientY: liveVisualTransform.centerY } : undefined}
+      onAlphaTop={updateLyricsAlphaTop}
       visualizerStyle={visualizerStyle}/> : null}
-    <PetMusicLyrics anchorX={liveVisualTransform.centerX}
-      anchorTop={Math.max(80, liveVisualTransform.centerY - PET_CANVAS_HEIGHT * liveVisualTransform.scale / 2 - 20)}/>
+    <PetMusicLyrics anchorX={lyricsAlphaTop?.clientX ?? liveVisualTransform.centerX}
+      anchorTop={lyricsAlphaTop === null
+        ? Math.max(16, liveVisualTransform.centerY - PET_CANVAS_HEIGHT * liveVisualTransform.scale / 2 - 20)
+        : Math.max(16, lyricsAlphaTop.clientY - LYRICS_ALPHA_GAP)}/>
     {menu !== null && presentation !== null ? <PetContextMenu position={menu} presentation={presentation} voiceMenu={voiceMenu} execute={(action) => void execute(action)} open={open} cycleVoiceIntimacy={() => void cycleVoiceIntimacy()} clearVoiceCache={() => void clearVoiceCache()} showCurrentConversation={() => void showCurrentConversation()} close={() => setMenu(null)}/> : null}
   </TransparentStage>;
 }

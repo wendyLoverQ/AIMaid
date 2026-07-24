@@ -15,13 +15,15 @@ const BOTTOM_EXTENSION = 88
 const RADIAL_EXTENSION = 72
 
 export interface PetAudioAnchor { readonly clientX: number; readonly clientY: number }
+export interface PetAudioAlphaTop { readonly clientX: number; readonly clientY: number }
 
-export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visualAnchor, visualizerStyle }: {
+export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visualAnchor, onAlphaTop, visualizerStyle }: {
   sourceCanvasRef: React.RefObject<HTMLCanvasElement | null>
   readContour?: (() => AlphaContour | null) | undefined
   sourceKey: string
   visualAnchor?: PetAudioAnchor | undefined
   visualizerStyle: MusicVisualizerStyle
+  onAlphaTop?: ((anchor: PetAudioAlphaTop | null) => void) | undefined
 }): React.JSX.Element {
   const overlayRef = useRef<HTMLCanvasElement>(null)
   const visualAnchorRef = useRef<PetAudioAnchor | undefined>(visualAnchor)
@@ -42,6 +44,7 @@ export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visua
     let wasActive = false
     let bottomLayout: BottomBarLayout | null = null
     let radialLayout: RadialVisualizerLayout | null = null
+    let lastAlphaTop: PetAudioAlphaTop | null = null
 
     const render = (now: number): void => {
       const source = sourceCanvasRef.current
@@ -60,6 +63,10 @@ export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visua
           context.clearRect(0, 0, overlay.width, overlay.height)
           overlay.hidden = true
           wasActive = false
+          if (lastAlphaTop !== null) {
+            lastAlphaTop = null
+            onAlphaTop?.(null)
+          }
         }
         animationId = requestAnimationFrame(render)
         return
@@ -73,6 +80,16 @@ export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visua
         contour = nextContour ?? contour
       }
       if (contour !== null) {
+        const alphaTopPoint = contour.points.reduce((highest, point) => point.y < highest.y ? point : highest)
+        const alphaTop: PetAudioAlphaTop = {
+          clientX: sourceBounds.left + alphaTopPoint.x * sourceBounds.width,
+          clientY: sourceBounds.top + alphaTopPoint.y * sourceBounds.height
+        }
+        if (lastAlphaTop === null || Math.abs(lastAlphaTop.clientX - alphaTop.clientX) >= 0.5 ||
+          Math.abs(lastAlphaTop.clientY - alphaTop.clientY) >= 0.5) {
+          lastAlphaTop = alphaTop
+          onAlphaTop?.(alphaTop)
+        }
         if (visualizerStyle === 'bottom-wave' && bottomLayout === null) {
           bottomLayout = createBottomBarLayout(contour, sourceBounds.width)
         }
@@ -109,8 +126,11 @@ export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visua
     }
 
     animationId = requestAnimationFrame(render)
-    return () => cancelAnimationFrame(animationId)
-  }, [readContour, sourceCanvasRef, sourceKey, visualizerStyle])
+    return () => {
+      cancelAnimationFrame(animationId)
+      onAlphaTop?.(null)
+    }
+  }, [onAlphaTop, readContour, sourceCanvasRef, sourceKey, visualizerStyle])
 
   return <PetAudioContourCanvas ref={overlayRef} geometry="full" data-visualizer-style={visualizerStyle}
     data-visualizer-layer={isBackgroundMusicVisualizer(visualizerStyle) ? 'background' : 'foreground'} aria-hidden="true" hidden/>

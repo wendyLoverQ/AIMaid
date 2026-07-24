@@ -464,6 +464,32 @@ html:has(.ui-media-canvas), body:has(.ui-media-canvas), #root:has(.ui-media-canv
 .video-library-grid { min-height: 100%; }
 .video-library-grid > .ui-product-grid--cards { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-3); }
 .video-library-grid .ui-pressable--card { display: grid; min-width: 0; padding: 0; overflow: hidden; align-content: start; text-align: left; border-radius: var(--radius-lg); }
+.video-library-grid .ui-pressable--card[data-selected] {
+  position: relative;
+  z-index: 1;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent), 0 0 0 4px color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+.video-library-grid .ui-pressable--card[data-selected]::after {
+  position: absolute;
+  z-index: 2;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: grid;
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
+  place-items: center;
+  border: 2px solid var(--color-bg-elevated);
+  border-radius: var(--radius-full);
+  color: var(--color-text-inverse);
+  background: var(--color-accent);
+  box-shadow: var(--shadow-sm);
+  content: '✓';
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: 1;
+  pointer-events: none;
+}
 .video-library-card__cover { position: relative; display: grid; width: 100%; aspect-ratio: 16 / 9; place-items: center; overflow: hidden; background: var(--color-bg-subtle); color: var(--color-text-tertiary); }
 .video-library-card__cover .ui-media-image { object-fit: cover; }
 .video-library-card__cover > small { position: absolute; right: var(--space-2); bottom: var(--space-2); padding: 0.1rem 0.35rem; border-radius: var(--radius-sm); color: white; background: rgb(0 0 0 / 72%); font-variant-numeric: tabular-nums; }
