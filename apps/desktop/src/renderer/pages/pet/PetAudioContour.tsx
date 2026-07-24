@@ -10,6 +10,7 @@ import { readPetMusicSpectrum, readPetMusicWaveform } from './pet-music-playback
 
 const MASK_WIDTH = 160
 const MASK_REFRESH_MS = 120
+const CONTOUR_FOLLOW_TIME_MS = 150
 const SURROUND_PADDING = 72
 const BOTTOM_EXTENSION = 88
 const RADIAL_EXTENSION = 72
@@ -39,12 +40,15 @@ export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visua
     const waveform = new Uint8Array(ALPHA_CONTOUR_ANGLE_COUNT)
     const dynamics = new Map<number, number>()
     let contour: AlphaContour | null = null
+    let smoothedContour: AlphaContour | null = null
     let lastMaskAt = Number.NEGATIVE_INFINITY
+    let lastContourFrameAt = Number.NaN
     let animationId = 0
     let wasActive = false
     let bottomLayout: BottomBarLayout | null = null
     let radialLayout: RadialVisualizerLayout | null = null
     let lastAlphaTop: PetAudioAlphaTop | null = null
+    let smoothedVisualAnchor: PetAudioAnchor | undefined
 
     const render = (now: number): void => {
       const source = sourceCanvasRef.current
@@ -63,6 +67,9 @@ export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visua
           context.clearRect(0, 0, overlay.width, overlay.height)
           overlay.hidden = true
           wasActive = false
+          smoothedContour = null
+          lastContourFrameAt = Number.NaN
+          smoothedVisualAnchor = undefined
           if (lastAlphaTop !== null) {
             lastAlphaTop = null
             onAlphaTop?.(null)
@@ -80,6 +87,12 @@ export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visua
         contour = nextContour ?? contour
       }
       if (contour !== null) {
+        if (smoothedContour === null) smoothedContour = contour
+        const elapsed = Number.isNaN(lastContourFrameAt) ? 16 : Math.min(50, now - lastContourFrameAt)
+        const follow = 1 - Math.exp(-elapsed / CONTOUR_FOLLOW_TIME_MS)
+        smoothedContour = interpolateAlphaContour(smoothedContour, contour, follow)
+        lastContourFrameAt = now
+        const visualContour = smoothedContour
         const alphaTopPoint = contour.points.reduce((highest, point) => point.y < highest.y ? point : highest)
         const alphaTop: PetAudioAlphaTop = {
           clientX: sourceBounds.left + alphaTopPoint.x * sourceBounds.width,
@@ -91,17 +104,25 @@ export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visua
           onAlphaTop?.(alphaTop)
         }
         if (visualizerStyle === 'bottom-wave' && bottomLayout === null) {
-          bottomLayout = createBottomBarLayout(contour, sourceBounds.width)
+          bottomLayout = createBottomBarLayout(visualContour, sourceBounds.width)
         }
         if (isBackgroundMusicVisualizer(visualizerStyle) && radialLayout === null) {
-          radialLayout = createRadialVisualizerLayout(contour, sourceBounds.width, sourceBounds.height)
+          radialLayout = createRadialVisualizerLayout(visualContour, sourceBounds.width, sourceBounds.height)
         }
-        const anchor = visualAnchorRef.current
+        const targetAnchor = visualAnchorRef.current
+        if (targetAnchor === undefined) {
+          smoothedVisualAnchor = undefined
+        } else if (smoothedVisualAnchor === undefined) {
+          smoothedVisualAnchor = targetAnchor
+        } else {
+          smoothedVisualAnchor = interpolatePetAudioAnchor(smoothedVisualAnchor, targetAnchor, follow)
+        }
+        const anchor = smoothedVisualAnchor
         const region = radialLayout !== null
           ? positionRadialOverlay(overlay, sourceBounds, stageBounds, radialLayout, anchor)
           : visualizerStyle === 'bottom-wave' && bottomLayout !== null
-            ? positionBottomOverlay(overlay, sourceBounds, stageBounds, contour, bottomLayout, anchor)
-            : positionOverlay(overlay, sourceBounds, stageBounds, contour)
+            ? positionBottomOverlay(overlay, sourceBounds, stageBounds, visualContour, bottomLayout, anchor)
+            : positionOverlay(overlay, sourceBounds, stageBounds, visualContour)
         resizeOverlay(overlay, region.width, region.height)
         const pixelRatio = overlay.width / region.width
         context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
@@ -115,9 +136,9 @@ export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visua
           overlay.dataset.visualAnchorX = anchor.clientX.toFixed(2)
           overlay.dataset.visualAnchorY = anchor.clientY.toFixed(2)
         }
-        if (visualizerStyle === 'bottom-wave' && bottomLayout !== null) drawBottomBars(context, contour, bottomLayout, spectrum, dynamics, x, y, sourceBounds.width, sourceBounds.height,
+        if (visualizerStyle === 'bottom-wave' && bottomLayout !== null) drawBottomBars(context, visualContour, bottomLayout, spectrum, dynamics, x, y, sourceBounds.width, sourceBounds.height,
           anchor === undefined ? undefined : anchor.clientX - stageBounds.left - region.left)
-        else if (visualizerStyle === 'surround-line') drawSurroundWave(context, contour, spectrum, dynamics, x, y, sourceBounds.width, sourceBounds.height)
+        else if (visualizerStyle === 'surround-line') drawSurroundWave(context, visualContour, spectrum, dynamics, x, y, sourceBounds.width, sourceBounds.height)
         else if (radialLayout !== null && isBackgroundMusicVisualizer(visualizerStyle)) drawBackgroundVisualizer(context, visualizerStyle, radialLayout, spectrum, waveform, dynamics, now,
           anchor?.clientX === undefined ? sourceBounds.left - stageBounds.left + radialLayout.normalizedCenterX * sourceBounds.width - region.left : anchor.clientX - stageBounds.left - region.left,
           anchor?.clientY === undefined ? sourceBounds.top - stageBounds.top + radialLayout.normalizedCenterY * sourceBounds.height - region.top : anchor.clientY - stageBounds.top - region.top)
@@ -134,6 +155,29 @@ export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visua
 
   return <PetAudioContourCanvas ref={overlayRef} geometry="full" data-visualizer-style={visualizerStyle}
     data-visualizer-layer={isBackgroundMusicVisualizer(visualizerStyle) ? 'background' : 'foreground'} aria-hidden="true" hidden/>
+}
+
+function interpolateAlphaContour(current: AlphaContour, target: AlphaContour, amount: number): AlphaContour {
+  return {
+    center: {
+      x: current.center.x + (target.center.x - current.center.x) * amount,
+      y: current.center.y + (target.center.y - current.center.y) * amount
+    },
+    points: current.points.map((point, index) => {
+      const targetPoint = target.points[index] ?? point
+      return {
+        x: point.x + (targetPoint.x - point.x) * amount,
+        y: point.y + (targetPoint.y - point.y) * amount
+      }
+    })
+  }
+}
+
+function interpolatePetAudioAnchor(current: PetAudioAnchor, target: PetAudioAnchor, amount: number): PetAudioAnchor {
+  return {
+    clientX: current.clientX + (target.clientX - current.clientX) * amount,
+    clientY: current.clientY + (target.clientY - current.clientY) * amount
+  }
 }
 
 interface OverlayRegion { left: number; top: number; width: number; height: number }
