@@ -16,13 +16,11 @@ import type { ProactiveSourceDto } from '../../../shared/business';
 import type { PetDisplayMode, PetPresentationSnapshot } from '../../../shared/presentation';
 import { HOTKEY_ACTIONS } from '../../../shared/system-settings';
 import type { HotkeyAction, PlatformSettingsSnapshot } from '../../../shared/system-settings';
-import { MUSIC_VISUALIZER_STYLE_KEY, MUSIC_VISUALIZER_STYLE_OPTIONS, parseMusicVisualizerStyle } from '../../../shared/music-visualizer';
-import type { MusicVisualizerStyle } from '../../../shared/music-visualizer';
 import type { CryptoProviderConfigurationDto, DisturbanceSettingsDto } from '../../../shared/business';
 const CATEGORIES = ['显示与窗口', 'AI 模型', 'AI 主动', 'Agent 决策', '语音 / TTS', '缓存与性能', '快捷键', '网络与服务', '高级 / 诊断'] as const;
 type Category = (typeof CATEGORIES)[number];
 const SEARCH_INDEX: Readonly<Record<Category, string>> = {
-    '显示与窗口': '语言 显示模式 Live2D 模型 轮播时间 图库目录 开机自启动 气泡主题 音浪 样式 环绕 柱条 线条 底部',
+    '显示与窗口': '语言 显示模式 Live2D 模型 轮播时间 图库目录 开机自启动 气泡主题',
     'AI 模型': '模型列表 编辑 新增模型 业务链 映射 API 密钥 endpoint',
     'AI 主动': 'AI 主动决策 主动语音 勿扰 模式',
     'Agent 决策': 'Agent 工具 能力 启用 确认 风险 结果策略 执行配置',
@@ -100,12 +98,11 @@ function DisplaySettings(): React.JSX.Element {
     const [presentation, setPresentation] = useState<PetPresentationSnapshot | null>(null);
     const [language, setLanguage] = useState('zh-CN');
     const [bubbleStyle, setBubbleStyle] = useState('');
-    const [visualizerStyle, setVisualizerStyle] = useState<MusicVisualizerStyle>('surround-line');
     const [platform, setPlatform] = useState<PlatformSettingsSnapshot | null>(null);
     useEffect(() => {
         void Promise.all([
             bridge.pet.presentation.get(),
-            loadSettings(['ui_language', 'comic_bubble_style', MUSIC_VISUALIZER_STYLE_KEY]),
+            loadSettings(['ui_language', 'comic_bubble_style']),
             bridge.systemSettings.get()
         ]).then(([presentationResponse, settings, platformResponse]) => {
             if (!presentationResponse.success || presentationResponse.payload === null)
@@ -115,7 +112,6 @@ function DisplaySettings(): React.JSX.Element {
             setPresentation(presentationResponse.payload);
             setLanguage(settings.ui_language ?? 'zh-CN');
             setBubbleStyle(settings.comic_bubble_style ?? '');
-            setVisualizerStyle(parseMusicVisualizerStyle(settings[MUSIC_VISUALIZER_STYLE_KEY]));
             setPlatform(platformResponse.payload);
         }).catch((reason: unknown) => toast.show(messageOf(reason), 'error'));
     }, []);
@@ -187,17 +183,6 @@ function DisplaySettings(): React.JSX.Element {
             toast.show(messageOf(reason), 'error');
         }
     }
-    async function saveVisualizerStyle(value: string): Promise<void> {
-        const next = parseMusicVisualizerStyle(value);
-        try {
-            await saveSettings({ [MUSIC_VISUALIZER_STYLE_KEY]: next });
-            setVisualizerStyle(next);
-            toast.show('音浪样式已保存并立即应用。', 'success');
-        }
-        catch (reason) {
-            toast.show(messageOf(reason), 'error');
-        }
-    }
     async function setAutoStart(enabled: boolean): Promise<void> {
         const response = await bridge.systemSettings.setAutoStart(enabled);
         if (!response.success || response.payload === null) {
@@ -209,7 +194,6 @@ function DisplaySettings(): React.JSX.Element {
     }
     return <LayoutSlot variant="settings-display-groups">
       <LayoutSlot as="section" variant="settings-display-group"><LayoutSlot as="header" variant="settings-display-group__heading"><Title4>基础显示</Title4></LayoutSlot><SettingCard title="语言包"><Select label="当前语言" value={language} onChange={(event) => void saveLanguage(event.target.value)} options={[{ value: 'zh-CN', label: '简体中文 · Chinese' }, { value: 'en', label: 'English · English' }, { value: 'es', label: 'Español · Spanish' }, { value: 'ja', label: '日本語 · Japanese' }]}/></SettingCard><SettingCard title={`显示模式：${presentation === null ? '读取中' : displayModeLabel(presentation.mode)}`}><Container>{([['image', '图片'], ['png-sequence', 'PNG'], ['live2d', 'Live2D']] as const).map(([mode, label]) => <Pressable key={mode} selected={presentation?.mode === mode} onClick={() => void setMode(mode)}>{label}</Pressable>)}</Container></SettingCard></LayoutSlot>
-      <LayoutSlot as="section" variant="settings-display-group"><LayoutSlot as="header" variant="settings-display-group__heading"><Title4>音乐背景样式</Title4></LayoutSlot><SettingCard title="音乐音浪样式" description="音浪作为独立覆盖层显示，不参与图片、PNG 序列或 Live2D 的缩放。"><ValueChoice values={[...MUSIC_VISUALIZER_STYLE_OPTIONS]} selected={visualizerStyle} onSelect={(value) => void saveVisualizerStyle(value)}/></SettingCard></LayoutSlot>
       <LayoutSlot as="section" variant="settings-display-group"><LayoutSlot as="header" variant="settings-display-group__heading"><Title4>桌宠资源</Title4></LayoutSlot><SettingCard title="Live2D 模型"><Select disabled={presentation === null || presentation.live2dRoles.length < 2} value={presentation?.live2dRole ?? ''} onChange={(event) => void setLive2dRole(event.target.value)} options={(presentation?.live2dRoles ?? []).map((role) => ({ value: role, label: role }))}/></SettingCard><SettingCard title="轮播时间"><Container>{IMAGE_INTERVAL_OPTIONS.map((item) => <Pressable key={item.seconds} selected={presentation?.imageIntervalSeconds === item.seconds} onClick={() => void setInterval(item.seconds)}>{item.label}</Pressable>)}</Container></SettingCard><SettingCard title="图库目录"><Container><Input aria-label="图库目录" readOnly value={presentation?.imageRoot ?? ''}/><Button onClick={() => void chooseFolder()}>浏览</Button></Container></SettingCard><SettingCard title="开机自启动"><Switch disabled={platform === null} label="开机后自动启动女仆助手" checked={platform?.autoStartEnabled ?? false} onChange={(event) => void setAutoStart(event.target.checked)}/></SettingCard><SettingCard title={`气泡主题：${bubbleStyleLabel(bubbleStyle)}`}><ValueChoice values={[['', '自动（按内容）'], ['normal', '标准'], ['soft', '柔和'], ['lively', '活泼'], ['close', '亲密']]} selected={bubbleStyle} onSelect={(value) => void saveBubbleStyle(value)}/></SettingCard></LayoutSlot>
     </LayoutSlot>;
 }

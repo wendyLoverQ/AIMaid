@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AppearanceConfigurationDto } from '../../../shared/business'
-import { Badge, ColorPalette, LayoutSlot, Page, PageContent, Pressable, SegmentedControl, SettingRow, SettingsSection, Stack, Strong, Switch, Text, WindowTitleBar, useToast } from '../../components/ui'
+import { Badge, ColorPalette, Container, LayoutSlot, Page, PageContent, Pressable, SegmentedControl, SettingRow, SettingsSection, Stack, Strong, Switch, Text, WindowTitleBar, useToast } from '../../components/ui'
 import { bridge } from '../../shared/bridge'
 import { saveAndApplyAppearance } from './appearance-runtime'
+import { MUSIC_VISUALIZER_STYLE_KEY, MUSIC_VISUALIZER_STYLE_OPTIONS, parseMusicVisualizerStyle } from '../../../shared/music-visualizer'
+import type { MusicVisualizerStyle } from '../../../shared/music-visualizer'
 
 interface ThemeDefinition { id: string; name: string; description: string; colors: readonly [string, string, string, string] }
 const THEMES: readonly ThemeDefinition[] = [
@@ -21,13 +23,20 @@ const DEFAULT_CONFIGURATION: AppearanceConfigurationDto = { themeId: 'sea_glass'
 export function AppearanceSettingsPage(): React.JSX.Element {
   const toast = useToast()
   const [configuration, setConfiguration] = useState(DEFAULT_CONFIGURATION)
+  const [visualizerStyle, setVisualizerStyle] = useState<MusicVisualizerStyle>('surround-line')
   const revision = useRef(0)
   useEffect(() => {
-    void bridge.core.invoke({ type: 'appearance.get', payload: {} }).then((response) => {
+    void Promise.all([
+      bridge.core.invoke({ type: 'appearance.get', payload: {} }),
+      bridge.core.invoke({ type: 'settings.get', payload: { keys: [MUSIC_VISUALIZER_STYLE_KEY] } })
+    ]).then(([response, settingsResponse]) => {
       if (!response.success) throw new Error(response.error?.message ?? '外观设置读取失败。')
+      if (!settingsResponse.success) throw new Error(settingsResponse.error?.message ?? '音浪样式读取失败。')
       const source = response.payload as AppearanceConfigurationDto
       const loaded = { ...source, themeId: normalizeThemeId(source.themeId) }
-      setConfiguration(loaded); saveAndApplyAppearance(loaded, colorsFor(loaded.themeId))
+      const settingsPayload = settingsResponse.payload as { settings?: Array<{ key: string; value: string }> } | null
+      const visualizerSetting = settingsPayload?.settings?.find((item) => item.key === MUSIC_VISUALIZER_STYLE_KEY)?.value
+      setConfiguration(loaded); setVisualizerStyle(parseMusicVisualizerStyle(visualizerSetting)); saveAndApplyAppearance(loaded, colorsFor(loaded.themeId))
       if (loaded.themeId !== source.themeId) {
         void bridge.core.invoke({ type: 'appearance.save', payload: { configuration: loaded } }).then((migration) => {
           if (!migration.success) throw new Error(migration.error?.message ?? '旧版外观设置迁移失败。')
@@ -35,6 +44,13 @@ export function AppearanceSettingsPage(): React.JSX.Element {
       }
     }).catch((reason: unknown) => toast.show(reason instanceof Error ? reason.message : String(reason), 'error'))
   }, [toast])
+  async function saveVisualizerStyle(value: string): Promise<void> {
+    const next = parseMusicVisualizerStyle(value)
+    const response = await bridge.core.invoke({ type: 'settings.save', payload: { values: { [MUSIC_VISUALIZER_STYLE_KEY]: next } } })
+    if (!response.success) throw new Error(response.error?.message ?? '音浪样式保存失败。')
+    setVisualizerStyle(next)
+    toast.show('音浪样式已保存并立即应用。', 'success')
+  }
   function update(patch: Partial<AppearanceConfigurationDto>): void {
     const previous = configuration
     const next = { ...configuration, ...patch }
@@ -60,6 +76,7 @@ export function AppearanceSettingsPage(): React.JSX.Element {
         <SettingRow title="字体方案" control={<SegmentedControl label="字体方案" value={configuration.fontFamily} onChange={(fontFamily) => update({ fontFamily })} options={[{ value: '', label: '默认' }, { value: 'Microsoft YaHei UI', label: '微软雅黑' }]} />} />
         <SettingRow title="字号缩放" control={<SegmentedControl label="字号缩放" value={String(configuration.fontScale)} onChange={(fontScale) => update({ fontScale: Number(fontScale) })} options={[{ value: '0.9', label: '90%' }, { value: '1', label: '100%' }, { value: '1.1', label: '110%' }, { value: '1.2', label: '120%' }]} />} />
         </SettingsSection></LayoutSlot>
+        <LayoutSlot as="section" variant="appearance-controls__section"><SettingsSection title="音乐音浪"><SettingRow title="音乐音浪样式" description="音浪作为独立覆盖层显示，不参与图片、PNG 序列或 Live2D 的缩放。" control={<Container>{MUSIC_VISUALIZER_STYLE_OPTIONS.map(([value, label]) => <Pressable key={value} selected={visualizerStyle === value} onClick={() => void saveVisualizerStyle(value).catch((reason: unknown) => toast.show(messageOf(reason), 'error'))}>{label}</Pressable>)}</Container>} /></SettingsSection></LayoutSlot>
         <LayoutSlot as="section" variant="appearance-controls__section"><SettingsSection title="密度与圆角">
         <SettingRow title="圆角风格" control={<SegmentedControl label="圆角风格" value={configuration.cornerRadiusStyle} onChange={(cornerRadiusStyle) => update({ cornerRadiusStyle })} options={[{ value: 'Small', label: '小' }, { value: 'Medium', label: '中' }, { value: 'Large', label: '大' }]} />} />
         <SettingRow title="界面密度" control={<SegmentedControl label="界面密度" value={configuration.density} onChange={(density) => update({ density })} options={[{ value: 'Compact', label: '紧凑' }, { value: 'Standard', label: '标准' }, { value: 'Comfortable', label: '宽松' }]} />} />
