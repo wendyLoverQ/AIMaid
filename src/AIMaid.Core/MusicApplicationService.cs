@@ -10,7 +10,9 @@ public sealed class MusicApplicationService : IDisposable
     private readonly IEventPublisher events;
     private readonly ISettingsStore settings;
     private readonly object stateGate = new();
-    private MusicPlaybackStateDto state = new(string.Empty, string.Empty, string.Empty, string.Empty, false, false);
+    private readonly SemaphoreSlim controlGate = new(1, 1);
+    private readonly Queue<MusicSearchItemDto> pendingSongs = new();
+    private MusicPlaybackStateDto state = new(string.Empty, string.Empty, string.Empty, string.Empty, false, false, false);
 
     public MusicApplicationService(IEventPublisher events, ISettingsStore settings)
     {
@@ -26,9 +28,78 @@ public sealed class MusicApplicationService : IDisposable
     public async Task<OperationResult<MusicPlaybackStateDto>> SearchAndPlayAsync(
         string songName,
         CancellationToken cancellationToken = default)
+        => await SearchAndPlayAsync(songName, string.Empty, cancellationToken);
+
+    public async Task<OperationResult<MusicPlaybackStateDto>> SearchAndPlayAsync(
+        string songName,
+        string singerName,
+        CancellationToken cancellationToken = default)
+        => await SearchAndPlayAsync([new MusicSearchItemDto(songName, singerName)], cancellationToken);
+
+    public async Task<OperationResult<MusicPlaybackStateDto>> SearchAndPlayAsync(
+        IReadOnlyList<MusicSearchItemDto> songs,
+        CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(songName))
+        if (songs.Count == 0 || songs.Any(song => string.IsNullOrWhiteSpace(song.SongName)))
             return OperationResult<MusicPlaybackStateDto>.Failure("music.song_name_empty", "歌曲名不能为空");
+        if (songs.Count > 20)
+            return OperationResult<MusicPlaybackStateDto>.Failure("music.queue_too_large", "歌单最多包含 20 首歌曲");
+        var normalized = songs
+            .Select(song => new MusicSearchItemDto(song.SongName.Trim(), song.SingerName.Trim()))
+            .ToArray();
+        await controlGate.WaitAsync(cancellationToken);
+        try
+        {
+            lock (stateGate)
+            {
+                pendingSongs.Clear();
+                foreach (var song in normalized.Skip(1)) pendingSongs.Enqueue(song);
+            }
+            var result = await SearchAndPlayCoreAsync(normalized[0], normalized.Length > 1, cancellationToken);
+            if (!result.Succeeded)
+                lock (stateGate) pendingSongs.Clear();
+            return result;
+        }
+        finally
+        {
+            controlGate.Release();
+        }
+    }
+
+    public async Task<OperationResult<MusicPlaybackStateDto>> PlayNextAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await controlGate.WaitAsync(cancellationToken);
+        try
+        {
+            MusicSearchItemDto song;
+            bool hasNext;
+            lock (stateGate)
+            {
+                if (pendingSongs.Count == 0)
+                    return OperationResult<MusicPlaybackStateDto>.Failure("music.queue_empty", "当前歌单没有下一曲");
+                song = pendingSongs.Peek();
+                hasNext = pendingSongs.Count > 1;
+            }
+            var result = await SearchAndPlayCoreAsync(song, hasNext, cancellationToken);
+            if (result.Succeeded)
+                lock (stateGate) pendingSongs.Dequeue();
+            return result;
+        }
+        finally
+        {
+            controlGate.Release();
+        }
+    }
+
+    private async Task<OperationResult<MusicPlaybackStateDto>> SearchAndPlayCoreAsync(
+        MusicSearchItemDto song,
+        bool hasNext,
+        CancellationToken cancellationToken)
+    {
+        var searchText = string.IsNullOrWhiteSpace(song.SingerName)
+            ? song.SongName
+            : $"{song.SongName} - {song.SingerName}";
         var audioSettings = await settings.GetManyAsync(["master_audio_muted", "master_audio_volume"], cancellationToken);
         var values = audioSettings.ToDictionary(item => item.Key, item => item.Value, StringComparer.OrdinalIgnoreCase);
         var muted = values.TryGetValue("master_audio_muted", out var mutedText) && bool.TryParse(mutedText, out var parsedMuted) && parsedMuted;
@@ -48,24 +119,24 @@ public sealed class MusicApplicationService : IDisposable
         {
             try
             {
-                var song = await provider.Search(songName.Trim(), cancellationToken);
-                if (song is null)
+                var match = await provider.Search(searchText, cancellationToken);
+                if (match is null)
                 {
                     failures.Add($"{provider.Name}: 未找到歌曲");
                     continue;
                 }
-                matchedSong ??= song;
-                var url = await ResolvePlayableUrlAsync(song.StreamUrl, cancellationToken);
+                matchedSong ??= match;
+                var url = await ResolvePlayableUrlAsync(match.StreamUrl, cancellationToken);
                 if (string.IsNullOrWhiteSpace(url))
                 {
                     failures.Add($"{provider.Name}: 播放流不可用");
                     continue;
                 }
 
-                var lyrics = song.LyricsUrl.Length == 0
+                var lyrics = match.LyricsUrl.Length == 0
                     ? string.Empty
-                    : await LoadLyricsAsync(song.LyricsUrl, cancellationToken);
-                var playback = new MusicPlaybackStateDto(url, song.Title, song.Singer, lyrics, true, false);
+                    : await LoadLyricsAsync(match.LyricsUrl, cancellationToken);
+                var playback = new MusicPlaybackStateDto(url, match.Title, match.Singer, lyrics, true, false, hasNext);
                 lock (stateGate) state = playback;
                 await events.PublishAsync(new MusicPlaybackRequestedEvent(
                     EventIdentity.NewId(), DateTimeOffset.Now, playback), cancellationToken);
@@ -77,13 +148,25 @@ public sealed class MusicApplicationService : IDisposable
             }
         }
         return matchedSong is null
-            ? OperationResult<MusicPlaybackStateDto>.Failure("music.not_found", $"未找到歌曲：{songName.Trim()}（{string.Join("；", failures)}）")
+            ? OperationResult<MusicPlaybackStateDto>.Failure("music.not_found", $"未找到歌曲：{searchText}（{string.Join("；", failures)}）")
             : OperationResult<MusicPlaybackStateDto>.Failure("music.play_url_failed", $"获取播放地址失败：{matchedSong.Title}（{string.Join("；", failures)}）");
     }
 
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
-        lock (stateGate) state = new MusicPlaybackStateDto(string.Empty, string.Empty, string.Empty, string.Empty, false, false);
+        await controlGate.WaitAsync(cancellationToken);
+        try
+        {
+            lock (stateGate)
+            {
+                pendingSongs.Clear();
+                state = new MusicPlaybackStateDto(string.Empty, string.Empty, string.Empty, string.Empty, false, false, false);
+            }
+        }
+        finally
+        {
+            controlGate.Release();
+        }
         await events.PublishAsync(new MusicPlaybackStoppedEvent(
             EventIdentity.NewId(), DateTimeOffset.Now), cancellationToken);
     }
@@ -206,7 +289,11 @@ public sealed class MusicApplicationService : IDisposable
         return finalUrl?.Scheme == Uri.UriSchemeHttps ? finalUrl.AbsoluteUri : null;
     }
 
-    public void Dispose() => httpClient.Dispose();
+    public void Dispose()
+    {
+        controlGate.Dispose();
+        httpClient.Dispose();
+    }
 
     private sealed record MusicSong(string StreamUrl, string Title, string Singer, string LyricsUrl);
 }

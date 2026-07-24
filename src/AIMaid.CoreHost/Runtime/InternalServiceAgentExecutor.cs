@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AIMaid.Contracts.Domains;
+using AIMaid.Contracts.Music;
 using AIMaid.Core;
 
 namespace AIMaid.CoreHost.Runtime;
@@ -57,13 +58,38 @@ public sealed class InternalServiceAgentExecutor(
 
     private async Task<AgentExecutionResult> SearchAndPlayMusicAsync(JsonElement args, CancellationToken cancellationToken)
     {
-        var songName = args.TryGetProperty("songName", out var value) && value.ValueKind == JsonValueKind.String
-            ? value.GetString() ?? string.Empty
-            : string.Empty;
-        var result = await music.SearchAndPlayAsync(songName, cancellationToken);
+        MusicSearchItemDto[] songs;
+        if (args.TryGetProperty("songs", out var songsValue))
+        {
+            if (songsValue.ValueKind != JsonValueKind.Array || songsValue.GetArrayLength() is < 1 or > 20)
+                return new AgentExecutionResult(null, string.Empty, "songs 必须是包含 1 到 20 首歌曲的列表");
+            var items = new List<MusicSearchItemDto>();
+            foreach (var item in songsValue.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object ||
+                    !item.TryGetProperty("songName", out var songNameValue) || songNameValue.ValueKind != JsonValueKind.String ||
+                    !item.TryGetProperty("singerName", out var singerNameValue) || singerNameValue.ValueKind != JsonValueKind.String ||
+                    string.IsNullOrWhiteSpace(songNameValue.GetString()) || string.IsNullOrWhiteSpace(singerNameValue.GetString()))
+                    return new AgentExecutionResult(null, string.Empty, "songs 中每一项都必须包含非空的 songName 和 singerName");
+                items.Add(new MusicSearchItemDto(songNameValue.GetString()!, singerNameValue.GetString()!));
+            }
+            songs = items.ToArray();
+        }
+        else
+        {
+            if (!args.TryGetProperty("songName", out var songNameValue) || songNameValue.ValueKind != JsonValueKind.String ||
+                string.IsNullOrWhiteSpace(songNameValue.GetString()))
+                return new AgentExecutionResult(null, string.Empty, "缺少 songName 参数");
+            var singerName = args.TryGetProperty("singerName", out var singerNameValue) && singerNameValue.ValueKind == JsonValueKind.String
+                ? singerNameValue.GetString() ?? string.Empty
+                : string.Empty;
+            songs = [new MusicSearchItemDto(songNameValue.GetString()!, singerName)];
+        }
+        var result = await music.SearchAndPlayAsync(songs, cancellationToken);
         if (!result.Succeeded || result.Value is null)
             return new AgentExecutionResult(null, string.Empty, result.ErrorMessage ?? "播放失败");
-        return new AgentExecutionResult(0, $"正在播放：{result.Value.Title} - {result.Value.Singer}", string.Empty);
+        var prefix = songs.Length > 1 ? $"正在按顺序播放歌单（{songs.Length} 首）" : "正在播放";
+        return new AgentExecutionResult(0, $"{prefix}：{result.Value.Title} - {result.Value.Singer}", string.Empty);
     }
 
     private static bool TryParseNaturalTime(string value, out DateTimeOffset dueAt)

@@ -5,17 +5,19 @@ import { describe, expect, it } from 'vitest'
 const root = resolve(import.meta.dirname, '..')
 
 describe('tray music controls', () => {
-  it('shows the current song and exposes pause, resume, and stop without seeking', () => {
+  it('shows the current song and exposes pause, resume, playlist next, and stop without seeking', () => {
     const tray = readFileSync(resolve(root, 'src/renderer/pages/system/TrayMenuPage.tsx'), 'utf8')
     const player = readFileSync(resolve(root, 'src/renderer/components/media/TrayMusicPlayer.tsx'), 'utf8')
     expect(tray).toContain("type: 'music.current'")
-    expect(tray).toContain("type: action === 'toggle-pause' ? 'music.toggle_pause' : 'music.stop'")
+    expect(tray).toContain("action === 'next' ? 'music.next' : 'music.stop'")
     expect(tray).toContain('<TrayMusicPlayer')
     expect(tray).not.toContain('ResizeObserver')
     expect(tray).toContain('bridge.tray.resize(height)')
     expect(tray).toContain('heightReported.current = true')
     expect(player).toContain("label={paused ? '继续播放' : '暂停'}")
     expect(player).toContain('<UiIcon name={paused ? \'play\' : \'pause\'} />')
+    expect(player).toContain('label="下一曲"')
+    expect(player).toContain('<UiIcon name="next" />')
     expect(player).toContain('label="停止"')
     expect(player).toContain('<UiIcon name="stop" />')
     expect(`${tray}\n${player}`).not.toMatch(/seek|快进/u)

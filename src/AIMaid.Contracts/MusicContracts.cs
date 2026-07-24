@@ -1,12 +1,15 @@
 namespace AIMaid.Contracts.Music;
 
+public sealed record MusicSearchItemDto(string SongName, string SingerName);
+
 public sealed record MusicPlaybackStateDto(
     string Url,
     string Title,
     string Singer,
     string Lyrics,
     bool IsPlaying,
-    bool IsPaused);
+    bool IsPaused,
+    bool HasNext);
 
 public sealed record MusicPlaybackRequestedEvent(
     string EventId,

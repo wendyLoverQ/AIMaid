@@ -756,7 +756,12 @@ public sealed class CoreProtocolHost(
                     break;
                 case "music.search_and_play":
                     await HandleValueResultAsync(request, await music.SearchAndPlayAsync(
-                        ReadRequiredString(request.Payload, "songName"), source.Token), source.Token);
+                        ReadRequiredString(request.Payload, "songName"),
+                        ReadOptionalString(request.Payload, "singerName") ?? string.Empty,
+                        source.Token), source.Token);
+                    break;
+                case "music.next":
+                    await HandleValueResultAsync(request, await music.PlayNextAsync(source.Token), source.Token);
                     break;
                 case "music.toggle_pause":
                     await HandleValueResultAsync(request, await music.TogglePauseAsync(source.Token), source.Token);

@@ -10,6 +10,7 @@ interface MusicPlaybackState {
   lyrics: string
   isPlaying: boolean
   isPaused: boolean
+  hasNext: boolean
 }
 
 export interface PetMusicLyricsSnapshot {
@@ -119,7 +120,17 @@ export function startPetMusicPlayback(): () => void {
     refreshLyrics = updateLyrics
     element.addEventListener('timeupdate', updateLyrics)
     element.addEventListener('seeked', updateLyrics)
-    element.addEventListener('ended', () => { void stop() }, { once: true })
+    element.addEventListener('ended', () => {
+      if (!state.hasNext) {
+        void stop()
+        return
+      }
+      void bridge.core.invoke({ type: 'music.next', payload: {} }).then((response) => {
+        if (response.success) return
+        console.error('[MusicPlayback] next failed', response.error?.message ?? '下一曲播放失败。')
+        stopLocal()
+      })
+    }, { once: true })
     element.addEventListener('error', () => { void stop() }, { once: true })
 
     const context = new AudioContext()
@@ -227,7 +238,7 @@ function readEventData(value: unknown): unknown {
 function isPlaybackState(value: unknown): value is MusicPlaybackState {
   return isRecord(value) && typeof value.url === 'string' && typeof value.title === 'string' &&
     typeof value.singer === 'string' && typeof value.lyrics === 'string' &&
-    typeof value.isPlaying === 'boolean' && typeof value.isPaused === 'boolean'
+    typeof value.isPlaying === 'boolean' && typeof value.isPaused === 'boolean' && typeof value.hasNext === 'boolean'
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

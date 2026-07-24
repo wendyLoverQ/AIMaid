@@ -1,13 +1,14 @@
 import type { SVGProps } from 'react'
 
 export type UiIconName =
-  | 'play' | 'pause' | 'stop' | 'layers' | 'image' | 'clock' | 'folder' | 'gauge' | 'user' | 'repeat'
+  | 'play' | 'pause' | 'stop' | 'next' | 'layers' | 'image' | 'clock' | 'folder' | 'gauge' | 'user' | 'repeat'
   | 'sparkles' | 'heart' | 'trash' | 'activity' | 'grid' | 'message' | 'palette' | 'settings' | 'microphone'
 
 const PATHS: Record<UiIconName, React.ReactNode> = {
   play: <path d="m8 5 11 7-11 7V5Z"/>,
   pause: <><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></>,
   stop: <rect x="6" y="6" width="12" height="12" rx="1.5"/>,
+  next: <><path d="m5 5 10 7L5 19V5Z"/><path d="M19 5v14"/></>,
   layers: <><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/></>,
   image: <><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m4 17 5-5 4 4 2-2 5 4"/></>,
   clock: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,

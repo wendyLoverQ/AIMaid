@@ -121,6 +121,7 @@ internal static class SchemaBootstrapper
             if (await ExistsAsync(connection, "VoiceRoles", cancellationToken))
                 await ExecuteAsync(connection, transaction, "UPDATE VoiceRoleCards SET AvatarPath=COALESCE((SELECT AvatarPath FROM VoiceRoles WHERE VoiceRoles.RoleId=VoiceRoleCards.RoleId LIMIT 1),'') WHERE COALESCE(AvatarPath,'')='';", cancellationToken);
             await ApplyAgentDecisionSettingsMigrationAsync(connection, transaction, cancellationToken);
+            await ApplyMusicPlaylistCapabilityMigrationAsync(connection, transaction, cancellationToken);
             await ValidateAsync(connection, transaction, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
@@ -160,6 +161,41 @@ internal static class SchemaBootstrapper
                 ConfigJson='{"windowType":"settings"}',
                 Enabled=1, UpdatedAt=$now
             WHERE CapabilityName='app.open_settings';
+            INSERT INTO AppSettings (Key, Value, UpdatedAt) VALUES ($marker, 'applied', $now);
+            """;
+        command.Parameters.AddWithValue("$marker", marker);
+        command.Parameters.AddWithValue("$now", now);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task ApplyMusicPlaylistCapabilityMigrationAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        const string marker = "migration:music_playlist_capability_v1";
+        await using var markerCommand = connection.CreateCommand();
+        markerCommand.Transaction = transaction;
+        markerCommand.CommandText = "SELECT 1 FROM AppSettings WHERE Key=$key LIMIT 1";
+        markerCommand.Parameters.AddWithValue("$key", marker);
+        if (await markerCommand.ExecuteScalarAsync(cancellationToken) is not null) return;
+
+        var now = DateTimeOffset.Now.ToString("O");
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            UPDATE AgentCapabilities
+            SET Description='搜索并播放单曲或有序歌单。单曲使用 songName 和 singerName；用户要求多首、一些歌曲或歌单时，使用 songs 列表，并按期望播放顺序填写。每首歌曲都必须提供真实、具体的歌曲名和歌手名，不得把歌手、风格、情绪或类别词直接当作歌曲名。',
+                ArgsSchemaJson='{"type":"object","oneOf":[{"required":["songName","singerName"]},{"required":["songs"]}],"properties":{"songName":{"type":"string","description":"单曲的具体歌曲名"},"singerName":{"type":"string","description":"单曲的歌手名"},"songs":{"type":"array","minItems":1,"maxItems":20,"description":"按播放顺序排列的歌曲列表","items":{"type":"object","required":["songName","singerName"],"properties":{"songName":{"type":"string","description":"具体歌曲名"},"singerName":{"type":"string","description":"歌手名"}},"additionalProperties":false}}},"additionalProperties":false}',
+                UpdatedAt=$now
+            WHERE CapabilityName='music.search';
+            UPDATE LlmSourcePrompts
+            SET SystemPromptTemplate=SystemPromptTemplate || char(13) || char(10) || char(13) || char(10) ||
+                  '【音乐歌单参数规则】' || char(13) || char(10) ||
+                  '调用 music.search 播放单曲时，args 必须同时返回 songName 和 singerName。用户要求多首、一些歌曲或歌单时，args 必须返回 songs 数组；数组按播放顺序排列，每项都必须包含真实、具体的 songName 和 singerName。',
+                UpdatedAt=$now
+            WHERE SourceKey='agent_decision'
+              AND instr(SystemPromptTemplate, '【音乐歌单参数规则】')=0;
             INSERT INTO AppSettings (Key, Value, UpdatedAt) VALUES ($marker, 'applied', $now);
             """;
         command.Parameters.AddWithValue("$marker", marker);

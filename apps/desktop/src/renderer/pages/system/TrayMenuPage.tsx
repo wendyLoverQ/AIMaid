@@ -14,6 +14,7 @@ interface MusicPlaybackState {
   singer: string
   isPlaying: boolean
   isPaused: boolean
+  hasNext: boolean
 }
 
 export function TrayMenuPage(): React.JSX.Element {
@@ -60,9 +61,10 @@ export function TrayMenuPage(): React.JSX.Element {
     }
   }
 
-  const controlMusic = async (action: 'toggle-pause' | 'stop'): Promise<void> => {
+  const controlMusic = async (action: 'toggle-pause' | 'next' | 'stop'): Promise<void> => {
+    const type = action === 'toggle-pause' ? 'music.toggle_pause' : action === 'next' ? 'music.next' : 'music.stop'
     const response = await bridge.core.invoke({
-      type: action === 'toggle-pause' ? 'music.toggle_pause' : 'music.stop',
+      type,
       payload: {}
     })
     if (!response.success) {
@@ -102,7 +104,8 @@ export function TrayMenuPage(): React.JSX.Element {
     <Divider />
     {hasMusic
       ? <TrayMusicPlayer title={music.title} singer={music.singer} paused={music.isPaused}
-          onTogglePause={() => void controlMusic('toggle-pause')} onStop={() => void controlMusic('stop')} />
+          hasNext={music.hasNext} onTogglePause={() => void controlMusic('toggle-pause')}
+          onNext={() => void controlMusic('next')} onStop={() => void controlMusic('stop')} />
       : <Text size="xs" tone="muted">当前未播放音乐</Text>}
     <Divider />
     <Button variant={audio.muted ? 'primary' : 'secondary'} onClick={() => void save({ ...audio, muted: !audio.muted })}>
@@ -150,7 +153,8 @@ function updateMusicFromEvent(event: IpcEventEnvelope, update: (state: MusicPlay
 
 function isPlaybackState(value: unknown): value is MusicPlaybackState {
   return isRecord(value) && typeof value.url === 'string' && typeof value.title === 'string' &&
-    typeof value.singer === 'string' && typeof value.isPlaying === 'boolean' && typeof value.isPaused === 'boolean'
+    typeof value.singer === 'string' && typeof value.isPlaying === 'boolean' &&
+    typeof value.isPaused === 'boolean' && typeof value.hasNext === 'boolean'
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

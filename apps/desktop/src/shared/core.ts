@@ -143,7 +143,8 @@ export type CoreRequest =
   | { type: 'pet.voice.play'; payload: { triggerId?: string; bodyPart?: string; source?: string; hitAreaName?: string; normalizedX?: number; normalizedY?: number } }
   | { type: 'pet.voice.playback.report'; payload: { triggerId: string; bodyPart?: string; text?: string; audioPath?: string; played: boolean; reason?: string; source?: string; generationId?: string; contextHash?: string; category?: string; hitAreaName?: string; normalizedX?: number; normalizedY?: number } }
   | { type: 'music.current'; payload: Record<string, never> }
-  | { type: 'music.search_and_play'; payload: { songName: string } }
+  | { type: 'music.search_and_play'; payload: { songName: string; singerName?: string } }
+  | { type: 'music.next'; payload: Record<string, never> }
   | { type: 'music.toggle_pause'; payload: Record<string, never> }
   | { type: 'music.stop'; payload: Record<string, never> }
   | { type: 'status.resources'; payload: Record<string, never> }
@@ -456,6 +457,7 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
     case 'pet.voice_cache.clear':
     case 'pet.voice_intimacy.cycle':
     case 'music.current':
+    case 'music.next':
     case 'music.toggle_pause':
     case 'music.stop':
     case 'status.resources':
@@ -490,7 +492,9 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
         (value.payload.normalizedX === undefined || typeof value.payload.normalizedX === 'number') &&
         (value.payload.normalizedY === undefined || typeof value.payload.normalizedY === 'number')
     case 'music.search_and_play':
-      return isNonEmptyString(value.payload.songName) && value.payload.songName.length <= 200
+      return isNonEmptyString(value.payload.songName) && value.payload.songName.length <= 200 &&
+        (value.payload.singerName === undefined ||
+          (typeof value.payload.singerName === 'string' && value.payload.singerName.length <= 200))
     case 'status.llm_latencies':
       return typeof value.payload.chatModel === 'string' && typeof value.payload.cacheModel === 'string' && typeof value.payload.proactiveModel === 'string'
     case 'tts.playback.set':
