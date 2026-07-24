@@ -499,8 +499,9 @@ public sealed partial class RemoteVideoApplicationService
         RemoteLiveCaptureResult capture;
         try
         {
+            var captureUrl = NormalizeSpecializedLiveCaptureUrl(url);
             capture = await platform.CaptureLiveAsync(new RemoteLiveCaptureRequest(
-                url,
+                captureUrl,
                 siteKey,
                 cookieText,
                 ReadSiteSetting(site, "userAgent") ?? string.Empty,
@@ -931,9 +932,22 @@ public sealed partial class RemoteVideoApplicationService
 
     private static bool IsSpecializedLiveUrl(string url)
         => Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
-           (uri.Host.Equals("live.douyin.com", StringComparison.OrdinalIgnoreCase) ||
+           (IsDouyinLiveUrl(uri) ||
             (uri.Host.EndsWith("xiaohongshu.com", StringComparison.OrdinalIgnoreCase) &&
              uri.AbsolutePath.Contains("/livestream/", StringComparison.OrdinalIgnoreCase)));
+
+    private static string NormalizeSpecializedLiveCaptureUrl(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || !IsDouyinLiveUrl(uri)) return url;
+        var roomId = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
+        return roomId?.All(char.IsAsciiDigit) == true ? $"https://live.douyin.com/{roomId}" : url;
+    }
+
+    private static bool IsDouyinLiveUrl(Uri uri)
+        => (uri.Host.Equals("douyin.com", StringComparison.OrdinalIgnoreCase) ||
+            uri.Host.EndsWith(".douyin.com", StringComparison.OrdinalIgnoreCase)) &&
+           (uri.Host.Equals("live.douyin.com", StringComparison.OrdinalIgnoreCase) ||
+            uri.AbsolutePath.Contains("/live/", StringComparison.OrdinalIgnoreCase));
 
     private static bool IsSpecializedCreatorUrl(string url)
         => Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
