@@ -124,7 +124,7 @@ export function CharacterEditorPage(): React.JSX.Element {
     }
     const generatedVoiceId = buildVoiceId(voiceFolder, voiceStyle);
     return <Page>
-    <WindowTitleBar title={editing ? '编辑语音角色' : '新增语音角色'} tools={<Inline><Button onClick={() => void bridge.window.close()}>取消</Button><Button variant="primary" loading={saving} onClick={() => void save()}>{editing ? '保存修改' : '创建角色'}</Button></Inline>}/>
+    <WindowTitleBar title={editing ? '编辑语音角色' : '新增语音角色'}/>
     <PageContent>
       <LayoutSlot variant="character-editor-layout">
         <Surface variant="character-editor-preview">
@@ -143,6 +143,7 @@ export function CharacterEditorPage(): React.JSX.Element {
           {tab === '原角色卡' ? <Stack gap="md"><Inline justify="between"><Strong>原角色卡</Strong><Button onClick={parseCard}>解析角色卡</Button></Inline><Textarea aria-label="原角色卡 JSON" value={cardJson} onChange={(event) => setCardJson(event.target.value)} rows={22}/></Stack> : null}
         </Surface>
       </LayoutSlot>
+      <Inline justify="end"><Button onClick={() => void bridge.window.close()}>取消</Button><Button variant="primary" loading={saving} onClick={() => void save()}>{editing ? '保存修改' : '创建角色'}</Button></Inline>
     </PageContent>
     <Dialog open={voiceDialog} title="新建音色" onClose={() => setVoiceDialog(false)} footer={<><Button onClick={() => setVoiceDialog(false)}>取消</Button><Button variant="primary" onClick={() => void saveVoiceAsset()}>保存</Button></>}>
       <Stack gap="md">

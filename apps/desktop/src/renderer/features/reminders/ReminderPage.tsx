@@ -32,14 +32,10 @@ export function ReminderPage(): React.JSX.Element {
             setBusyId(null);
         }
     }
-    const tools = <>
-    <Button size="sm" onClick={() => void load()}>刷新</Button>
-    <Button size="sm" onClick={() => void mutate('check', processDueReminders)}>检查</Button>
-  </>;
     if (items === null)
-        return <Page><WindowTitleBar title="提醒事项" tools={tools}/><PageContent>{error === null ? <Loading label="正在读取提醒事项"/> : <ErrorState title="提醒事项读取失败" message={error} onRetry={() => void load()}/>}</PageContent></Page>;
+        return <Page><WindowTitleBar title="提醒事项"/><PageContent>{error === null ? <Loading label="正在读取提醒事项"/> : <ErrorState title="提醒事项读取失败" message={error} onRetry={() => void load()}/>}</PageContent></Page>;
     return <Page>
-    <WindowTitleBar title="提醒事项" tools={tools}/>
+    <WindowTitleBar title="提醒事项"/>
     <PageContent>
     <Stack gap="md">
       <PageToolbar lead={<Inline><Strong>{items.length} 项提醒</Strong><Text tone="secondary">启用 {items.filter((item) => item.enabled).length} 项</Text></Inline>} actions={<Button variant="primary" onClick={() => setEditing('new')}>新增提醒</Button>} />
@@ -51,6 +47,7 @@ export function ReminderPage(): React.JSX.Element {
           <Inline justify="end"><Switch label="提醒" checked={item.enabled} disabled={busyId === item.reminderId} onChange={(event) => void mutate(item.reminderId, () => setReminderEnabled(item.reminderId, event.target.checked))}/><Switch label="TTS" checked={item.allowTts} disabled={busyId === item.reminderId} onChange={(event) => void mutate(item.reminderId, () => setReminderAllowTts(item.reminderId, event.target.checked))}/><Button size="sm" onClick={() => setEditing(item)}>编辑</Button><Button size="sm" variant="danger" onClick={() => setDeleting(item)}>删除</Button></Inline>
         </Surface>)}
       </LayoutSlot>}
+      <Inline justify="end"><Button size="sm" onClick={() => void load()}>刷新</Button><Button size="sm" onClick={() => void mutate('check', processDueReminders)}>检查</Button></Inline>
     </Stack>
     <ReminderEditor item={editing} close={() => setEditing(null)} saved={() => { setEditing(null); void load(); }}/>
     <Dialog open={deleting !== null} title="确认删除" description={deleting === null ? '' : `删除提醒 [${deleting.title}]？`} onClose={() => setDeleting(null)} footer={<><Button onClick={() => setDeleting(null)}>取消</Button><Button variant="danger" onClick={() => { const item = deleting; if (item === null)
