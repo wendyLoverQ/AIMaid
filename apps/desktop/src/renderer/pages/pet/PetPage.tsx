@@ -23,6 +23,7 @@ import { playLocalAudioPaths, synthesizeAndPlayPages } from '../chat/tts-playbac
 import { playCachedAudio } from '../chat/tts-playback';
 import { usePetBubbleQueue, type PetBubbleQueue } from './usePetBubbleQueue';
 import { shouldDisplayVoiceCacheStatus } from '../../../shared/pet-voice-cache-status';
+import { useImageModeIdleAnimation } from './image-mode-idle-animation';
 type PetHitTest = (clientX: number, clientY: number) => boolean;
 type PetPointerClick = (event: MouseEvent) => void;
 type PetVoiceClickContext = { bodyPart: string; hitAreaName?: string; normalizedX?: number; normalizedY?: number };
@@ -763,7 +764,7 @@ export default function PetPage(): React.JSX.Element {
     <PetPanelSurface ref={panelRef}>
       <PetItemSurface ref={itemRef}>
         {presentation === null ? <Container>{error ?? '正在读取桌宠显示模式…'}</Container> : null}
-        {presentation?.mode === 'image' ? <ImageMode canvasRef={visualCanvasRef} presentation={presentation} scale={renderScale} onAdvance={() => void execute('next-image')} onFirstFrame={revealPetWindow} registerHitTest={registerHitTest}/> : null}
+        {presentation?.mode === 'image' ? <ImageMode canvasRef={visualCanvasRef} presentation={presentation} scale={renderScale} attentionKey={bubble?.nonce ?? ''} onAdvance={() => void execute('next-image')} onFirstFrame={revealPetWindow} registerHitTest={registerHitTest}/> : null}
         {presentation?.mode === 'png-sequence' ? <PngSequenceMode canvasRef={visualCanvasRef} presentation={presentation} scale={renderScale} onFirstFrame={revealPetWindow} onSequenceCompleted={() => void execute('cycle-png-role')} registerHitTest={registerHitTest}/> : null}
       </PetItemSurface>
       {presentation?.mode !== 'live2d' ? <PetBubble message={bubble} speechHeld={speechHeld} onExpired={expireBubble}/> : null}
@@ -816,10 +817,11 @@ function latestAssistantAudioPaths(messages: readonly ChatMessageDto[]): string[
     }
     return paths;
 }
-function ImageMode({ canvasRef, presentation, scale, onAdvance, onFirstFrame, registerHitTest }: {
+function ImageMode({ canvasRef, presentation, scale, attentionKey, onAdvance, onFirstFrame, registerHitTest }: {
     canvasRef: React.RefObject<HTMLCanvasElement | null>;
     presentation: PetPresentationSnapshot;
     scale: number;
+    attentionKey: string;
     onAdvance: () => void;
     onFirstFrame: () => void;
     registerHitTest: (hitTest: PetHitTest | null) => void;
@@ -837,7 +839,7 @@ function ImageMode({ canvasRef, presentation, scale, onAdvance, onFirstFrame, re
         const timer = window.setInterval(onAdvance, presentation.imageIntervalSeconds * 1000);
         return () => window.clearInterval(timer);
     }, [onAdvance, presentation.currentImage, presentation.imageIntervalSeconds, presentation.paused]);
-    useDrawCanvasImage(canvasRef, presentation.currentImage?.url ?? null, scale, onFirstFrame);
+    useImageModeIdleAnimation(canvasRef, presentation.currentImage?.url ?? null, scale, attentionKey, onFirstFrame);
     const backingScale = scale * Math.min(window.devicePixelRatio || 1, 2);
     const canvasWidth = Math.max(1, Math.round(PET_CANVAS_WIDTH * backingScale));
     const canvasHeight = Math.max(1, Math.round(PET_CANVAS_HEIGHT * backingScale));
@@ -964,39 +966,6 @@ function PngSequenceMode({ canvasRef, presentation, scale, onFirstFrame, onSeque
         ? <Container>未找到 PNG 序列素材。</Container>
         : <TransparentCanvas ref={canvasRef} width={canvasWidth} height={canvasHeight} aria-label={presentation.pngRole}/>;
 }
-function useDrawCanvasImage(
-    ref: React.RefObject<HTMLCanvasElement | null>,
-    url: string | null,
-    scale: number,
-    onFirstFrame: () => void
-): void {
-    const loadedImageRef = useRef<HTMLImageElement | null>(null);
-    useEffect(() => {
-        const canvas = ref.current;
-        if (canvas === null || url === null)
-            return;
-        loadedImageRef.current = null;
-        const image = new Image();
-        image.crossOrigin = 'anonymous';
-        image.onload = () => {
-            loadedImageRef.current = image;
-            drawPetImage(canvas, image);
-            onFirstFrame();
-        };
-        image.src = url;
-        return () => {
-            image.onload = null;
-            if (loadedImageRef.current === image)
-                loadedImageRef.current = null;
-        };
-    }, [onFirstFrame, ref, url]);
-    useEffect(() => {
-        const canvas = ref.current;
-        const image = loadedImageRef.current;
-        if (canvas !== null && image !== null)
-            drawPetImage(canvas, image);
-    }, [ref, scale]);
-}
 function drawPetImage(canvas: HTMLCanvasElement, image: HTMLImageElement): void {
     const width = canvas.width;
     const height = canvas.height;
@@ -1068,7 +1037,7 @@ function PetContextMenu({ position, presentation, voiceMenu, execute, open, cycl
 }): React.JSX.Element {
     const icon = (name: Parameters<typeof UiIcon>[0]['name']): React.JSX.Element => <UiIcon name={name}/>;
     const items = [
-        ...(presentation.mode !== 'live2d' ? [{ id: 'pause', label: presentation.paused ? '继续' : '暂停', icon: icon('pause'), onSelect: () => execute('toggle-pause') }] : []),
+        ...(presentation.mode !== 'live2d' ? [{ id: 'pause', label: presentation.paused ? '继续' : '暂停', icon: icon(presentation.paused ? 'play' : 'pause'), onSelect: () => execute('toggle-pause') }] : []),
         { id: 'mode', label: modeLabel(presentation.mode), icon: icon('layers'), onSelect: () => execute('cycle-mode') },
         ...(presentation.mode === 'image' ? [
             { id: 'next-image', label: '切换图片', icon: icon('image'), onSelect: () => execute('next-image') },
