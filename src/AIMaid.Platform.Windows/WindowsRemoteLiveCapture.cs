@@ -182,19 +182,134 @@ internal static class WindowsRemoteLiveCapture
             .FirstOrDefault()
             ?? throw new InvalidDataException("直播响应中没有可播放的 HLS 或 FLV 地址。");
         var metadataResponses = ScopeMetadataResponses(captured, stream);
-        var title = FindEmbeddedField(metadataResponses, "title", "room_name", "roomName") ??
+        var roomMetadata = FindRoomMetadata(captured, stream);
+        var title = roomMetadata?.Title ??
+                    FindEmbeddedField(metadataResponses, "title", "room_name", "roomName") ??
                     FindNamedString(metadataResponses, "title", "room_name", "roomName") ??
                     $"{request.SiteKey} 直播";
-        var author = FindEmbeddedField(metadataResponses, "nickname", "anchor_name", "user_name") ??
+        var author = roomMetadata?.Author ??
+                     FindEmbeddedField(metadataResponses, "nickname", "anchor_name", "user_name") ??
                      FindNamedString(metadataResponses, "nickname", "anchor_name", "user_name") ??
                      string.Empty;
-        var cover = FindEmbeddedImage(metadataResponses) ??
+        var cover = roomMetadata?.CoverUrl ??
+                    FindEmbeddedImage(metadataResponses) ??
                     FindNamedString(metadataResponses, "cover_url", "room_cover", "cover", "coverUrl") ??
                     string.Empty;
         var videoId = Uri.TryCreate(request.Url, UriKind.Absolute, out var uri)
             ? uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? string.Empty
             : string.Empty;
         return new Core.RemoteLiveCaptureResult(stream, title, author, cover, videoId);
+    }
+
+    private static RoomMetadata? FindRoomMetadata(
+        IReadOnlyList<CapturedResponse> captured,
+        string selectedStream)
+    {
+        foreach (var response in captured)
+        {
+            if (string.IsNullOrWhiteSpace(response.Body)) continue;
+            try
+            {
+                using var document = JsonDocument.Parse(response.Body);
+                var metadata = FindRoomMetadata(document.RootElement, selectedStream);
+                if (metadata is not null) return metadata;
+            }
+            catch (JsonException) { }
+        }
+        return null;
+    }
+
+    private static RoomMetadata? FindRoomMetadata(JsonElement element, string selectedStream)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                var nested = FindRoomMetadata(property.Value, selectedStream);
+                if (nested is not null) return nested;
+            }
+            if (ContainsSelectedStream(element, selectedStream))
+            {
+                var title = FindNamedString(element, ["title", "room_name", "roomName"]);
+                var author = FindNamedString(element, ["nickname", "anchor_name", "user_name"]);
+                var cover = FindNamedImage(element);
+                if (!string.IsNullOrWhiteSpace(title) || !string.IsNullOrWhiteSpace(cover))
+                    return new RoomMetadata(title, author, cover);
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                var nested = FindRoomMetadata(item, selectedStream);
+                if (nested is not null) return nested;
+            }
+        }
+        return null;
+    }
+
+    private static bool ContainsSelectedStream(JsonElement element, string selectedStream)
+    {
+        if (element.ValueKind == JsonValueKind.String)
+            return string.Equals(
+                NormalizeStreamUrl(element.GetString() ?? string.Empty),
+                selectedStream,
+                StringComparison.Ordinal);
+        if (element.ValueKind == JsonValueKind.Object)
+            return element.EnumerateObject().Any(property => ContainsSelectedStream(property.Value, selectedStream));
+        return element.ValueKind == JsonValueKind.Array &&
+               element.EnumerateArray().Any(item => ContainsSelectedStream(item, selectedStream));
+    }
+
+    private static string? FindNamedImage(JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (property.Name.Equals("cover", StringComparison.OrdinalIgnoreCase) ||
+                    property.Name.Equals("room_cover", StringComparison.OrdinalIgnoreCase) ||
+                    property.Name.Equals("cover_url", StringComparison.OrdinalIgnoreCase) ||
+                    property.Name.Equals("coverUrl", StringComparison.OrdinalIgnoreCase))
+                {
+                    var image = FindFirstHttpUrl(property.Value);
+                    if (!string.IsNullOrWhiteSpace(image)) return image;
+                }
+                var nested = FindNamedImage(property.Value);
+                if (!string.IsNullOrWhiteSpace(nested)) return nested;
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+            foreach (var item in element.EnumerateArray())
+            {
+                var nested = FindNamedImage(item);
+                if (!string.IsNullOrWhiteSpace(nested)) return nested;
+            }
+        return null;
+    }
+
+    private static string? FindFirstHttpUrl(JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.String)
+        {
+            var value = element.GetString();
+            return Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https"
+                ? value
+                : null;
+        }
+        if (element.ValueKind == JsonValueKind.Object)
+            foreach (var property in element.EnumerateObject())
+            {
+                var nested = FindFirstHttpUrl(property.Value);
+                if (!string.IsNullOrWhiteSpace(nested)) return nested;
+            }
+        else if (element.ValueKind == JsonValueKind.Array)
+            foreach (var item in element.EnumerateArray())
+            {
+                var nested = FindFirstHttpUrl(item);
+                if (!string.IsNullOrWhiteSpace(nested)) return nested;
+            }
+        return null;
     }
 
     private static IReadOnlyList<CapturedResponse> ScopeMetadataResponses(
@@ -419,5 +534,6 @@ internal static class WindowsRemoteLiveCapture
         }
     }
 
+    private sealed record RoomMetadata(string? Title, string? Author, string? CoverUrl);
     private sealed record CapturedResponse(string Url, string Body, bool IsMedia);
 }

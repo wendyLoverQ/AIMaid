@@ -96,17 +96,18 @@ export function RemoteSiteConfigPage(): React.JSX.Element {
             setMessage('站点名称和域名匹配不能为空。');
             return;
         }
-        const id = siteId || `site_${crypto.randomUUID().replaceAll('-', '')}`;
-        const site: RemoteSiteDto = { siteId: id, siteName: siteName.trim(), domainPattern: domainPattern.trim(), adapterKey: '', qualityPreference: '', isEnabled: enabled, settingsJson: JSON.stringify({ userAgent, referer, notes }), updatedAt: new Date().toISOString(), hasProtectedCookie: hasCookie };
+        const site: RemoteSiteDto = { siteId, siteName: siteName.trim(), domainPattern: domainPattern.trim(), adapterKey: '', qualityPreference: '', isEnabled: enabled, settingsJson: JSON.stringify({ userAgent, referer, notes }), updatedAt: new Date().toISOString(), hasProtectedCookie: hasCookie };
         const response = await bridge.core.invoke({ type: 'remote_site.save', payload: { site, plainCookie: cookieDirty ? cookie : null } });
         if (!response.success) {
             setMessage(response.error?.message ?? '保存失败。');
             return;
         }
+        const savedId = typeof response.payload === 'string' ? response.payload : siteId;
+        setSiteId(savedId);
         setHasCookie(cookieDirty ? cookie.trim() !== '' : hasCookie);
         setCookie('');
         setCookieDirty(false);
-        await reloadSites(id);
+        await reloadSites(savedId);
         setMessage('已保存。');
     }
     async function deleteSite(): Promise<void> {

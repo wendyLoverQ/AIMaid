@@ -108,6 +108,10 @@ public sealed record NotebookNoteDto(
     IReadOnlyList<string> AttachmentIds, bool IsPinned, bool IsDeleted,
     DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
 public sealed record SaveNotebookNoteCommand(NotebookNoteDto Note) : ICommand<OperationResult>;
+public sealed record SaveNotebookAttachmentCommand(
+    string Id, string NoteId, string OriginalName, string StoredPath, string MimeType,
+    long SizeBytes, int? Width, int? Height, string Sha256, DateTimeOffset CreatedAt)
+    : ICommand<OperationResult>;
 public sealed record DeleteNotebookNoteCommand(string NoteId) : ICommand<OperationResult>;
 public sealed record ListNotebookNotesQuery(bool IncludeDeleted = false) : IQuery<IReadOnlyList<NotebookNoteDto>>;
 
@@ -143,7 +147,7 @@ public sealed record VaultItemDto(
     string Platform, string PublicMetadataJson, bool HasProtectedSecret,
     DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
 public sealed record VaultItemDetailDto(VaultItemDto Item, string? Secret);
-public sealed record SaveVaultItemCommand(VaultItemDto Item, string? PlainSecret, string? ChangeRemark = null) : ICommand<OperationResult>;
+public sealed record SaveVaultItemCommand(VaultItemDto Item, string? PlainSecret, string? ChangeRemark = null) : ICommand<OperationResult<string>>;
 public sealed record GetVaultItemQuery(string ItemId) : IQuery<OperationResult<VaultItemDetailDto>>;
 public sealed record RevealVaultSecretQuery(string ItemId) : IQuery<OperationResult<VaultItemDetailDto>>;
 public sealed record ListVaultItemsQuery(string? ItemType = null) : IQuery<IReadOnlyList<VaultItemDto>>;
@@ -231,7 +235,7 @@ public sealed record ListSubtitlesQuery : IQuery<IReadOnlyList<SubtitleItemDto>>
 public sealed record ImportSubtitleCommand(string SourcePath) : ICommand<OperationResult<SubtitleItemDto>>;
 public sealed record ImportSubtitleFolderCommand(string FolderPath) : ICommand<OperationResult<int>>;
 public sealed record DeleteSubtitleCommand(string Path) : ICommand<OperationResult>;
-public sealed record SaveRemoteSiteCommand(RemoteSiteDto Site, string? PlainCookie = null) : ICommand<OperationResult>;
+public sealed record SaveRemoteSiteCommand(RemoteSiteDto Site, string? PlainCookie = null) : ICommand<OperationResult<string>>;
 public sealed record GetRemoteSiteQuery(string SiteId) : IQuery<OperationResult<RemoteSiteDetailDto>>;
 public sealed record DeleteRemoteSiteCommand(string SiteId) : ICommand<OperationResult>;
 public sealed record ListRemoteSitesQuery(bool EnabledOnly = true) : IQuery<IReadOnlyList<RemoteSiteDto>>;

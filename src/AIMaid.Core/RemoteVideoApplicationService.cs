@@ -492,7 +492,7 @@ public sealed partial class RemoteVideoApplicationService
         RemoteSiteDto? site,
         CancellationToken cancellationToken)
     {
-        var siteKey = url.Contains("douyin.com", StringComparison.OrdinalIgnoreCase) ? "douyin" : "xiaohongshu";
+        var siteKey = ResolveSpecializedSiteKey(url);
         var cookieText = await ReadCookieTextAsync(site, cancellationToken);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(40));
@@ -537,7 +537,7 @@ public sealed partial class RemoteVideoApplicationService
         RemoteSiteDto? site,
         CancellationToken cancellationToken)
     {
-        var siteKey = url.Contains("douyin.com", StringComparison.OrdinalIgnoreCase) ? "douyin" : "xiaohongshu";
+        var siteKey = ResolveSpecializedSiteKey(url);
         var cookieText = await ReadCookieTextAsync(site, cancellationToken);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(50));
@@ -758,17 +758,38 @@ public sealed partial class RemoteVideoApplicationService
 
     private static string NormalizeRemoteUrl(string value)
     {
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || !IsXTwitterHost(uri.Host)) return value;
-        var match = XStatusVideoRegex().Match(uri.AbsolutePath);
-        if (!match.Success) return value;
-        var builder = new UriBuilder(uri.Scheme, uri.Host, uri.IsDefaultPort ? -1 : uri.Port,
-            $"/{match.Groups[1].Value}/status/{match.Groups[2].Value}");
-        return builder.Uri.AbsoluteUri.TrimEnd('/');
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)) return value;
+        if (IsXTwitterHost(uri.Host))
+        {
+            var match = XStatusVideoRegex().Match(uri.AbsolutePath);
+            if (!match.Success) return value;
+            var builder = new UriBuilder(uri.Scheme, uri.Host, uri.IsDefaultPort ? -1 : uri.Port,
+                $"/{match.Groups[1].Value}/status/{match.Groups[2].Value}")
+            {
+                Query = uri.Query.TrimStart('?')
+            };
+            return builder.Uri.AbsoluteUri.TrimEnd('/');
+        }
+        if (!IsDouyinContentHost(uri.Host)) return value;
+
+        var pathParts = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var detailId = pathParts.Length >= 2 &&
+                       (pathParts[^2].Equals("note", StringComparison.OrdinalIgnoreCase) ||
+                        (HostMatches(uri.Host, "iesdouyin.com") &&
+                         pathParts[^2].Equals("video", StringComparison.OrdinalIgnoreCase))) &&
+                       pathParts[^1].All(char.IsAsciiDigit)
+            ? pathParts[^1]
+            : null;
+        detailId ??= DouyinModalIdRegex().Match(uri.Query) is { Success: true } modal ? modal.Groups[1].Value : null;
+        return detailId is null ? value : $"https://www.douyin.com/video/{detailId}";
     }
 
     private static bool IsXTwitterHost(string host)
         => host.Equals("x.com", StringComparison.OrdinalIgnoreCase) || host.EndsWith(".x.com", StringComparison.OrdinalIgnoreCase) ||
            host.Equals("twitter.com", StringComparison.OrdinalIgnoreCase) || host.EndsWith(".twitter.com", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsDouyinContentHost(string host)
+        => HostMatches(host, "douyin.com") || HostMatches(host, "iesdouyin.com");
 
     private static void AddSiteArguments(List<string> arguments, RemoteSiteDto? site)
     {
@@ -933,7 +954,7 @@ public sealed partial class RemoteVideoApplicationService
     private static bool IsSpecializedLiveUrl(string url)
         => Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
            (IsDouyinLiveUrl(uri) ||
-            (uri.Host.EndsWith("xiaohongshu.com", StringComparison.OrdinalIgnoreCase) &&
+            (HostMatches(uri.Host, "xiaohongshu.com") &&
              uri.AbsolutePath.Contains("/livestream/", StringComparison.OrdinalIgnoreCase)));
 
     private static string NormalizeSpecializedLiveCaptureUrl(string url)
@@ -951,10 +972,17 @@ public sealed partial class RemoteVideoApplicationService
 
     private static bool IsSpecializedCreatorUrl(string url)
         => Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
-           ((uri.Host.EndsWith("douyin.com", StringComparison.OrdinalIgnoreCase) &&
+           ((HostMatches(uri.Host, "douyin.com") &&
              uri.AbsolutePath.Contains("/user/", StringComparison.OrdinalIgnoreCase)) ||
-            (uri.Host.EndsWith("xiaohongshu.com", StringComparison.OrdinalIgnoreCase) &&
+            (HostMatches(uri.Host, "xiaohongshu.com") &&
              uri.AbsolutePath.Contains("/user/profile/", StringComparison.OrdinalIgnoreCase)));
+
+    private static string ResolveSpecializedSiteKey(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            throw new ArgumentException("远程视频链接格式无效。", nameof(url));
+        return HostMatches(uri.Host, "douyin.com") ? "douyin" : "xiaohongshu";
+    }
 
     private static string EncodeDirectStreamSelector(string streamUrl)
         => DirectStreamSelectorPrefix + Convert.ToBase64String(Encoding.UTF8.GetBytes(streamUrl))
@@ -1081,8 +1109,9 @@ public sealed partial class RemoteVideoApplicationService
 
     private static bool HostMatches(string host, string pattern)
     {
-        var normalized = pattern.Trim().TrimStart('*').TrimStart('.');
-        return normalized.Length > 0 && (host.Equals(normalized, StringComparison.OrdinalIgnoreCase) || host.EndsWith("." + normalized, StringComparison.OrdinalIgnoreCase));
+        return SplitDomainPatterns(pattern).Any(domain =>
+            host.Equals(domain, StringComparison.OrdinalIgnoreCase) ||
+            host.EndsWith("." + domain, StringComparison.OrdinalIgnoreCase));
     }
 
     private static string NormalizeCookie(string value, string domainPattern)
@@ -1091,7 +1120,8 @@ public sealed partial class RemoteVideoApplicationService
         value = Regex.Replace(value, @"\\+t", "\t", RegexOptions.CultureInvariant);
         if (value.Contains("# Netscape HTTP Cookie File", StringComparison.OrdinalIgnoreCase) || value.Contains('\t'))
             return NormalizeNetscapeCookieText(value);
-        var domain = "." + domainPattern.Trim().TrimStart('*').TrimStart('.');
+        var domain = "." + (SplitDomainPatterns(domainPattern).FirstOrDefault()
+            ?? throw new ArgumentException("站点域名匹配不能为空。", nameof(domainPattern)));
         var builder = new StringBuilder("# Netscape HTTP Cookie File" + Environment.NewLine);
         foreach (var part in value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
@@ -1102,6 +1132,11 @@ public sealed partial class RemoteVideoApplicationService
         }
         return builder.ToString();
     }
+
+    private static IEnumerable<string> SplitDomainPatterns(string pattern)
+        => pattern.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(value => value.TrimStart('*').TrimStart('.'))
+            .Where(value => value.Length > 0);
 
     private static string NormalizeNetscapeCookieText(string value)
     {
@@ -1177,6 +1212,8 @@ public sealed partial class RemoteVideoApplicationService
     private static partial Regex ProgressRegex();
     [GeneratedRegex(@"^/([^/]+)/status/(\d+)(?:/video/\d+)?/?$", RegexOptions.IgnoreCase)]
     private static partial Regex XStatusVideoRegex();
+    [GeneratedRegex(@"(?:^|[?&])modal_id=(\d+)(?:&|$)", RegexOptions.IgnoreCase)]
+    private static partial Regex DouyinModalIdRegex();
 }
 
 public sealed class RemoteVideoOperationException(string message) : Exception(message);

@@ -73,10 +73,10 @@ public sealed class VideoLibraryApplicationService
         var info = new FileInfo(fullPath);
         var now = DateTimeOffset.Now;
         var item = new VideoItemDto(
-            Guid.NewGuid().ToString("N"), "LocalFile", Path.GetFileNameWithoutExtension(fullPath), fullPath, string.Empty,
+            string.Empty, "LocalFile", Path.GetFileNameWithoutExtension(fullPath), fullPath, string.Empty,
             string.Empty, string.Empty, string.Empty, false, now, now, command.AlbumId,
             await ProbeDurationAsync(fullPath, cancellationToken), 0, false, info.Length, null, string.Empty, "Pending", false);
-        await SaveVideoAsync(item, cancellationToken);
+        item = await SaveVideoAsync(item, cancellationToken);
         var cover = await GenerateCoverAsync(item, cancellationToken);
         var updated = item with
         {
@@ -210,9 +210,12 @@ public sealed class VideoLibraryApplicationService
         var existing = albums.FirstOrDefault(album => album.Name == name);
         if (existing is not null) return OperationResult<VideoAlbumDto>.Success(existing);
         var now = DateTimeOffset.Now;
-        var album = new VideoAlbumDto(Guid.NewGuid().ToString("N"), name, command.Description.Trim(), string.Empty,
+        var album = new VideoAlbumDto(string.Empty, name, command.Description.Trim(), string.Empty,
             (albums.Count == 0 ? 0 : albums.Max(item => item.SortOrder)) + 10, now, now);
-        await store.UpsertAsync(AlbumDomain, album.AlbumId, JsonSerializer.Serialize(album), album.UpdatedAt, cancellationToken);
+        var albumId = store is ILegacyRelationalStore legacy
+            ? await legacy.UpsertGeneratedAsync(AlbumDomain, null, JsonSerializer.Serialize(album), album.UpdatedAt, cancellationToken)
+            : throw new InvalidOperationException("当前视频存储不支持数据库自增专辑 ID。");
+        album = album with { AlbumId = albumId };
         return OperationResult<VideoAlbumDto>.Success(album);
     }
 
@@ -400,8 +403,13 @@ public sealed class VideoLibraryApplicationService
         return OperationResult.Success();
     }
 
-    private Task SaveVideoAsync(VideoItemDto item, CancellationToken cancellationToken)
-        => store.UpsertAsync(VideoDomain, item.VideoId, JsonSerializer.Serialize(item), item.UpdatedAt, cancellationToken);
+    private async Task<VideoItemDto> SaveVideoAsync(VideoItemDto item, CancellationToken cancellationToken)
+    {
+        if (store is not ILegacyRelationalStore legacy) throw new InvalidOperationException("当前视频存储不支持数据库自增视频 ID。");
+        var id = await legacy.UpsertGeneratedAsync(VideoDomain, string.IsNullOrWhiteSpace(item.VideoId) ? null : item.VideoId,
+            JsonSerializer.Serialize(item), item.UpdatedAt, cancellationToken);
+        return item with { VideoId = id };
+    }
 
     private async Task<string> ReadSettingAsync(string key, string fallback, CancellationToken cancellationToken)
         => (await settings.GetAsync(key, cancellationToken))?.Value ?? SettingsApplicationService.DefaultSetting(key)?.Value ?? fallback;

@@ -1,14 +1,16 @@
 using System.Globalization;
 using AIMaid.Contracts.Characters;
 using AIMaid.Contracts.Chat;
+using AIMaid.Contracts.Domains;
 using AIMaid.Contracts.Settings;
 using AIMaid.Contracts.Tasks;
+using AIMaid.Contracts;
 using AIMaid.Core;
 using Microsoft.Data.Sqlite;
 
 namespace AIMaid.Infrastructure;
 
-public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsStore, ICharacterStore, IBackgroundTaskStore, IDomainDocumentStore, ILlmCallAuditStore, IAtomicStore
+public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsStore, ICharacterStore, IBackgroundTaskStore, IDomainDocumentStore, ILlmCallAuditStore, IAtomicStore, ILegacyRelationalStore
 {
     public static IReadOnlyDictionary<string, string> RelationalDomainTables => LegacyRelationalDocumentStore.DomainTables;
     private readonly string connectionString;
@@ -37,6 +39,29 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
         await pragma.ExecuteNonQueryAsync(cancellationToken);
         await SchemaBootstrapper.ApplyAsync(connection, cancellationToken);
     }
+
+    public Task<string> UpsertGeneratedAsync(string domain, string? id, string json, DateTimeOffset updatedAt, CancellationToken cancellationToken = default)
+        => documents.UpsertGeneratedAsync(domain, id, json, updatedAt, cancellationToken);
+    public Task<LegacyVaultReadModel?> GetVaultAsync(string itemId, CancellationToken cancellationToken = default)
+        => documents.GetVaultAsync(itemId, cancellationToken);
+    public Task<IReadOnlyList<LegacyVaultHistoryReadModel>> ListVaultHistoriesAsync(string itemId, CancellationToken cancellationToken = default)
+        => documents.ListVaultHistoriesAsync(itemId, cancellationToken);
+    public Task<string> SaveVaultAsync(VaultItemDto item, IReadOnlyDictionary<string, string>? secrets, string? changeRemark, CancellationToken cancellationToken = default)
+        => documents.SaveVaultAsync(item, secrets, changeRemark, cancellationToken);
+    public Task DeleteVaultAsync(string itemId, CancellationToken cancellationToken = default)
+        => documents.DeleteVaultAsync(itemId, cancellationToken);
+    public Task RestoreVaultHistoryAsync(string historyId, CancellationToken cancellationToken = default)
+        => documents.RestoreVaultHistoryAsync(historyId, cancellationToken);
+    public Task<NotebookAttachmentRecord> AddNotebookAttachmentAsync(NotebookAttachmentRecord attachment, CancellationToken cancellationToken = default)
+        => documents.AddNotebookAttachmentAsync(attachment, cancellationToken);
+    public Task SaveNotebookNoteAsync(NotebookNoteDto note, CancellationToken cancellationToken = default)
+        => documents.SaveNotebookNoteAsync(note, cancellationToken);
+    public Task DeleteNotebookNoteAsync(string noteId, CancellationToken cancellationToken = default)
+        => documents.DeleteNotebookNoteAsync(noteId, cancellationToken);
+    public Task<IReadOnlyList<VoiceConversationDto>> ListVoiceConversationsAsync(string? voiceRoleId, string? search, CancellationToken cancellationToken = default)
+        => documents.ListVoiceConversationsAsync(voiceRoleId, search, cancellationToken);
+    public Task DeleteVoiceConversationAsync(string conversationId, CancellationToken cancellationToken = default)
+        => documents.DeleteVoiceConversationAsync(conversationId, cancellationToken);
 
     async Task IAtomicStore.ApplyAsync(IReadOnlyList<AtomicMutation> mutations, CancellationToken cancellationToken)
     {

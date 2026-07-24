@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using AIMaid.Contracts.Chat;
 using AIMaid.Contracts.Characters;
 using AIMaid.Contracts.Settings;
@@ -10,12 +11,12 @@ using AIMaid.Contracts.Domains;
 namespace AIMaid.Core;
 
 public sealed class ExtendedDomainApplicationService :
-    ICommandHandler<SaveNotebookNoteCommand, OperationResult>, ICommandHandler<DeleteNotebookNoteCommand, OperationResult>, IQueryHandler<ListNotebookNotesQuery, IReadOnlyList<NotebookNoteDto>>,
+    ICommandHandler<SaveNotebookNoteCommand, OperationResult>, ICommandHandler<SaveNotebookAttachmentCommand, OperationResult>, ICommandHandler<DeleteNotebookNoteCommand, OperationResult>, IQueryHandler<ListNotebookNotesQuery, IReadOnlyList<NotebookNoteDto>>,
     ICommandHandler<SaveVoiceConversationCommand, OperationResult>, ICommandHandler<DeleteVoiceConversationCommand, OperationResult>, IQueryHandler<ListVoiceConversationsQuery, IReadOnlyList<VoiceConversationDto>>,
     ICommandHandler<SaveTimerRecordCommand, OperationResult>, ICommandHandler<DeleteTimerRecordCommand, OperationResult>, IQueryHandler<ListTimerRecordsQuery, IReadOnlyList<TimerRecordDto>>,
-    ICommandHandler<SaveVaultItemCommand, OperationResult>, ICommandHandler<DeleteVaultItemCommand, OperationResult>, IQueryHandler<GetVaultItemQuery, OperationResult<VaultItemDetailDto>>, IQueryHandler<RevealVaultSecretQuery, OperationResult<VaultItemDetailDto>>, IQueryHandler<ListVaultItemsQuery, IReadOnlyList<VaultItemDto>>, IQueryHandler<ListVaultHistoriesQuery, IReadOnlyList<VaultHistoryDto>>, ICommandHandler<RestoreVaultHistoryCommand, OperationResult>,
+    ICommandHandler<SaveVaultItemCommand, OperationResult<string>>, ICommandHandler<DeleteVaultItemCommand, OperationResult>, IQueryHandler<GetVaultItemQuery, OperationResult<VaultItemDetailDto>>, IQueryHandler<RevealVaultSecretQuery, OperationResult<VaultItemDetailDto>>, IQueryHandler<ListVaultItemsQuery, IReadOnlyList<VaultItemDto>>, IQueryHandler<ListVaultHistoriesQuery, IReadOnlyList<VaultHistoryDto>>, ICommandHandler<RestoreVaultHistoryCommand, OperationResult>,
     ICommandHandler<RecordMarketEventCommand, OperationResult>, IQueryHandler<ListMarketEventsQuery, IReadOnlyList<MarketEventDto>>,
-    ICommandHandler<SaveRemoteSiteCommand, OperationResult>, ICommandHandler<DeleteRemoteSiteCommand, OperationResult>, IQueryHandler<GetRemoteSiteQuery, OperationResult<RemoteSiteDetailDto>>, IQueryHandler<ListRemoteSitesQuery, IReadOnlyList<RemoteSiteDto>>,
+    ICommandHandler<SaveRemoteSiteCommand, OperationResult<string>>, ICommandHandler<DeleteRemoteSiteCommand, OperationResult>, IQueryHandler<GetRemoteSiteQuery, OperationResult<RemoteSiteDetailDto>>, IQueryHandler<ListRemoteSitesQuery, IReadOnlyList<RemoteSiteDto>>,
     ICommandHandler<SaveAppearanceConfigurationCommand, OperationResult>, IQueryHandler<GetAppearanceConfigurationQuery, AppearanceConfigurationDto>,
     IQueryHandler<ListModelConfigurationsQuery, IReadOnlyList<ModelConfigurationDto>>, ICommandHandler<SaveModelConfigurationsCommand, OperationResult>, ICommandHandler<AddModelConfigurationCommand, OperationResult>,
     IQueryHandler<ListLlmBusinessModelConfigsQuery, IReadOnlyList<LlmBusinessModelConfigDto>>, ICommandHandler<SaveLlmBusinessModelConfigsCommand, OperationResult>,
@@ -44,6 +45,7 @@ public sealed class ExtendedDomainApplicationService :
     private readonly ISettingsStore settings;
     private readonly IRemoteMediaResolver mediaResolver;
     private readonly IEventPublisher events;
+    private readonly ILegacyRelationalStore legacy;
 
     public ExtendedDomainApplicationService(IDomainDocumentStore store, ISecretProtector secrets, ISettingsStore settings, IRemoteMediaResolver mediaResolver, IEventPublisher events)
     {
@@ -53,17 +55,27 @@ public sealed class ExtendedDomainApplicationService :
         this.settings = settings;
         this.mediaResolver = mediaResolver;
         this.events = events;
+        legacy = store as ILegacyRelationalStore ?? throw new InvalidOperationException("当前文档存储不支持旧关系数据库业务链。 ");
     }
 
 
-    public Task<OperationResult> HandleAsync(SaveNotebookNoteCommand command, CancellationToken cancellationToken = default)
+    public async Task<OperationResult> HandleAsync(SaveNotebookNoteCommand command, CancellationToken cancellationToken = default)
     {
         if (command.Note.ContentMarkdown.Contains("<FlowDocument", StringComparison.OrdinalIgnoreCase))
-            return Task.FromResult(OperationResult.Failure("notebook.xaml_forbidden", "核心笔记不接受 XAML 内容。"));
-        return SaveAsync(NotebookDomain, command.Note.NoteId, command.Note, command.Note.UpdatedAt, cancellationToken);
+            return OperationResult.Failure("notebook.xaml_forbidden", "核心笔记不接受 XAML 内容。");
+        await legacy.SaveNotebookNoteAsync(command.Note, cancellationToken);
+        return OperationResult.Success();
     }
-    public Task<OperationResult> HandleAsync(DeleteNotebookNoteCommand command, CancellationToken cancellationToken = default)
-        => DeleteAsync(NotebookDomain, command.NoteId, cancellationToken);
+    public async Task<OperationResult> HandleAsync(SaveNotebookAttachmentCommand command, CancellationToken cancellationToken = default)
+    {
+        await legacy.AddNotebookAttachmentAsync(new NotebookAttachmentRecord(command.Id, command.NoteId, command.OriginalName, command.StoredPath, command.MimeType, command.SizeBytes, command.Width, command.Height, command.Sha256, command.CreatedAt), cancellationToken);
+        return OperationResult.Success();
+    }
+    public async Task<OperationResult> HandleAsync(DeleteNotebookNoteCommand command, CancellationToken cancellationToken = default)
+    {
+        await legacy.DeleteNotebookNoteAsync(command.NoteId, cancellationToken);
+        return OperationResult.Success();
+    }
     public async Task<IReadOnlyList<NotebookNoteDto>> HandleAsync(ListNotebookNotesQuery query, CancellationToken cancellationToken = default)
         => (await ListAsync<NotebookNoteDto>(NotebookDomain, cancellationToken)).Where(x => query.IncludeDeleted || !x.IsDeleted).OrderByDescending(x => x.IsPinned).ThenByDescending(x => x.UpdatedAt).ToArray();
 
@@ -74,14 +86,14 @@ public sealed class ExtendedDomainApplicationService :
             return Task.FromResult(OperationResult.Failure("voice_conversation.invalid", "会话 ID 和角色不能为空。"));
         return SaveAsync(VoiceConversationDomain, value.ConversationId, value, value.UpdatedAt, cancellationToken);
     }
-    public Task<OperationResult> HandleAsync(DeleteVoiceConversationCommand command, CancellationToken cancellationToken = default)
-        => DeleteAsync(VoiceConversationDomain, command.ConversationId, cancellationToken);
+    public async Task<OperationResult> HandleAsync(DeleteVoiceConversationCommand command, CancellationToken cancellationToken = default)
+    {
+        await legacy.DeleteVoiceConversationAsync(command.ConversationId, cancellationToken);
+        return OperationResult.Success();
+    }
     public async Task<IReadOnlyList<VoiceConversationDto>> HandleAsync(ListVoiceConversationsQuery query, CancellationToken cancellationToken = default)
     {
-        var values = await ListAsync<VoiceConversationDto>(VoiceConversationDomain, cancellationToken);
-        return values.Where(x => string.IsNullOrWhiteSpace(query.VoiceRoleId) || x.VoiceRoleId.Equals(query.VoiceRoleId, StringComparison.OrdinalIgnoreCase))
-            .Where(x => string.IsNullOrWhiteSpace(query.Search) || x.Title.Contains(query.Search, StringComparison.OrdinalIgnoreCase) || x.Preview.Contains(query.Search, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(x => x.UpdatedAt).ToArray();
+        return await legacy.ListVoiceConversationsAsync(query.VoiceRoleId, query.Search, cancellationToken);
     }
 
     public Task<OperationResult> HandleAsync(SaveTimerRecordCommand command, CancellationToken cancellationToken = default)
@@ -283,88 +295,44 @@ public sealed class ExtendedDomainApplicationService :
         ];
     }
 
-    public async Task<OperationResult> HandleAsync(SaveVaultItemCommand command, CancellationToken cancellationToken = default)
+    public async Task<OperationResult<string>> HandleAsync(SaveVaultItemCommand command, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(command.Item.ItemId) || string.IsNullOrWhiteSpace(command.Item.Name))
-            return OperationResult.Failure("vault.invalid", "保险库条目 ID 和名称不能为空。");
-        var mutations = new List<AtomicMutation>();
-        if (command.PlainSecret is not null)
-        {
-            var previousProtected = await store.GetAsync(VaultSecretDomain, command.Item.ItemId, cancellationToken);
-            if (previousProtected is not null)
-                mutations.AddRange(SaveVaultHistory(command.Item.ItemId, secrets.Unprotect(previousProtected), command.PlainSecret, command.ChangeRemark));
-            mutations.Add(new(AtomicMutationKind.UpsertDomain, VaultSecretDomain, command.Item.ItemId, secrets.Protect(command.PlainSecret), DateTimeOffset.Now));
-        }
-        var item = command.Item with { HasProtectedSecret = command.PlainSecret is not null || command.Item.HasProtectedSecret, UpdatedAt = DateTimeOffset.Now };
-        mutations.Add(new(AtomicMutationKind.UpsertDomain, VaultDomain, item.ItemId, JsonSerializer.Serialize(item), item.UpdatedAt));
-        await atomic.ApplyAsync(mutations, cancellationToken);
-        return OperationResult.Success();
+        if (string.IsNullOrWhiteSpace(command.Item.Name))
+            return OperationResult<string>.Failure("vault.invalid", "保险库条目名称不能为空。");
+        var plain = command.PlainSecret is null ? null : ParseSecretRecord(command.PlainSecret);
+        var item = command.Item with { HasProtectedSecret = plain is not null && plain.Values.Any(value => value.Length > 0), UpdatedAt = DateTimeOffset.Now };
+        var id = await legacy.SaveVaultAsync(item, plain, command.ChangeRemark, cancellationToken);
+        return OperationResult<string>.Success(id);
     }
     public async Task<OperationResult> HandleAsync(DeleteVaultItemCommand command, CancellationToken cancellationToken = default)
     {
         // TODO(UI): 删除保险库条目前必须展示名称和类型，并进行二次确认。
-        var mutations = new List<AtomicMutation>
-        {
-            new(AtomicMutationKind.DeleteDomain, VaultSecretDomain, command.ItemId, IdempotentDelete: true),
-            new(AtomicMutationKind.DeleteDomain, VaultDomain, command.ItemId, IdempotentDelete: true)
-        };
-        foreach (var history in await LoadVaultHistoryMetadataAsync(cancellationToken))
-        {
-            if (!history.ItemId.Equals(command.ItemId, StringComparison.Ordinal)) continue;
-            mutations.Add(new(AtomicMutationKind.DeleteDomain, VaultHistorySecretDomain, history.HistoryId, IdempotentDelete: true));
-            mutations.Add(new(AtomicMutationKind.DeleteDomain, VaultHistoryDomain, history.HistoryId, IdempotentDelete: true));
-        }
-        await atomic.ApplyAsync(mutations, cancellationToken);
+        await legacy.DeleteVaultAsync(command.ItemId, cancellationToken);
         return OperationResult.Success();
     }
     public async Task<OperationResult<VaultItemDetailDto>> HandleAsync(GetVaultItemQuery query, CancellationToken cancellationToken = default)
     {
-        var json = await store.GetAsync(VaultDomain, query.ItemId, cancellationToken);
-        if (json is null) return OperationResult<VaultItemDetailDto>.Failure("vault.not_found", "保险库条目不存在。");
-        var item = Deserialize<VaultItemDto>(json);
-        return OperationResult<VaultItemDetailDto>.Success(new VaultItemDetailDto(item, null));
+        var value = await legacy.GetVaultAsync(query.ItemId, cancellationToken);
+        return value is null ? OperationResult<VaultItemDetailDto>.Failure("vault.not_found", "保险库条目不存在。") : OperationResult<VaultItemDetailDto>.Success(new VaultItemDetailDto(value.Item, null));
     }
 
     public async Task<OperationResult<VaultItemDetailDto>> HandleAsync(RevealVaultSecretQuery query, CancellationToken cancellationToken = default)
     {
-        var json = await store.GetAsync(VaultDomain, query.ItemId, cancellationToken);
-        if (json is null) return OperationResult<VaultItemDetailDto>.Failure("vault.not_found", "保险库条目不存在。");
-        var item = Deserialize<VaultItemDto>(json);
-        var protectedValue = await store.GetAsync(VaultSecretDomain, query.ItemId, cancellationToken);
-        var secret = protectedValue is null ? null : secrets.Unprotect(protectedValue);
-        return OperationResult<VaultItemDetailDto>.Success(new VaultItemDetailDto(item, secret));
+        var value = await legacy.GetVaultAsync(query.ItemId, cancellationToken);
+        return value is null ? OperationResult<VaultItemDetailDto>.Failure("vault.not_found", "保险库条目不存在。") : OperationResult<VaultItemDetailDto>.Success(new VaultItemDetailDto(value.Item, value.Secrets.Count == 0 ? null : JsonSerializer.Serialize(value.Secrets)));
     }
     public async Task<IReadOnlyList<VaultItemDto>> HandleAsync(ListVaultItemsQuery query, CancellationToken cancellationToken = default)
-        => (await ListAsync<VaultItemDto>(VaultDomain, cancellationToken)).Where(x => query.ItemType is null || x.ItemType.Equals(query.ItemType, StringComparison.OrdinalIgnoreCase)).OrderBy(x => x.Name).ToArray();
+        => (await store.ListAsync(VaultDomain, cancellationToken)).Select(Deserialize<VaultItemDto>).Where(x => query.ItemType is null || x.ItemType.Equals(query.ItemType, StringComparison.OrdinalIgnoreCase)).OrderBy(x => x.Name).ToArray();
 
     public async Task<IReadOnlyList<VaultHistoryDto>> HandleAsync(ListVaultHistoriesQuery query, CancellationToken cancellationToken = default)
     {
-        var result = new List<VaultHistoryDto>();
-        foreach (var metadata in await LoadVaultHistoryMetadataAsync(cancellationToken))
-        {
-            if (!metadata.ItemId.Equals(query.ItemId, StringComparison.Ordinal)) continue;
-            result.Add(new VaultHistoryDto(metadata.HistoryId, metadata.ItemId, metadata.FieldName,
-                metadata.ChangeRemark, metadata.CreatedAt));
-        }
-        return result.OrderByDescending(item => item.CreatedAt).ToArray();
+        return (await legacy.ListVaultHistoriesAsync(query.ItemId, cancellationToken)).Select(item => new VaultHistoryDto(item.HistoryId, item.ItemId, item.FieldName, item.ChangeRemark, item.CreatedAt)).ToArray();
     }
 
     public async Task<OperationResult> HandleAsync(RestoreVaultHistoryCommand command, CancellationToken cancellationToken = default)
     {
-        var metadataJson = await store.GetAsync(VaultHistoryDomain, command.HistoryId, cancellationToken);
-        var protectedHistory = await store.GetAsync(VaultHistorySecretDomain, command.HistoryId, cancellationToken);
-        if (metadataJson is null || protectedHistory is null)
-            return OperationResult.Failure("vault.history_not_found", "保险库历史记录不存在。");
-        var metadata = Deserialize<VaultHistoryMetadata>(metadataJson);
-        var itemJson = await store.GetAsync(VaultDomain, metadata.ItemId, cancellationToken);
-        var protectedCurrent = await store.GetAsync(VaultSecretDomain, metadata.ItemId, cancellationToken);
-        if (itemJson is null || protectedCurrent is null)
-            return OperationResult.Failure("vault.not_found", "保险库条目不存在。");
-        var historyValues = ParseSecretRecord(secrets.Unprotect(protectedHistory));
-        var currentValues = ParseSecretRecord(secrets.Unprotect(protectedCurrent));
-        currentValues[metadata.FieldName] = historyValues.GetValueOrDefault("OldValue") ?? string.Empty;
-        var item = Deserialize<VaultItemDto>(itemJson);
-        return await HandleAsync(new SaveVaultItemCommand(item, JsonSerializer.Serialize(currentValues), "Restore from history"), cancellationToken);
+        await legacy.RestoreVaultHistoryAsync(command.HistoryId, cancellationToken);
+        return OperationResult.Success();
     }
 
     private IReadOnlyList<AtomicMutation> SaveVaultHistory(string itemId, string oldSecret, string newSecret, string? remark)
@@ -409,30 +377,21 @@ public sealed class ExtendedDomainApplicationService :
     public async Task<IReadOnlyList<MarketEventDto>> HandleAsync(ListMarketEventsQuery query, CancellationToken cancellationToken = default)
         => (await ListAsync<MarketEventDto>(MarketDomain, cancellationToken)).Where(x => query.Symbol is null || x.Symbol.Equals(query.Symbol, StringComparison.OrdinalIgnoreCase)).OrderByDescending(x => x.OccurredAt).Take(Math.Clamp(query.Limit, 1, 1000)).ToArray();
 
-    public async Task<OperationResult> HandleAsync(SaveRemoteSiteCommand command, CancellationToken cancellationToken = default)
+    public async Task<OperationResult<string>> HandleAsync(SaveRemoteSiteCommand command, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(command.Site.SiteId) || string.IsNullOrWhiteSpace(command.Site.SiteName) || string.IsNullOrWhiteSpace(command.Site.DomainPattern))
-            return OperationResult.Failure("remote_site.invalid", "站点名称和域名匹配不能为空。");
-        bool hasProtectedCookie;
-        var mutations = new List<AtomicMutation>();
-        if (command.PlainCookie is null)
+        if (string.IsNullOrWhiteSpace(command.Site.SiteName) || string.IsNullOrWhiteSpace(command.Site.DomainPattern))
+            return OperationResult<string>.Failure("remote_site.invalid", "站点名称和域名匹配不能为空。");
+        var site = command.Site with { UpdatedAt = DateTimeOffset.Now };
+        var document = JsonNode.Parse(JsonSerializer.Serialize(site))?.AsObject() ?? throw new InvalidDataException("远程站点 JSON 无效。");
+        var settings = JsonNode.Parse(site.SettingsJson)?.AsObject() ?? new JsonObject();
+        foreach (var property in settings) document[property.Key] = property.Value?.DeepClone();
+        if (command.PlainCookie is not null)
         {
-            hasProtectedCookie = await store.GetAsync(RemoteSiteSecretDomain, command.Site.SiteId, cancellationToken) is not null;
+            document["CookieContent"] = command.PlainCookie;
+            document["CookieUpdatedAt"] = command.PlainCookie.Length == 0 ? null : DateTimeOffset.Now.ToString("O");
         }
-        else if (command.PlainCookie.Length == 0)
-        {
-            mutations.Add(new(AtomicMutationKind.DeleteDomain, RemoteSiteSecretDomain, command.Site.SiteId, IdempotentDelete: true));
-            hasProtectedCookie = false;
-        }
-        else
-        {
-            mutations.Add(new(AtomicMutationKind.UpsertDomain, RemoteSiteSecretDomain, command.Site.SiteId, secrets.Protect(command.PlainCookie), DateTimeOffset.Now));
-            hasProtectedCookie = true;
-        }
-        var site = command.Site with { HasProtectedCookie = hasProtectedCookie, UpdatedAt = DateTimeOffset.Now };
-        mutations.Add(new(AtomicMutationKind.UpsertDomain, RemoteSiteDomain, site.SiteId, JsonSerializer.Serialize(site), site.UpdatedAt));
-        await atomic.ApplyAsync(mutations, cancellationToken);
-        return OperationResult.Success();
+        var id = await legacy.UpsertGeneratedAsync(RemoteSiteDomain, string.IsNullOrWhiteSpace(site.SiteId) ? null : site.SiteId, document.ToJsonString(JsonConfig.Persistence), site.UpdatedAt, cancellationToken);
+        return OperationResult<string>.Success(id);
     }
     public async Task<OperationResult<RemoteSiteDetailDto>> HandleAsync(GetRemoteSiteQuery query, CancellationToken cancellationToken = default)
     {
@@ -443,10 +402,7 @@ public sealed class ExtendedDomainApplicationService :
     }
     public async Task<OperationResult> HandleAsync(DeleteRemoteSiteCommand command, CancellationToken cancellationToken = default)
     {
-        await atomic.ApplyAsync([
-            new AtomicMutation(AtomicMutationKind.DeleteDomain, RemoteSiteSecretDomain, command.SiteId, IdempotentDelete: true),
-            new AtomicMutation(AtomicMutationKind.DeleteDomain, RemoteSiteDomain, command.SiteId, IdempotentDelete: true)
-        ], cancellationToken);
+        await store.DeleteAsync(RemoteSiteDomain, command.SiteId, cancellationToken);
         return OperationResult.Success();
     }
     public async Task<IReadOnlyList<RemoteSiteDto>> HandleAsync(ListRemoteSitesQuery query, CancellationToken cancellationToken = default)

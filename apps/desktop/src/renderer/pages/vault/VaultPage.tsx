@@ -93,13 +93,14 @@ export function VaultPage(): React.JSX.Element {
             return;
         }
         const now = new Date().toISOString();
-        const itemId = currentId ?? crypto.randomUUID();
+        const itemId = currentId ?? '';
         const response = await bridge.core.invoke({ type: 'vault.save', payload: { item: makeDto(itemId, type, values, createdAt || now, now), plainSecret: encodeSecrets(values) } });
         if (!response.success) {
             setExportStatus(response.error?.message ?? '密码库保存失败。');
             return;
         }
-        await load(itemId);
+        const savedId = typeof response.payload === 'string' ? response.payload : itemId;
+        await load(savedId);
     }
     async function remove(): Promise<void> {
         if (currentId === null)

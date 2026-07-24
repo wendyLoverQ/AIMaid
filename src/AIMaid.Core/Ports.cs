@@ -140,6 +140,46 @@ public interface IDomainDocumentStore
     Task DeleteAsync(string domain, string id, CancellationToken cancellationToken = default);
 }
 
+public sealed record LegacyVaultReadModel(
+    VaultItemDto Item,
+    IReadOnlyDictionary<string, string> Secrets);
+
+public sealed record LegacyVaultHistoryReadModel(
+    string HistoryId,
+    string ItemId,
+    string FieldName,
+    string OldValue,
+    string NewValue,
+    string ChangeRemark,
+    DateTimeOffset CreatedAt);
+
+public sealed record NotebookAttachmentRecord(
+    string Id,
+    string NoteId,
+    string OriginalName,
+    string StoredPath,
+    string MimeType,
+    long SizeBytes,
+    int? Width,
+    int? Height,
+    string Sha256,
+    DateTimeOffset CreatedAt);
+
+public interface ILegacyRelationalStore
+{
+    Task<string> UpsertGeneratedAsync(string domain, string? id, string json, DateTimeOffset updatedAt, CancellationToken cancellationToken = default);
+    Task<LegacyVaultReadModel?> GetVaultAsync(string itemId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<LegacyVaultHistoryReadModel>> ListVaultHistoriesAsync(string itemId, CancellationToken cancellationToken = default);
+    Task<string> SaveVaultAsync(VaultItemDto item, IReadOnlyDictionary<string, string>? secrets, string? changeRemark, CancellationToken cancellationToken = default);
+    Task DeleteVaultAsync(string itemId, CancellationToken cancellationToken = default);
+    Task RestoreVaultHistoryAsync(string historyId, CancellationToken cancellationToken = default);
+    Task<NotebookAttachmentRecord> AddNotebookAttachmentAsync(NotebookAttachmentRecord attachment, CancellationToken cancellationToken = default);
+    Task SaveNotebookNoteAsync(NotebookNoteDto note, CancellationToken cancellationToken = default);
+    Task DeleteNotebookNoteAsync(string noteId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<VoiceConversationDto>> ListVoiceConversationsAsync(string? voiceRoleId, string? search, CancellationToken cancellationToken = default);
+    Task DeleteVoiceConversationAsync(string conversationId, CancellationToken cancellationToken = default);
+}
+
 public sealed record AgentExecutionResult(int? ExitCode, string Output, string Error);
 public interface IAgentCapabilityExecutor
 {

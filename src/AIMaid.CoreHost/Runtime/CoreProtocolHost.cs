@@ -283,6 +283,9 @@ public sealed class CoreProtocolHost(
                 case "notebook.save":
                     await HandleNotebookSaveAsync(request, source.Token);
                     break;
+                case "notebook.attachment.add":
+                    await HandleNotebookAttachmentSaveAsync(request, source.Token);
+                    break;
                 case "notebook.delete":
                     await HandleResultAsync(request, await domains.HandleAsync(new DeleteNotebookNoteCommand(ReadRequiredString(request.Payload, "noteId")), source.Token), source.Token);
                     break;
@@ -394,7 +397,6 @@ public sealed class CoreProtocolHost(
                     break;
                 case "voice_conversation.delete": {
                     var conversationId = ReadRequiredString(request.Payload, "conversationId");
-                    await chatStore.DeleteConversationAsync(conversationId, source.Token);
                     await HandleResultAsync(request, await domains.HandleAsync(new DeleteVoiceConversationCommand(conversationId), source.Token), source.Token);
                     break;
                 }
@@ -432,7 +434,7 @@ public sealed class CoreProtocolHost(
                     if (!request.Payload.TryGetProperty("site", out var siteElement)) throw new ArgumentException("缺少 site。");
                     var site = siteElement.Deserialize<RemoteSiteDto>(JsonOptions) ?? throw new ArgumentException("站点配置字段不完整。");
                     var cookie = request.Payload.TryGetProperty("plainCookie", out var cookieElement) && cookieElement.ValueKind == JsonValueKind.String ? cookieElement.GetString() : null;
-                    await HandleResultAsync(request, await domains.HandleAsync(new SaveRemoteSiteCommand(site, cookie), source.Token), source.Token);
+                    await HandleValueResultAsync(request, await domains.HandleAsync(new SaveRemoteSiteCommand(site, cookie), source.Token), source.Token);
                     break;
                 }
                 case "remote_site.delete":
@@ -1023,6 +1025,17 @@ public sealed class CoreProtocolHost(
         await HandleResultAsync(request, await domains.HandleAsync(new SaveNotebookNoteCommand(note), cancellationToken), cancellationToken);
     }
 
+    private async Task HandleNotebookAttachmentSaveAsync(ProtocolRequest request, CancellationToken cancellationToken)
+    {
+        var attachment = new SaveNotebookAttachmentCommand(
+            ReadRequiredString(request.Payload, "id"), ReadRequiredString(request.Payload, "noteId"),
+            ReadString(request.Payload, "originalName"), ReadRequiredString(request.Payload, "storedPath"),
+            ReadString(request.Payload, "mimeType"), ReadLong(request.Payload, "sizeBytes", 0, long.MaxValue),
+            ReadOptionalInt(request.Payload, "width"), ReadOptionalInt(request.Payload, "height"),
+            ReadString(request.Payload, "sha256"), request.Payload.TryGetProperty("createdAt", out var created) && created.TryGetDateTimeOffset(out var parsed) ? parsed : DateTimeOffset.Now);
+        await HandleResultAsync(request, await domains.HandleAsync(attachment, cancellationToken), cancellationToken);
+    }
+
     private async Task HandleVoiceConversationSaveAsync(ProtocolRequest request, CancellationToken cancellationToken)
     {
         if (!request.Payload.TryGetProperty("conversation", out var element)) throw new ArgumentException("缺少 conversation。");
@@ -1039,7 +1052,7 @@ public sealed class CoreProtocolHost(
         var plainSecret = request.Payload.TryGetProperty("plainSecret", out var secretElement) && secretElement.ValueKind == JsonValueKind.String
             ? secretElement.GetString()
             : null;
-        await HandleResultAsync(request, await domains.HandleAsync(new SaveVaultItemCommand(item, plainSecret), cancellationToken), cancellationToken);
+        await HandleValueResultAsync(request, await domains.HandleAsync(new SaveVaultItemCommand(item, plainSecret), cancellationToken), cancellationToken);
     }
 
     private async Task HandleReminderSaveAsync(ProtocolRequest request, CancellationToken cancellationToken)
@@ -1183,6 +1196,9 @@ public sealed class CoreProtocolHost(
         => payload.TryGetProperty(name, out var element) && element.TryGetInt32(out var value)
             ? Math.Clamp(value, minimum, maximum)
             : fallback;
+
+    private static int? ReadOptionalInt(JsonElement payload, string name)
+        => payload.TryGetProperty(name, out var element) && element.TryGetInt32(out var value) ? value : null;
 
     private static long ReadLong(JsonElement payload, string name, long minimum, long maximum)
         => payload.TryGetProperty(name, out var element) && element.TryGetInt64(out var value) && value >= minimum && value <= maximum

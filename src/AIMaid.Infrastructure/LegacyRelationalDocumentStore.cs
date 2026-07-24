@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using AIMaid.Contracts;
+using AIMaid.Contracts.Domains;
 using AIMaid.Core;
 using Microsoft.Data.Sqlite;
 
@@ -108,20 +110,10 @@ internal sealed class LegacyRelationalDocumentStore
         }
 
         var map = GetMap(domain);
-        var document = JsonNode.Parse(json)?.AsObject() ?? throw new InvalidDataException($"{domain}/{id} 不是 JSON 对象。");
+        var document = PrepareDocument(map, JsonNode.Parse(json)?.AsObject() ?? throw new InvalidDataException($"{domain}/{id} 不是 JSON 对象。"));
         await using var connection = await OpenAsync(cancellationToken);
         var columns = await ReadColumnsAsync(connection, map.Table, cancellationToken);
-        var values = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-        foreach (var property in document)
-        {
-            var column = map.WriteAliases.TryGetValue(property.Key, out var alias) ? alias : property.Key;
-            if (!columns.ContainsKey(column) || column.Equals(map.KeyColumn, StringComparison.OrdinalIgnoreCase)) continue;
-            values[column] = map.Domain is "remote_video_download" or "remote_video_play" &&
-                             column.Equals("VideoItemId", StringComparison.OrdinalIgnoreCase) &&
-                             property.Value is JsonValue itemValue && itemValue.TryGetValue<string>(out var itemId)
-                ? ParsePrefixedLong(itemId, "legacy_remote_video_")
-                : ToDbValue(property.Value, map.BooleanColumns.Contains(column), column);
-        }
+        var values = BuildValues(map, document, columns);
         if (columns.ContainsKey("UpdatedAt")) values["UpdatedAt"] = Format(updatedAt);
 
         var existingKey = ParseDocumentId(map, id);
@@ -162,6 +154,273 @@ internal sealed class LegacyRelationalDocumentStore
         await insert.ExecuteNonQueryAsync(cancellationToken);
         if (dataSync is not null)
             await dataSync.CaptureRowAsync(map.Table, map.KeyColumn, existingKey, "insert", CancellationToken.None);
+    }
+
+    public async Task<string> UpsertGeneratedAsync(string domain, string? id, string json, DateTimeOffset updatedAt, CancellationToken cancellationToken)
+    {
+        var map = GetMap(domain);
+        if (map.IdMode != IdMode.PrefixedInteger)
+        {
+            if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException($"{domain} 不支持空 ID 新建。", nameof(id));
+            await UpsertAsync(domain, id, json, updatedAt, cancellationToken);
+            return id;
+        }
+        if (!string.IsNullOrWhiteSpace(id))
+        {
+            await UpsertAsync(domain, id, json, updatedAt, cancellationToken);
+            return id;
+        }
+
+        var document = PrepareDocument(map, JsonNode.Parse(json)?.AsObject()
+            ?? throw new InvalidDataException($"{domain} 不是 JSON 对象。"));
+        await using var connection = await OpenAsync(cancellationToken);
+        var columns = await ReadColumnsAsync(connection, map.Table, cancellationToken);
+        var values = BuildValues(map, document, columns);
+        await FillRequiredDefaultsAsync(connection, map.Table, values, updatedAt, cancellationToken);
+        await using var insert = connection.CreateCommand();
+        var names = values.Keys.Where(name => !name.Equals(map.KeyColumn, StringComparison.OrdinalIgnoreCase)).ToArray();
+        var parameters = names.Select((_, index) => $"$v{index}").ToArray();
+        for (var index = 0; index < names.Length; index++)
+            insert.Parameters.AddWithValue(parameters[index], values[names[index]] ?? DBNull.Value);
+        insert.CommandText = $"INSERT INTO {Q(map.Table)} ({string.Join(',', names.Select(Q))}) VALUES ({string.Join(',', parameters)}); SELECT last_insert_rowid();";
+        var key = Convert.ToInt64(await insert.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
+        if (dataSync is not null)
+            await dataSync.CaptureRowAsync(map.Table, map.KeyColumn, key, "insert", CancellationToken.None);
+        return ToDocumentId(map, key);
+    }
+
+    public async Task<LegacyVaultReadModel?> GetVaultAsync(string itemId, CancellationToken cancellationToken)
+    {
+        var id = ParsePrefixedLong(itemId, "legacy_vault_");
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT Id,ItemType,Name,Category,Account,Url,Platform,ChainType,WalletAddress,ServerAddress,ServerPort,Remark,PasswordEncrypted,ApiKeyEncrypted,SecretEncrypted,PrivateKeyEncrypted,MnemonicEncrypted,CreatedAt,UpdatedAt FROM VaultItems WHERE Id=$id";
+        command.Parameters.AddWithValue("$id", id);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken)) return null;
+        var secrets = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (field, ordinal) in VaultSecretOrdinals)
+            if (!reader.IsDBNull(ordinal) && !string.IsNullOrWhiteSpace(reader.GetString(ordinal)))
+                secrets[field] = RequireSecrets().Unprotect(reader.GetString(ordinal));
+        var metadata = new JsonObject
+        {
+            ["ChainType"] = reader.IsDBNull(7) ? string.Empty : reader.GetString(7),
+            ["WalletAddress"] = reader.IsDBNull(8) ? string.Empty : reader.GetString(8),
+            ["ServerAddress"] = reader.IsDBNull(9) ? string.Empty : reader.GetString(9),
+            ["ServerPort"] = reader.IsDBNull(10) ? string.Empty : reader.GetString(10),
+            ["Remark"] = reader.IsDBNull(11) ? string.Empty : reader.GetString(11)
+        };
+        var item = new VaultItemDto(
+            $"legacy_vault_{reader.GetInt64(0)}", reader.GetString(1), reader.GetString(2), Text(reader, 3), Text(reader, 4),
+            Text(reader, 5), Text(reader, 6), metadata.ToJsonString(JsonConfig.Persistence), secrets.Count > 0,
+            ParseDate(reader.GetString(17)), ParseDate(reader.GetString(18)));
+        return new LegacyVaultReadModel(item, secrets);
+    }
+
+    public async Task<IReadOnlyList<LegacyVaultHistoryReadModel>> ListVaultHistoriesAsync(string itemId, CancellationToken cancellationToken)
+    {
+        var id = ParsePrefixedLong(itemId, "legacy_vault_");
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT Id,ItemId,FieldName,OldValueEncrypted,NewValueEncrypted,ChangeRemark,CreatedAt FROM VaultItemHistories WHERE ItemId=$id ORDER BY CreatedAt DESC,Id DESC";
+        command.Parameters.AddWithValue("$id", id);
+        var result = new List<LegacyVaultHistoryReadModel>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var oldValue = reader.IsDBNull(3) ? string.Empty : RequireSecrets().Unprotect(reader.GetString(3));
+            var newValue = reader.IsDBNull(4) ? string.Empty : RequireSecrets().Unprotect(reader.GetString(4));
+            result.Add(new LegacyVaultHistoryReadModel($"legacy_vault_history_{reader.GetInt64(0)}", $"legacy_vault_{reader.GetInt64(1)}",
+                reader.GetString(2), oldValue, newValue, reader.IsDBNull(5) ? string.Empty : reader.GetString(5), ParseDate(reader.GetString(6))));
+        }
+        return result;
+    }
+
+    public async Task<string> SaveVaultAsync(VaultItemDto item, IReadOnlyDictionary<string, string>? secrets, string? changeRemark, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(item.Name)) throw new ArgumentException("密码库名称不能为空。", nameof(item));
+        var now = DateTimeOffset.Now;
+        var metadata = JsonNode.Parse(item.PublicMetadataJson)?.AsObject() ?? new JsonObject();
+        var type = item.ItemType is "Wallet" or "ApiKey" or "Server" ? item.ItemType : "Login";
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            long id;
+            Dictionary<string, string> oldSecrets = new(StringComparer.Ordinal);
+            var updating = !string.IsNullOrWhiteSpace(item.ItemId);
+            if (updating)
+            {
+                id = ParsePrefixedLong(item.ItemId, "legacy_vault_");
+                await using var existing = connection.CreateCommand(); existing.Transaction = transaction;
+                existing.CommandText = "SELECT PasswordEncrypted,ApiKeyEncrypted,SecretEncrypted,PrivateKeyEncrypted,MnemonicEncrypted FROM VaultItems WHERE Id=$id";
+                existing.Parameters.AddWithValue("$id", id);
+                await using var reader = await existing.ExecuteReaderAsync(cancellationToken);
+                if (!await reader.ReadAsync(cancellationToken)) throw new InvalidOperationException($"密码库条目不存在：{item.ItemId}。");
+                foreach (var (field, ordinal) in VaultSecretFieldOrdinals)
+                    if (!reader.IsDBNull(ordinal) && !string.IsNullOrWhiteSpace(reader.GetString(ordinal))) oldSecrets[field] = RequireSecrets().Unprotect(reader.GetString(ordinal));
+            }
+            else
+            {
+                id = 0;
+            }
+
+            var nextSecrets = secrets is null ? oldSecrets : VaultSecretFields.ToDictionary(field => field, field => secrets.GetValueOrDefault(field, string.Empty), StringComparer.Ordinal);
+            if (!updating)
+            {
+                await using var insert = connection.CreateCommand(); insert.Transaction = transaction;
+                insert.CommandText = "INSERT INTO VaultItems(ItemType,Name,Category,Account,PasswordEncrypted,Url,Platform,ApiKeyEncrypted,SecretEncrypted,ChainType,WalletAddress,PrivateKeyEncrypted,MnemonicEncrypted,ServerAddress,ServerPort,Remark,CreatedAt,UpdatedAt) VALUES($type,$name,$category,$account,$password,$url,$platform,$apiKey,$secret,$chain,$wallet,$privateKey,$mnemonic,$server,$port,$remark,$created,$updated); SELECT last_insert_rowid();";
+                AddVaultParameters(insert, type, item, metadata, nextSecrets, now, now);
+                id = Convert.ToInt64(await insert.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
+            }
+            else
+            {
+                foreach (var field in VaultSecretFields)
+                {
+                    var oldValue = oldSecrets.GetValueOrDefault(field, string.Empty);
+                    var newValue = nextSecrets.GetValueOrDefault(field, string.Empty);
+                    if (string.Equals(oldValue, newValue, StringComparison.Ordinal)) continue;
+                    await using var history = connection.CreateCommand(); history.Transaction = transaction;
+                    history.CommandText = "INSERT INTO VaultItemHistories(ItemId,FieldName,OldValueEncrypted,NewValueEncrypted,ChangeRemark,CreatedAt) VALUES($itemId,$field,$old,$new,$remark,$created); SELECT last_insert_rowid();";
+                    history.Parameters.AddWithValue("$itemId", id); history.Parameters.AddWithValue("$field", field);
+                    history.Parameters.AddWithValue("$old", RequireSecrets().Protect(oldValue)); history.Parameters.AddWithValue("$new", RequireSecrets().Protect(newValue));
+                    history.Parameters.AddWithValue("$remark", string.IsNullOrWhiteSpace(changeRemark) ? DBNull.Value : changeRemark.Trim()); history.Parameters.AddWithValue("$created", Format(now));
+                    var historyId = Convert.ToInt64(await history.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
+                    if (dataSync is not null) await dataSync.CaptureRowAsync("VaultItemHistories", "Id", historyId, "insert", CancellationToken.None);
+                }
+                await using var update = connection.CreateCommand(); update.Transaction = transaction;
+                update.CommandText = "UPDATE VaultItems SET ItemType=$type,Name=$name,Category=$category,Account=$account,PasswordEncrypted=$password,Url=$url,Platform=$platform,ApiKeyEncrypted=$apiKey,SecretEncrypted=$secret,ChainType=$chain,WalletAddress=$wallet,PrivateKeyEncrypted=$privateKey,MnemonicEncrypted=$mnemonic,ServerAddress=$server,ServerPort=$port,Remark=$remark,UpdatedAt=$updated WHERE Id=$id";
+                AddVaultParameters(update, type, item, metadata, nextSecrets, item.CreatedAt, now); update.Parameters.AddWithValue("$id", id);
+                await update.ExecuteNonQueryAsync(cancellationToken);
+            }
+            await transaction.CommitAsync(cancellationToken);
+            if (dataSync is not null) await dataSync.CaptureRowAsync("VaultItems", "Id", id, updating ? "update" : "insert", CancellationToken.None);
+            return $"legacy_vault_{id}";
+        }
+        catch { await transaction.RollbackAsync(CancellationToken.None); throw; }
+    }
+
+    public async Task DeleteVaultAsync(string itemId, CancellationToken cancellationToken)
+    {
+        var id = ParsePrefixedLong(itemId, "legacy_vault_");
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await using var history = connection.CreateCommand(); history.Transaction = transaction; history.CommandText = "DELETE FROM VaultItemHistories WHERE ItemId=$id"; history.Parameters.AddWithValue("$id", id); await history.ExecuteNonQueryAsync(cancellationToken);
+            await using var item = connection.CreateCommand(); item.Transaction = transaction; item.CommandText = "DELETE FROM VaultItems WHERE Id=$id"; item.Parameters.AddWithValue("$id", id); await item.ExecuteNonQueryAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch { await transaction.RollbackAsync(CancellationToken.None); throw; }
+    }
+
+    public async Task RestoreVaultHistoryAsync(string historyId, CancellationToken cancellationToken)
+    {
+        var historyKey = ParsePrefixedLong(historyId, "legacy_vault_history_");
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT ItemId,FieldName,OldValueEncrypted FROM VaultItemHistories WHERE Id=$id"; command.Parameters.AddWithValue("$id", historyKey);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken)) throw new InvalidOperationException($"密码库历史不存在：{historyId}。");
+        var itemId = $"legacy_vault_{reader.GetInt64(0)}"; var field = reader.GetString(1); var oldValue = RequireSecrets().Unprotect(reader.GetString(2));
+        var item = await GetVaultAsync(itemId, cancellationToken) ?? throw new InvalidOperationException($"密码库条目不存在：{itemId}。");
+        var next = item.Secrets.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal); next[field] = oldValue;
+        await SaveVaultAsync(item.Item, next, "Restore from history", cancellationToken);
+    }
+
+    public async Task<NotebookAttachmentRecord> AddNotebookAttachmentAsync(NotebookAttachmentRecord attachment, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(attachment.Id) || string.IsNullOrWhiteSpace(attachment.NoteId) || string.IsNullOrWhiteSpace(attachment.StoredPath)) throw new ArgumentException("笔记附件字段不完整。", nameof(attachment));
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await using var note = connection.CreateCommand(); note.Transaction = transaction; note.CommandText = "SELECT 1 FROM NotebookNotes WHERE NoteId=$id AND IsDeleted=0 LIMIT 1"; note.Parameters.AddWithValue("$id", attachment.NoteId);
+            if (await note.ExecuteScalarAsync(cancellationToken) is null) throw new InvalidOperationException($"笔记不存在：{attachment.NoteId}。");
+            await using var insert = connection.CreateCommand(); insert.Transaction = transaction;
+            insert.CommandText = "INSERT INTO NotebookAttachments(Id,NoteId,OriginalName,StoredPath,MimeType,SizeBytes,Width,Height,Sha256,IsDeleted,CreatedAt) VALUES($id,$noteId,$name,$path,$mime,$size,$width,$height,$sha,0,$created)";
+            insert.Parameters.AddWithValue("$id", attachment.Id); insert.Parameters.AddWithValue("$noteId", attachment.NoteId); insert.Parameters.AddWithValue("$name", attachment.OriginalName); insert.Parameters.AddWithValue("$path", attachment.StoredPath); insert.Parameters.AddWithValue("$mime", attachment.MimeType); insert.Parameters.AddWithValue("$size", attachment.SizeBytes); insert.Parameters.AddWithValue("$width", attachment.Width.HasValue ? attachment.Width.Value : DBNull.Value); insert.Parameters.AddWithValue("$height", attachment.Height.HasValue ? attachment.Height.Value : DBNull.Value); insert.Parameters.AddWithValue("$sha", attachment.Sha256); insert.Parameters.AddWithValue("$created", Format(attachment.CreatedAt));
+            await insert.ExecuteNonQueryAsync(cancellationToken); await transaction.CommitAsync(cancellationToken);
+            if (dataSync is not null) await dataSync.CaptureRowAsync("NotebookAttachments", "Id", attachment.Id, "insert", CancellationToken.None);
+            return attachment;
+        }
+        catch { await transaction.RollbackAsync(CancellationToken.None); throw; }
+    }
+
+    public async Task SaveNotebookNoteAsync(NotebookNoteDto note, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(note.NoteId)) throw new ArgumentException("笔记 ID 不能为空。", nameof(note));
+        var now = DateTimeOffset.Now;
+        var paths = JsonSerializer.Serialize(note.AttachmentIds.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(), JsonConfig.Persistence);
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await using var update = connection.CreateCommand(); update.Transaction = transaction;
+            update.CommandText = "UPDATE NotebookNotes SET Title=$title,ContentRich=$rich,ContentPlainText=$plain,ImagePathsJson=$paths,IsPinned=$pinned,IsDeleted=$deleted,UpdatedAt=$updated WHERE NoteId=$id";
+            update.Parameters.AddWithValue("$title", string.IsNullOrWhiteSpace(note.Title) ? "无标题笔记" : note.Title.Trim()[..Math.Min(note.Title.Trim().Length, 160)]);
+            update.Parameters.AddWithValue("$rich", string.IsNullOrWhiteSpace(note.ContentMarkdown) ? "<p><br></p>" : note.ContentMarkdown);
+            update.Parameters.AddWithValue("$plain", note.ContentPlainText ?? string.Empty); update.Parameters.AddWithValue("$paths", paths);
+            update.Parameters.AddWithValue("$pinned", note.IsPinned ? 1 : 0); update.Parameters.AddWithValue("$deleted", note.IsDeleted ? 1 : 0); update.Parameters.AddWithValue("$updated", Format(now)); update.Parameters.AddWithValue("$id", note.NoteId);
+            if (await update.ExecuteNonQueryAsync(cancellationToken) == 0)
+            {
+                await using var insert = connection.CreateCommand(); insert.Transaction = transaction;
+                insert.CommandText = "INSERT INTO NotebookNotes(NoteId,Title,ContentXaml,ContentRich,ContentPlainText,ImagePathsJson,IsPinned,IsDeleted,CreatedAt,UpdatedAt) VALUES($id,$title,'',$rich,$plain,$paths,$pinned,$deleted,$created,$updated)";
+                insert.Parameters.AddWithValue("$id", note.NoteId); insert.Parameters.AddWithValue("$title", string.IsNullOrWhiteSpace(note.Title) ? "无标题笔记" : note.Title.Trim()); insert.Parameters.AddWithValue("$rich", string.IsNullOrWhiteSpace(note.ContentMarkdown) ? "<p><br></p>" : note.ContentMarkdown); insert.Parameters.AddWithValue("$plain", note.ContentPlainText ?? string.Empty); insert.Parameters.AddWithValue("$paths", paths); insert.Parameters.AddWithValue("$pinned", note.IsPinned ? 1 : 0); insert.Parameters.AddWithValue("$deleted", note.IsDeleted ? 1 : 0); insert.Parameters.AddWithValue("$created", Format(note.CreatedAt)); insert.Parameters.AddWithValue("$updated", Format(now));
+                await insert.ExecuteNonQueryAsync(cancellationToken);
+            }
+            await SetNotebookAttachmentStateAsync(connection, transaction, note.NoteId, note.AttachmentIds, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch { await transaction.RollbackAsync(CancellationToken.None); throw; }
+    }
+
+    public async Task DeleteNotebookNoteAsync(string noteId, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await using var note = connection.CreateCommand(); note.Transaction = transaction; note.CommandText = "UPDATE NotebookNotes SET IsDeleted=1,UpdatedAt=$updated WHERE NoteId=$id"; note.Parameters.AddWithValue("$updated", Format(DateTimeOffset.Now)); note.Parameters.AddWithValue("$id", noteId); await note.ExecuteNonQueryAsync(cancellationToken);
+            await using var attachments = connection.CreateCommand(); attachments.Transaction = transaction; attachments.CommandText = "UPDATE NotebookAttachments SET IsDeleted=1 WHERE NoteId=$id"; attachments.Parameters.AddWithValue("$id", noteId); await attachments.ExecuteNonQueryAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch { await transaction.RollbackAsync(CancellationToken.None); throw; }
+    }
+
+    private static async Task SetNotebookAttachmentStateAsync(SqliteConnection connection, SqliteTransaction transaction, string noteId, IReadOnlyList<string> livePaths, CancellationToken cancellationToken)
+    {
+        var paths = livePaths.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        await using var select = connection.CreateCommand(); select.Transaction = transaction; select.CommandText = "SELECT Id,StoredPath FROM NotebookAttachments WHERE NoteId=$id"; select.Parameters.AddWithValue("$id", noteId);
+        var rows = new List<(string Id, string Path)>(); await using var reader = await select.ExecuteReaderAsync(cancellationToken); while (await reader.ReadAsync(cancellationToken)) rows.Add((reader.GetString(0), reader.GetString(1)));
+        foreach (var row in rows)
+        {
+            await using var update = connection.CreateCommand(); update.Transaction = transaction; update.CommandText = "UPDATE NotebookAttachments SET IsDeleted=$deleted WHERE Id=$id"; update.Parameters.AddWithValue("$deleted", paths.Contains(row.Path) ? 0 : 1); update.Parameters.AddWithValue("$id", row.Id); await update.ExecuteNonQueryAsync(cancellationToken);
+        }
+    }
+
+    public async Task<IReadOnlyList<VoiceConversationDto>> ListVoiceConversationsAsync(string? voiceRoleId, string? search, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT c.ConversationId,c.VoiceRoleId,c.Title,(SELECT m.Content FROM ChatMessages m WHERE m.ConversationId=c.ConversationId ORDER BY m.Id DESC LIMIT 1),c.CreatedAt,c.UpdatedAt FROM VoiceConversations c WHERE ($role='' OR c.VoiceRoleId=$role) AND EXISTS (SELECT 1 FROM ChatMessages m0 WHERE m0.ConversationId=c.ConversationId) AND ($search='' OR instr(lower(c.Title),lower($search))>0 OR EXISTS (SELECT 1 FROM ChatMessages ms WHERE ms.ConversationId=c.ConversationId AND instr(lower(ms.Content),lower($search))>0)) ORDER BY c.UpdatedAt DESC";
+        command.Parameters.AddWithValue("$role", voiceRoleId ?? string.Empty); command.Parameters.AddWithValue("$search", search ?? string.Empty);
+        var result = new List<VoiceConversationDto>(); await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken)) result.Add(new VoiceConversationDto(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.IsDBNull(3) ? string.Empty : reader.GetString(3), ParseDate(reader.GetString(4)), ParseDate(reader.GetString(5))));
+        return result;
+    }
+
+    public async Task DeleteVoiceConversationAsync(string conversationId, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await using var messages = connection.CreateCommand(); messages.Transaction = transaction; messages.CommandText = "DELETE FROM ChatMessages WHERE ConversationId=$id"; messages.Parameters.AddWithValue("$id", conversationId); await messages.ExecuteNonQueryAsync(cancellationToken);
+            await using var conversation = connection.CreateCommand(); conversation.Transaction = transaction; conversation.CommandText = "DELETE FROM VoiceConversations WHERE ConversationId=$id"; conversation.Parameters.AddWithValue("$id", conversationId); await conversation.ExecuteNonQueryAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch { await transaction.RollbackAsync(CancellationToken.None); throw; }
     }
 
     public async Task DeleteAsync(string domain, string id, CancellationToken cancellationToken)
@@ -426,12 +685,11 @@ internal sealed class LegacyRelationalDocumentStore
 
         if (map.Domain == "notebook")
         {
-            var plain = row["ContentPlainText"]?.GetValue<string>() ?? string.Empty;
             var rich = row["ContentRich"]?.GetValue<string>() ?? string.Empty;
-            row["ContentMarkdown"] = string.IsNullOrWhiteSpace(plain) ? rich : plain;
+            row["ContentMarkdown"] = rich;
             var attachmentIds = new JsonArray();
             await using var attachment = connection.CreateCommand();
-            attachment.CommandText = "SELECT Id FROM NotebookAttachments WHERE NoteId=$id AND IsDeleted=0 ORDER BY CreatedAt";
+            attachment.CommandText = "SELECT StoredPath FROM NotebookAttachments WHERE NoteId=$id AND IsDeleted=0 ORDER BY CreatedAt";
             attachment.Parameters.AddWithValue("$id", row["NoteId"]?.GetValue<string>() ?? string.Empty);
             await using var attachmentReader = await attachment.ExecuteReaderAsync(cancellationToken);
             while (await attachmentReader.ReadAsync(cancellationToken)) attachmentIds.Add(attachmentReader.GetString(0));
@@ -551,6 +809,39 @@ internal sealed class LegacyRelationalDocumentStore
     private static readonly string[] ModelFields = ["Type", "Endpoint", "Model", "ApiKey", "EnableWebSearch", "Think"];
     private static readonly string[] VaultSecretColumns = ["PasswordEncrypted", "ApiKeyEncrypted", "SecretEncrypted", "PrivateKeyEncrypted", "MnemonicEncrypted"];
     private static readonly string[] VaultSecretNames = ["Password", "ApiKey", "Secret", "PrivateKey", "Mnemonic"];
+    private static readonly IReadOnlyList<(string Field, int Ordinal)> VaultSecretOrdinals =
+        [("Password", 12), ("ApiKey", 13), ("Secret", 14), ("PrivateKey", 15), ("Mnemonic", 16)];
+    private static readonly IReadOnlyList<(string Field, int Ordinal)> VaultSecretFieldOrdinals =
+        [("Password", 0), ("ApiKey", 1), ("Secret", 2), ("PrivateKey", 3), ("Mnemonic", 4)];
+    private static readonly string[] VaultSecretFields = ["Password", "ApiKey", "Secret", "PrivateKey", "Mnemonic"];
+
+    private void AddVaultParameters(SqliteCommand command, string type, VaultItemDto item, JsonObject metadata,
+        IReadOnlyDictionary<string, string> values, DateTimeOffset createdAt, DateTimeOffset updatedAt)
+    {
+        string MetadataText(string name) => metadata[name]?.GetValue<string>() ?? string.Empty;
+        string Secret(string name) => values.GetValueOrDefault(name, string.Empty);
+        command.Parameters.AddWithValue("$type", type); command.Parameters.AddWithValue("$name", item.Name.Trim());
+        command.Parameters.AddWithValue("$category", string.IsNullOrWhiteSpace(item.Category) ? DBNull.Value : item.Category.Trim());
+        command.Parameters.AddWithValue("$account", string.IsNullOrWhiteSpace(item.Account) ? DBNull.Value : item.Account.Trim());
+        command.Parameters.AddWithValue("$password", string.IsNullOrEmpty(Secret("Password")) ? DBNull.Value : RequireSecrets().Protect(Secret("Password")));
+        command.Parameters.AddWithValue("$url", string.IsNullOrWhiteSpace(item.Url) ? DBNull.Value : item.Url.Trim());
+        command.Parameters.AddWithValue("$platform", string.IsNullOrWhiteSpace(item.Platform) ? DBNull.Value : item.Platform.Trim());
+        command.Parameters.AddWithValue("$apiKey", string.IsNullOrEmpty(Secret("ApiKey")) ? DBNull.Value : RequireSecrets().Protect(Secret("ApiKey")));
+        command.Parameters.AddWithValue("$secret", string.IsNullOrEmpty(Secret("Secret")) ? DBNull.Value : RequireSecrets().Protect(Secret("Secret")));
+        command.Parameters.AddWithValue("$chain", string.IsNullOrWhiteSpace(MetadataText("ChainType")) ? DBNull.Value : MetadataText("ChainType"));
+        command.Parameters.AddWithValue("$wallet", string.IsNullOrWhiteSpace(MetadataText("WalletAddress")) ? DBNull.Value : MetadataText("WalletAddress"));
+        command.Parameters.AddWithValue("$privateKey", string.IsNullOrEmpty(Secret("PrivateKey")) ? DBNull.Value : RequireSecrets().Protect(Secret("PrivateKey")));
+        command.Parameters.AddWithValue("$mnemonic", string.IsNullOrEmpty(Secret("Mnemonic")) ? DBNull.Value : RequireSecrets().Protect(Secret("Mnemonic")));
+        command.Parameters.AddWithValue("$server", string.IsNullOrWhiteSpace(MetadataText("ServerAddress")) ? DBNull.Value : MetadataText("ServerAddress"));
+        command.Parameters.AddWithValue("$port", string.IsNullOrWhiteSpace(MetadataText("ServerPort")) ? DBNull.Value : MetadataText("ServerPort"));
+        command.Parameters.AddWithValue("$remark", string.IsNullOrWhiteSpace(MetadataText("Remark")) ? DBNull.Value : MetadataText("Remark"));
+        command.Parameters.AddWithValue("$created", Format(createdAt)); command.Parameters.AddWithValue("$updated", Format(updatedAt));
+    }
+
+    private static string Text(SqliteDataReader reader, int ordinal) => reader.IsDBNull(ordinal) ? string.Empty : reader.GetString(ordinal);
+    private static DateTimeOffset ParseDate(string value)
+        => DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal | DateTimeStyles.AllowWhiteSpaces, out var parsed)
+            ? parsed : throw new InvalidDataException($"关系库时间字段无效：{value}");
 
     private async Task<string> GetAppearanceAsync(CancellationToken cancellationToken)
     {
@@ -815,6 +1106,36 @@ internal sealed class LegacyRelationalDocumentStore
         return node.ToJsonString(JsonConfig.Persistence);
     }
 
+    private static JsonObject PrepareDocument(DomainMap map, JsonObject document)
+    {
+        if (map.Domain == "video" && document["AlbumId"] is JsonValue album && album.TryGetValue<string>(out var albumId))
+            document["AlbumId"] = string.IsNullOrWhiteSpace(albumId) ? null : ParsePrefixedLong(albumId, "legacy_album_");
+        if (map.Domain == "notebook" && document["AttachmentIds"] is JsonArray attachments)
+            document["ImagePathsJson"] = attachments.ToJsonString(JsonConfig.Persistence);
+        if (map.Domain == "remote_site" && document["SettingsJson"] is JsonValue settingsValue && settingsValue.TryGetValue<string>(out var settingsJson))
+        {
+            var settings = JsonNode.Parse(settingsJson)?.AsObject() ?? throw new InvalidDataException("远程站点 SettingsJson 必须是 JSON 对象。");
+            foreach (var property in settings) document[property.Key] = property.Value?.DeepClone();
+        }
+        return document;
+    }
+
+    private static Dictionary<string, object?> BuildValues(DomainMap map, JsonObject document, IReadOnlyDictionary<string, ColumnInfo> columns)
+    {
+        var values = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var property in document)
+        {
+            var column = map.WriteAliases.TryGetValue(property.Key, out var alias) ? alias : property.Key;
+            if (!columns.ContainsKey(column) || column.Equals(map.KeyColumn, StringComparison.OrdinalIgnoreCase)) continue;
+            values[column] = map.Domain is "remote_video_download" or "remote_video_play" &&
+                             column.Equals("VideoItemId", StringComparison.OrdinalIgnoreCase) &&
+                             property.Value is JsonValue itemValue && itemValue.TryGetValue<string>(out var itemId)
+                ? ParsePrefixedLong(itemId, "legacy_remote_video_")
+                : ToDbValue(property.Value, map.BooleanColumns.Contains(column), column);
+        }
+        return values;
+    }
+
     private ISecretProtector RequireSecrets() => secrets ?? throw new InvalidOperationException("旧关系库秘密字段需要 Core 密钥服务。");
     private static string Q(string identifier) => '"' + identifier.Replace("\"", "\"\"") + '"';
     private static string Format(DateTimeOffset value) => value.ToString("O", CultureInfo.InvariantCulture);
@@ -836,7 +1157,7 @@ internal sealed class LegacyRelationalDocumentStore
             M("voice_role_audio_cache","VoiceRoleAudioCaches","Id",IdMode.PrefixedInteger,"legacy_voice_cache_",b:["IsEnabled"],drop:["Id"]),
             M("voice_cache_generation","VoiceCacheGenerations","GenerationId",b:[],drop:[]),
             M("voice_conversation","VoiceConversations","ConversationId",b:[],drop:["Id"]),
-            M("notebook","NotebookNotes","NoteId",b:["IsPinned","IsDeleted"],drop:["Id","ContentXaml","ImagePathsJson"],remove:["ContentRich"]),
+            M("notebook","NotebookNotes","NoteId",b:["IsPinned","IsDeleted"],drop:["Id","ContentXaml"]),
             M("notebook_attachment","NotebookAttachments","Id",b:["IsDeleted"]),
             M("timer_record","TimerRecords","RecordId",idProperty:"RecordId",b:[],drop:["Id","DisplayText"]),
             M("reminder","Reminders","ReminderId",b:["Enabled","AllowTts"],drop:["Id"]),

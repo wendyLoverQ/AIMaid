@@ -67,8 +67,6 @@ export function VoiceConversationPage(): React.JSX.Element {
       setMessages((current) => [...current, optimistic])
       const payload = await runAgentConversation(content, { conversationId: conversation.conversationId, characterId: roleId, source: 'voice_conversation_center' })
       const reply = payload.content.trim()
-      const saved = await bridge.core.invoke({ type: 'voice_conversation.save', payload: { conversation: { ...conversation, preview: reply, updatedAt: new Date().toISOString() } } })
-      if (!saved.success) throw new Error(saved.error?.message ?? '会话预览保存失败。')
       await loadMessages(conversation.conversationId); await loadConversations(roleId, query)
       const role = roles.find((item) => item.roleId === roleId)
       if (speech && reply !== '' && role?.preferredVoiceId !== undefined) {
