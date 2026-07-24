@@ -49,6 +49,7 @@ export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visua
     let radialLayout: RadialVisualizerLayout | null = null
     let lastAlphaTop: PetAudioAlphaTop | null = null
     let smoothedVisualAnchor: PetAudioAnchor | undefined
+    let smoothedSourceBounds: OverlayBounds | null = null
 
     const render = (now: number): void => {
       const source = sourceCanvasRef.current
@@ -70,6 +71,7 @@ export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visua
           smoothedContour = null
           lastContourFrameAt = Number.NaN
           smoothedVisualAnchor = undefined
+          smoothedSourceBounds = null
           if (lastAlphaTop !== null) {
             lastAlphaTop = null
             onAlphaTop?.(null)
@@ -87,11 +89,14 @@ export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visua
         contour = nextContour ?? contour
       }
       if (contour !== null) {
+        if (smoothedSourceBounds === null) smoothedSourceBounds = toOverlayBounds(sourceBounds)
         if (smoothedContour === null) smoothedContour = contour
         const elapsed = Number.isNaN(lastContourFrameAt) ? 16 : Math.min(50, now - lastContourFrameAt)
         const follow = 1 - Math.exp(-elapsed / CONTOUR_FOLLOW_TIME_MS)
+        smoothedSourceBounds = interpolateOverlayBounds(smoothedSourceBounds, sourceBounds, follow)
         smoothedContour = interpolateAlphaContour(smoothedContour, contour, follow)
         lastContourFrameAt = now
+        const visualSourceBounds = smoothedSourceBounds
         const visualContour = smoothedContour
         const alphaTopPoint = contour.points.reduce((highest, point) => point.y < highest.y ? point : highest)
         const alphaTop: PetAudioAlphaTop = {
@@ -104,10 +109,10 @@ export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visua
           onAlphaTop?.(alphaTop)
         }
         if (visualizerStyle === 'bottom-wave' && bottomLayout === null) {
-          bottomLayout = createBottomBarLayout(visualContour, sourceBounds.width)
+          bottomLayout = createBottomBarLayout(visualContour, visualSourceBounds.width)
         }
         if (isBackgroundMusicVisualizer(visualizerStyle) && radialLayout === null) {
-          radialLayout = createRadialVisualizerLayout(visualContour, sourceBounds.width, sourceBounds.height)
+          radialLayout = createRadialVisualizerLayout(visualContour, visualSourceBounds.width, visualSourceBounds.height)
         }
         const targetAnchor = visualAnchorRef.current
         if (targetAnchor === undefined) {
@@ -119,16 +124,16 @@ export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visua
         }
         const anchor = smoothedVisualAnchor
         const region = radialLayout !== null
-          ? positionRadialOverlay(overlay, sourceBounds, stageBounds, radialLayout, anchor)
+          ? positionRadialOverlay(overlay, visualSourceBounds, stageBounds, radialLayout, anchor)
           : visualizerStyle === 'bottom-wave' && bottomLayout !== null
-            ? positionBottomOverlay(overlay, sourceBounds, stageBounds, visualContour, bottomLayout, anchor)
-            : positionOverlay(overlay, sourceBounds, stageBounds, visualContour)
+            ? positionBottomOverlay(overlay, visualSourceBounds, stageBounds, visualContour, bottomLayout, anchor)
+            : positionOverlay(overlay, visualSourceBounds, stageBounds, visualContour)
         resizeOverlay(overlay, region.width, region.height)
         const pixelRatio = overlay.width / region.width
         context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
         context.clearRect(0, 0, region.width, region.height)
-        const x = sourceBounds.left - stageBounds.left - region.left
-        const y = sourceBounds.top - stageBounds.top - region.top
+        const x = visualSourceBounds.left - stageBounds.left - region.left
+        const y = visualSourceBounds.top - stageBounds.top - region.top
         if (anchor === undefined) {
           delete overlay.dataset.visualAnchorX
           delete overlay.dataset.visualAnchorY
@@ -136,12 +141,12 @@ export function PetAudioContour({ sourceCanvasRef, readContour, sourceKey, visua
           overlay.dataset.visualAnchorX = anchor.clientX.toFixed(2)
           overlay.dataset.visualAnchorY = anchor.clientY.toFixed(2)
         }
-        if (visualizerStyle === 'bottom-wave' && bottomLayout !== null) drawBottomBars(context, visualContour, bottomLayout, spectrum, dynamics, x, y, sourceBounds.width, sourceBounds.height,
+        if (visualizerStyle === 'bottom-wave' && bottomLayout !== null) drawBottomBars(context, visualContour, bottomLayout, spectrum, dynamics, x, y, visualSourceBounds.width, visualSourceBounds.height,
           anchor === undefined ? undefined : anchor.clientX - stageBounds.left - region.left)
-        else if (visualizerStyle === 'surround-line') drawSurroundWave(context, visualContour, spectrum, dynamics, x, y, sourceBounds.width, sourceBounds.height)
+        else if (visualizerStyle === 'surround-line') drawSurroundWave(context, visualContour, spectrum, dynamics, x, y, visualSourceBounds.width, visualSourceBounds.height)
         else if (radialLayout !== null && isBackgroundMusicVisualizer(visualizerStyle)) drawBackgroundVisualizer(context, visualizerStyle, radialLayout, spectrum, waveform, dynamics, now,
-          anchor?.clientX === undefined ? sourceBounds.left - stageBounds.left + radialLayout.normalizedCenterX * sourceBounds.width - region.left : anchor.clientX - stageBounds.left - region.left,
-          anchor?.clientY === undefined ? sourceBounds.top - stageBounds.top + radialLayout.normalizedCenterY * sourceBounds.height - region.top : anchor.clientY - stageBounds.top - region.top)
+          anchor?.clientX === undefined ? visualSourceBounds.left - stageBounds.left + radialLayout.normalizedCenterX * visualSourceBounds.width - region.left : anchor.clientX - stageBounds.left - region.left,
+          anchor?.clientY === undefined ? visualSourceBounds.top - stageBounds.top + radialLayout.normalizedCenterY * visualSourceBounds.height - region.top : anchor.clientY - stageBounds.top - region.top)
       }
       animationId = requestAnimationFrame(render)
     }
@@ -173,6 +178,21 @@ function interpolateAlphaContour(current: AlphaContour, target: AlphaContour, am
   }
 }
 
+interface OverlayBounds { left: number; top: number; width: number; height: number }
+
+function toOverlayBounds(bounds: DOMRect): OverlayBounds {
+  return { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height }
+}
+
+function interpolateOverlayBounds(current: OverlayBounds, target: OverlayBounds, amount: number): OverlayBounds {
+  return {
+    left: current.left + (target.left - current.left) * amount,
+    top: current.top + (target.top - current.top) * amount,
+    width: current.width + (target.width - current.width) * amount,
+    height: current.height + (target.height - current.height) * amount
+  }
+}
+
 function interpolatePetAudioAnchor(current: PetAudioAnchor, target: PetAudioAnchor, amount: number): PetAudioAnchor {
   return {
     clientX: current.clientX + (target.clientX - current.clientX) * amount,
@@ -184,8 +204,8 @@ interface OverlayRegion { left: number; top: number; width: number; height: numb
 
 function positionOverlay(
   overlay: HTMLCanvasElement,
-  source: DOMRect,
-  stage: DOMRect,
+  source: OverlayBounds,
+  stage: OverlayBounds,
   contour: AlphaContour
 ): OverlayRegion {
   const contourLeft = Math.min(...contour.points.map((point) => point.x))
@@ -211,8 +231,8 @@ function positionOverlay(
 
 function positionBottomOverlay(
   overlay: HTMLCanvasElement,
-  source: DOMRect,
-  stage: DOMRect,
+  source: OverlayBounds,
+  stage: OverlayBounds,
   contour: AlphaContour,
   layout: BottomBarLayout,
   anchor: PetAudioAnchor | undefined
@@ -240,8 +260,8 @@ function positionBottomOverlay(
 
 function positionRadialOverlay(
   overlay: HTMLCanvasElement,
-  source: DOMRect,
-  stage: DOMRect,
+  source: OverlayBounds,
+  stage: OverlayBounds,
   layout: RadialVisualizerLayout,
   anchor: PetAudioAnchor | undefined
 ): OverlayRegion {
