@@ -1052,7 +1052,10 @@ public sealed class CoreProtocolHost(
         var plainSecret = request.Payload.TryGetProperty("plainSecret", out var secretElement) && secretElement.ValueKind == JsonValueKind.String
             ? secretElement.GetString()
             : null;
-        await HandleValueResultAsync(request, await domains.HandleAsync(new SaveVaultItemCommand(item, plainSecret), cancellationToken), cancellationToken);
+        var changeRemark = request.Payload.TryGetProperty("changeRemark", out var remarkElement) && remarkElement.ValueKind == JsonValueKind.String
+            ? remarkElement.GetString()
+            : null;
+        await HandleValueResultAsync(request, await domains.HandleAsync(new SaveVaultItemCommand(item, plainSecret, changeRemark), cancellationToken), cancellationToken);
     }
 
     private async Task HandleReminderSaveAsync(ProtocolRequest request, CancellationToken cancellationToken)
