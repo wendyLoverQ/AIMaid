@@ -397,7 +397,9 @@ export class IpcRouter {
         if (!isRecord(request.payload) || !isPetPresentationAction(request.payload.action)) throw new TypeError('Invalid presentation action')
         const parent = this.windows.get('pet')
         if (parent === undefined) throw new Error('PetWindow is unavailable')
-        return this.petPresentation.execute(request.payload.action, parent)
+        const snapshot = await this.petPresentation.execute(request.payload.action, parent)
+        this.petWindows.notifyPresentationChanged()
+        return snapshot
       }
     }
   }
