@@ -1136,6 +1136,14 @@ internal sealed class LegacyRelationalDocumentStore
         return values;
     }
 
+    private string UnprotectVaultValue(string protectedValue)
+    {
+        if (secrets is ILegacyVaultSecretProtector legacy &&
+            legacy.TryUnprotect(protectedValue, out var plaintext))
+            return plaintext;
+        return RequireSecrets().Unprotect(protectedValue);
+    }
+
     private ISecretProtector RequireSecrets() => secrets ?? throw new InvalidOperationException("旧关系库秘密字段需要 Core 密钥服务。");
     private static string Q(string identifier) => '"' + identifier.Replace("\"", "\"\"") + '"';
     private static string Format(DateTimeOffset value) => value.ToString("O", CultureInfo.InvariantCulture);
