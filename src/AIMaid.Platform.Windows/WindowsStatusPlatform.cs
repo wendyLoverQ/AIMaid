@@ -17,7 +17,8 @@ public sealed class WindowsStatusPlatform : IStatusPlatform, IDisposable
         ("Google", "google.com", false),
         ("X", "x.com", false),
         ("抖音", "douyin.com", true),
-        ("百度", "baidu.com", true)
+        ("百度", "baidu.com", true),
+        ("女仆web", "35.78.120.126", true)
     ];
 
     private readonly object cpuGate = new();

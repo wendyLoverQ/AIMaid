@@ -206,7 +206,7 @@ export function StatusPage(): React.JSX.Element {
               <StatusMetric label="内存" value={resources === null ? '--' : `${resources.workingSetMb.toFixed(0)} MB`}/>
             </StatusMetricGrid>
             <StatusMetricGrid columns={3}>
-              {['ChatGPT', 'Google', 'X', '抖音', '百度'].map((name) => {
+              {['ChatGPT', 'Google', 'X', '抖音', '百度', '女仆web'].map((name) => {
                   const probe = network.find((item) => item.name === name);
                   const state: StatusHealth = probe === undefined ? 'unknown' : probe.success ? 'online' : 'offline';
                   return <StatusMetric
