@@ -1068,7 +1068,6 @@ function PetContextMenu({ position, presentation, voiceMenu, execute, open, cycl
         ] : []),
         ...(presentation.mode === 'live2d' ? [{ id: 'live2d-role', label: '切换角色', icon: icon('user'), onSelect: () => execute('switch-live2d-role') }] : []),
         { id: 'voice-role', label: voiceMenu.roleName, icon: icon('sparkles'), separated: true, onSelect: () => open('characters') },
-        { id: 'intimacy', label: voiceMenu.intimacy, icon: icon('heart'), onSelect: cycleVoiceIntimacy },
         { id: 'voice-cache', label: '清除语音缓存', icon: icon('trash'), onSelect: clearVoiceCache },
         { id: 'status', label: '状态', icon: icon('activity'), separated: true, onSelect: () => open('status') },
         { id: 'workbench', label: '工作台', icon: icon('grid'), onSelect: () => open('main') },
@@ -1077,7 +1076,7 @@ function PetContextMenu({ position, presentation, voiceMenu, execute, open, cycl
         { id: 'showcase', label: '控件展示', icon: icon('grid'), onSelect: () => open('ui-showcase') },
         { id: 'system', label: '系统', icon: icon('settings'), onSelect: () => open('settings') }
     ];
-    return <ContextMenuSurface label="桌宠菜单" items={items} position={position} footer={`版本 ${bridge.app.version}`} onClose={close}/>;
+    return <ContextMenuSurface label="桌宠菜单" items={items} position={position} onClose={close}/>;
 }
 function modeLabel(mode: PetPresentationSnapshot['mode']): string { return mode === 'image' ? '图片' : mode === 'png-sequence' ? '动画' : 'Live2D'; }
 function imageIntervalLabel(seconds: number): string {
