@@ -5,6 +5,13 @@ import type { Logger } from '../logging/logger'
 import type { WindowFactory } from './window-factory'
 import { WINDOW_REGISTRY } from './window-registry'
 
+export const WINDOW_SIZE_SETTING_PREFIX = 'window_size:'
+
+export interface PersistedWindowSize {
+  width: number
+  height: number
+}
+
 export interface WindowActionContext {
   requestId?: string
   sourceWindow?: WindowKind
@@ -21,6 +28,7 @@ export class WindowManager {
   private destroyingAll = false
   private foreignWindowMoveHandlers: ForeignWindowMoveHandlers | undefined
   private trayIconPointerDown = false
+  private readonly rememberedSizes = new Map<WindowKind, PersistedWindowSize>()
 
   constructor(
     private readonly factory: WindowFactory,
@@ -33,6 +41,26 @@ export class WindowManager {
 
   setTrayIconPointerDown(pointerDown: boolean): void {
     this.trayIconPointerDown = pointerDown
+  }
+
+  restoreSizes(values: ReadonlyMap<string, string>): void {
+    for (const kind of Object.keys(WINDOW_REGISTRY) as WindowKind[]) {
+      const definition = WINDOW_REGISTRY[kind]
+      if (definition.options.resizable !== true) continue
+      const raw = values.get(`${WINDOW_SIZE_SETTING_PREFIX}${kind}`)
+      if (raw === undefined) continue
+      const size = parsePersistedSize(raw, definition.options.minWidth, definition.options.minHeight)
+      if (size !== undefined) this.rememberedSizes.set(kind, size)
+      else this.log.warn('window', 'Ignored invalid persisted window size', { kind })
+    }
+  }
+
+  sizeSettings(): Record<string, string> {
+    const values: Record<string, string> = {}
+    for (const [kind, size] of this.rememberedSizes) {
+      values[`${WINDOW_SIZE_SETTING_PREFIX}${kind}`] = JSON.stringify(size)
+    }
+    return values
   }
 
   open(kind: WindowKind, ownerKind?: WindowKind, context: WindowActionContext = {}): BrowserWindow {
@@ -56,6 +84,8 @@ export class WindowManager {
 
     const definition = WINDOW_REGISTRY[kind]
     const window = this.factory.create(definition)
+    const rememberedSize = this.rememberedSizes.get(kind)
+    if (rememberedSize !== undefined) window.setSize(rememberedSize.width, rememberedSize.height, false)
 
     if (kind === 'chat') window.setAlwaysOnTop(true, 'screen-saver')
 
@@ -96,6 +126,15 @@ export class WindowManager {
     window.on('blur', () => this.log.debug('window', 'Window blurred', { kind, windowId: window.id }))
     window.on('minimize', () => this.log.info('window', 'Window minimized', { kind, windowId: window.id }))
     window.on('restore', () => this.log.info('window', 'Window restored', { kind, windowId: window.id }))
+    if (definition.options.resizable === true) {
+      const rememberSize = (): void => {
+        if (window.isDestroyed() || window.isMaximized() || window.isFullScreen()) return
+        const [width, height] = window.getSize()
+        this.rememberedSizes.set(kind, { width, height })
+      }
+      rememberSize()
+      window.on('resize', rememberSize)
+    }
     this.log.info('window', 'Window created', { kind, windowId: window.id, webContentsId: window.webContents.id, ...context })
     return window
   }
@@ -267,5 +306,16 @@ function centerWithin(target: Rectangle, width: number, height: number): { x: nu
   return {
     x: Math.round(target.x + (target.width - width) / 2),
     y: Math.round(target.y + (target.height - height) / 2)
+  }
+}
+
+function parsePersistedSize(value: string, minWidth?: number, minHeight?: number): PersistedWindowSize | undefined {
+  try {
+    const parsed = JSON.parse(value) as Partial<PersistedWindowSize>
+    if (!Number.isInteger(parsed.width) || !Number.isInteger(parsed.height)) return undefined
+    if (parsed.width! < (minWidth ?? 1) || parsed.height! < (minHeight ?? 1)) return undefined
+    return { width: parsed.width!, height: parsed.height! }
+  } catch {
+    return undefined
   }
 }

@@ -5,6 +5,8 @@ import type { Logger } from '../logging/logger'
 import type { WindowManager } from '../windows/window-manager'
 import type { PetWindowManager } from '../windows/pet-window-manager'
 import type { PetPresentationService } from './pet-presentation-service'
+import { WINDOW_SIZE_SETTING_PREFIX } from '../windows/window-manager'
+import { WINDOW_REGISTRY } from '../windows/window-registry'
 import { HOTKEY_ACTIONS, isHotkeyAction } from '../../shared/system-settings'
 import type { HotkeyAction, HotkeyBindingSnapshot, PlatformSettingsSnapshot } from '../../shared/system-settings'
 
@@ -27,6 +29,7 @@ export class SystemSettingsService {
 
   async initialize(): Promise<void> {
     await this.reload()
+    this.windows.restoreSizes(this.values)
     for (const definition of HOTKEY_ACTIONS) {
       const gesture = this.values.get(definition.settingKey) ?? definition.defaultGesture
       if (gesture !== '') this.tryRegister(definition.action, gesture)
@@ -101,9 +104,14 @@ export class SystemSettingsService {
     await this.applyBubbleStyle(this.values.get('comic_bubble_style') ?? '')
   }
 
-  dispose(): void {
-    for (const accelerator of this.registered.values()) globalShortcut.unregister(accelerator)
-    this.registered.clear()
+  async dispose(): Promise<void> {
+    const windowSizes = this.windows.sizeSettings()
+    try {
+      if (Object.keys(windowSizes).length > 0) await this.saveCore(windowSizes)
+    } finally {
+      for (const accelerator of this.registered.values()) globalShortcut.unregister(accelerator)
+      this.registered.clear()
+    }
   }
 
   private async applyBubbleStyle(style: string): Promise<void> {
@@ -154,7 +162,10 @@ export class SystemSettingsService {
   }
 
   private async reload(): Promise<void> {
-    const keys = ['start_with_windows', 'comic_bubble_style', ...HOTKEY_ACTIONS.map((item) => item.settingKey)]
+    const windowSizeKeys = Object.values(WINDOW_REGISTRY)
+      .filter((definition) => definition.options.resizable === true)
+      .map((definition) => `${WINDOW_SIZE_SETTING_PREFIX}${definition.id}`)
+    const keys = ['start_with_windows', 'comic_bubble_style', ...HOTKEY_ACTIONS.map((item) => item.settingKey), ...windowSizeKeys]
     const payload = await this.invokeCore({ type: 'settings.get', payload: { keys } }) as CoreSettingsPayload
     this.values = new Map((payload.settings ?? []).map((item) => [item.key, item.value]))
   }

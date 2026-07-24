@@ -56,7 +56,7 @@ public sealed class CodexQuotaApplicationService
             latestEvent.Timestamp?.LocalDateTime.ToString("HH:mm") ?? string.Empty,
             ToWindow(limits.Primary),
             ToWindow(limits.Secondary),
-            limits.Credits is null ? null : limits.Credits.Unlimited ? "unlimited" : limits.Credits.Balance?.ToString("F0"),
+            FormatCredits(limits.Credits),
             error);
     }
 
@@ -68,6 +68,13 @@ public sealed class CodexQuotaApplicationService
         if (window is null) return null;
         var reset = window.ResetsAt > 0 ? DateTimeOffset.FromUnixTimeSeconds(window.ResetsAt).LocalDateTime.ToString("MM/dd HH:mm") : string.Empty;
         return new CodexQuotaWindowDto(FormatQuotaWindow(window.WindowMinutes), Math.Clamp(100 - window.UsedPercent, 0, 100), reset);
+    }
+
+    private static string? FormatCredits(CreditInfo? credits)
+    {
+        if (credits is null || credits.HasCredits == false) return null;
+        if (credits.Unlimited) return "unlimited";
+        return credits.Balance?.ToString("F0");
     }
 
     private static string FormatQuotaWindow(int minutes) => minutes switch
@@ -187,7 +194,9 @@ public sealed class CodexQuotaApplicationService
     }
     private sealed class CreditInfo
     {
+        [JsonPropertyName("has_credits")] public bool? HasCredits { get; set; }
         [JsonPropertyName("unlimited")] public bool Unlimited { get; set; }
+        [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
         [JsonPropertyName("balance")] public double? Balance { get; set; }
     }
 }
