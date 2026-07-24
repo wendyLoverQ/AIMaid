@@ -424,7 +424,7 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
         command.Parameters.AddWithValue("$requestUrl", record.RequestUrl);
         command.Parameters.AddWithValue("$systemPrompt", record.SystemPrompt);
         command.Parameters.AddWithValue("$userPrompt", record.UserPrompt);
-        command.Parameters.AddWithValue("$requestJson", JsonTextCanonicalizer.NormalizeObject(record.RequestJson, "LlmCallLogs.RequestJson"));
+        command.Parameters.AddWithValue("$requestJson", JsonTextCanonicalizer.NormalizeAuditObject(record.RequestJson, "LlmCallLogs.RequestJson"));
         command.Parameters.AddWithValue("$updatedAt", Format(record.UpdatedAt));
         var result = await command.ExecuteScalarAsync(cancellationToken);
         var id = (long)result!;
@@ -449,7 +449,7 @@ public sealed class SqliteCoreStore : IChatStore, IChatSearchStore, ISettingsSto
         command.Parameters.AddWithValue("$responseId", completion.ResponseId);
         command.Parameters.AddWithValue("$responseText", completion.ResponseText);
         command.Parameters.AddWithValue("$rawResponse", string.IsNullOrWhiteSpace(completion.RawResponseJson) ? string.Empty :
-            JsonTextCanonicalizer.NormalizeObjectOrArray(completion.RawResponseJson, "LlmCallLogs.RawResponseJson", decodeLiteralUnicodeEscapes: true));
+            JsonTextCanonicalizer.NormalizeAuditObjectOrArray(completion.RawResponseJson, "LlmCallLogs.RawResponseJson", decodeLiteralUnicodeEscapes: true));
         command.Parameters.AddWithValue("$error", completion.Error);
         command.Parameters.AddWithValue("$durationMs", completion.DurationMs);
         command.Parameters.AddWithValue("$promptTokens", completion.PromptTokens);

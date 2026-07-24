@@ -19,6 +19,14 @@ public static class JsonTextCanonicalizer
         return node.ToJsonString(JsonConfig.Persistence);
     }
 
+    public static string NormalizeAuditObject(string json, string fieldName)
+    {
+        var node = ParseRequired(json, fieldName);
+        if (node is not JsonObject)
+            throw new InvalidDataException($"{fieldName} 必须是 JSON 对象。");
+        return node.ToJsonString(JsonConfig.Audit);
+    }
+
     public static string NormalizeObjectOrArray(string json, string fieldName, bool decodeLiteralUnicodeEscapes = false)
     {
         var node = ParseRequired(json, fieldName);
@@ -26,6 +34,15 @@ public static class JsonTextCanonicalizer
             throw new InvalidDataException($"{fieldName} 必须是 JSON 对象或数组。");
         if (decodeLiteralUnicodeEscapes) DecodeStrings(node, fieldName);
         return node.ToJsonString(JsonConfig.Persistence);
+    }
+
+    public static string NormalizeAuditObjectOrArray(string json, string fieldName, bool decodeLiteralUnicodeEscapes = false)
+    {
+        var node = ParseRequired(json, fieldName);
+        if (node is not JsonObject and not JsonArray)
+            throw new InvalidDataException($"{fieldName} 必须是 JSON 对象或数组。");
+        if (decodeLiteralUnicodeEscapes) DecodeStrings(node, fieldName);
+        return node.ToJsonString(JsonConfig.Audit);
     }
 
     public static string NormalizeOptionalObjectOrArray(string? json, string fieldName, bool decodeLiteralUnicodeEscapes = false)
